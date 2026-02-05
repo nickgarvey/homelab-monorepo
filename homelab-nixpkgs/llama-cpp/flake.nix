@@ -7,11 +7,33 @@
     let
       supportedSystems = [ "x86_64-linux" "aarch64-linux" ];
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
+
+      # Override llama-cpp to use version 7938
+      llamaCppOverlay = final: prev: {
+        llama-cpp = prev.llama-cpp.overrideAttrs (oldAttrs: rec {
+          version = "7938";
+          src = prev.fetchFromGitHub {
+            owner = "ggml-org";
+            repo = "llama.cpp";
+            tag = "b${version}";
+            hash = "sha256-6Lf8RJbK4ar568ZenCRA/rOUtw3U89LaSodcfytIpoE=";
+            leaveDotGit = true;
+            postFetch = ''
+              git -C "$out" rev-parse --short HEAD > $out/COMMIT
+              find "$out" -name .git -print0 | xargs -0 rm -rf
+            '';
+          };
+        });
+        llama-cpp-vulkan = final.llama-cpp.override { vulkanSupport = true; };
+      };
     in
     {
       dockerImage = forAllSystems (system:
         let
-          pkgs = nixpkgs.legacyPackages.${system};
+          pkgs = import nixpkgs {
+            inherit system;
+            overlays = [ llamaCppOverlay ];
+          };
         in
           pkgs.dockerTools.buildImage {
             name = "zot.home.arpa/llama-cpp-vulkan-ngarvey";
@@ -51,7 +73,10 @@
 
       packages = forAllSystems (system:
         let
-          pkgs = nixpkgs.legacyPackages.${system};
+          pkgs = import nixpkgs {
+            inherit system;
+            overlays = [ llamaCppOverlay ];
+          };
         in {
           default = pkgs.llama-cpp-vulkan;
         }
@@ -59,7 +84,10 @@
 
       devShells = forAllSystems (system:
         let
-          pkgs = nixpkgs.legacyPackages.${system};
+          pkgs = import nixpkgs {
+            inherit system;
+            overlays = [ llamaCppOverlay ];
+          };
         in {
           default = pkgs.mkShell {
             packages = [
