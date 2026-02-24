@@ -1,0 +1,22 @@
+# ESP-IDF build artifacts
+build/
+sdkconfig
+managed_components/
+dependencies.lock
+
+# Nix
+.direnv/
+result
+
+# Secrets (never commit real keys)
+secrets/
+include/secrets/ha_key.h
+
+# Editor
+.vscode/
+.cursor/
+
+# Host test build
+tests/build/
+
+.prompts/
