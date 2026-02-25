@@ -347,7 +347,7 @@ body {
 {{end}}
 
 <div class="top-bar">
-  <span class="title">TRMNL</span>
+  <span class="title">Garvey Dashboard</span>
   <span class="updated">Updated: {{.UpdatedAt}}</span>
 </div>
 
@@ -376,8 +376,79 @@ body {
       </div>
     </div>
     <div class="placeholder-section">
-      <div class="placeholder-title">Placeholder</div>
-      <div class="placeholder-body">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco.</div>
+      <div class="placeholder-body">
+        <svg viewBox="0 0 320 125" xmlns="http://www.w3.org/2000/svg" style="display:block;margin:4px auto 0;">
+
+          <!-- BLACK CAT (centered at 80,5) -->
+          <g transform="translate(80,5)">
+            <!-- Tail (drawn first, behind body) -->
+            <path d="M24,86 C56,72 58,48 42,34 C34,25 42,13 50,7"
+                  stroke="black" stroke-width="9" fill="none" stroke-linecap="round"/>
+            <!-- Body -->
+            <ellipse cx="0" cy="79" rx="26" ry="30" fill="black"/>
+            <!-- Head -->
+            <circle cx="0" cy="37" r="22" fill="black"/>
+            <!-- Ears -->
+            <polygon points="-18,21 -13,4 -2,18" fill="black"/>
+            <polygon points="18,21 13,4 2,18" fill="black"/>
+            <!-- Eyes: white with black slit pupils -->
+            <ellipse cx="-8" cy="34" rx="6" ry="5" fill="white"/>
+            <ellipse cx="8" cy="34" rx="6" ry="5" fill="white"/>
+            <ellipse cx="-8" cy="34" rx="2" ry="4" fill="black"/>
+            <ellipse cx="8" cy="34" rx="2" ry="4" fill="black"/>
+            <!-- Nose -->
+            <polygon points="0,42 -3,46 3,46" fill="white"/>
+            <!-- Whiskers -->
+            <line x1="-2" y1="44" x2="-23" y2="40" stroke="black" stroke-width="1"/>
+            <line x1="-2" y1="44" x2="-23" y2="47" stroke="black" stroke-width="1"/>
+            <line x1="2" y1="44" x2="23" y2="40" stroke="black" stroke-width="1"/>
+            <line x1="2" y1="44" x2="23" y2="47" stroke="black" stroke-width="1"/>
+            <!-- Chest dot -->
+            <circle cx="0" cy="61" r="4" fill="white"/>
+            <!-- Paws -->
+            <ellipse cx="-12" cy="106" rx="11" ry="5" fill="black"/>
+            <ellipse cx="12" cy="106" rx="11" ry="5" fill="black"/>
+          </g>
+
+          <!-- TUXEDO CAT (centered at 240,5, scaled to 70%) -->
+          <g transform="translate(240,16) scale(0.9)">
+            <!-- Tail -->
+            <path d="M24,86 C56,72 58,48 42,34 C34,25 42,13 50,7"
+                  stroke="black" stroke-width="9" fill="none" stroke-linecap="round"/>
+            <!-- Body (black) -->
+            <ellipse cx="0" cy="79" rx="26" ry="30" fill="black"/>
+            <!-- White chest patch -->
+            <ellipse cx="0" cy="87" rx="13" ry="19" fill="white"/>
+            <!-- Head (black) -->
+            <circle cx="0" cy="37" r="22" fill="black"/>
+            <!-- White muzzle -->
+            <ellipse cx="0" cy="45" rx="12" ry="8" fill="white"/>
+            <!-- Ears (black with white inner) -->
+            <polygon points="-18,21 -13,4 -2,18" fill="black"/>
+            <polygon points="18,21 13,4 2,18" fill="black"/>
+            <polygon points="-15,19 -12,8 -4,17" fill="white"/>
+            <polygon points="15,19 12,8 4,17" fill="white"/>
+            <!-- Eyes: white on black -->
+            <ellipse cx="-8" cy="32" rx="6" ry="5" fill="white"/>
+            <ellipse cx="8" cy="32" rx="6" ry="5" fill="white"/>
+            <ellipse cx="-8" cy="32" rx="2" ry="4" fill="black"/>
+            <ellipse cx="8" cy="32" rx="2" ry="4" fill="black"/>
+            <!-- White mark between eyes (thin vertical oval) -->
+            <ellipse cx="0" cy="32" rx="1" ry="2" fill="white"/>
+            <!-- Nose (black on white muzzle) -->
+            <polygon points="0,41 -3,45 3,45" fill="black"/>
+            <!-- Whiskers (black on white muzzle) -->
+            <line x1="-2" y1="43" x2="-23" y2="39" stroke="black" stroke-width="1"/>
+            <line x1="-2" y1="43" x2="-23" y2="45" stroke="black" stroke-width="1"/>
+            <line x1="2" y1="43" x2="23" y2="39" stroke="black" stroke-width="1"/>
+            <line x1="2" y1="43" x2="23" y2="45" stroke="black" stroke-width="1"/>
+            <!-- White paws (outlined) -->
+            <ellipse cx="-12" cy="106" rx="11" ry="5" fill="white" stroke="black" stroke-width="1.5"/>
+            <ellipse cx="12" cy="106" rx="11" ry="5" fill="white" stroke="black" stroke-width="1.5"/>
+          </g>
+
+        </svg>
+      </div>
     </div>
   </div>
 </div>

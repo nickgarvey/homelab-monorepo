@@ -12,6 +12,7 @@ import (
 	"github.com/ngarvey/trmnl-display/internal/display"
 	"github.com/ngarvey/trmnl-display/internal/gcal"
 	"github.com/ngarvey/trmnl-display/internal/homeassistant"
+	"github.com/ngarvey/trmnl-display/internal/llm"
 	"github.com/ngarvey/trmnl-display/internal/renderer"
 	"github.com/ngarvey/trmnl-display/internal/weather"
 )
@@ -25,6 +26,8 @@ type dataCache struct {
 	calendarErr string
 	garage      *homeassistant.GarageState
 	garageErr   string
+	llmText     string
+	llmErr      string
 }
 
 type srv struct {
@@ -43,6 +46,8 @@ func (s *srv) poll(ctx context.Context) {
 	var calErr string
 	var garageResult *homeassistant.GarageState
 	var garageErr string
+	var llmText string
+	var llmErr string
 
 	var wg sync.WaitGroup
 
@@ -122,10 +127,43 @@ func (s *srv) poll(ctx context.Context) {
 		}
 	}()
 
+	// Fetch LLM rhyme (only if configured and no static news_text override).
+	if s.cfg.LLM.BaseURL != "" && s.cfg.NewsText == "" {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			llmCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			defer cancel()
+			r, err := llm.Fetch(llmCtx, &http.Client{Timeout: 30 * time.Second}, s.cfg.LLM.BaseURL, s.cfg.LLM.Model)
+			if err != nil {
+				log.Printf("poll: llm: %v", err)
+				s.cache.mu.RLock()
+				mu.Lock()
+				llmText = s.cache.llmText // keep last successful rhyme
+				llmErr = "Rhyme generator offline."
+				mu.Unlock()
+				s.cache.mu.RUnlock()
+			} else {
+				mu.Lock()
+				llmText = r.Text
+				mu.Unlock()
+			}
+		}()
+	}
+
 	wg.Wait()
 
+	newsText := s.cfg.NewsText
+	if newsText == "" {
+		if llmErr != "" && llmText == "" {
+			newsText = llmErr
+		} else {
+			newsText = llmText
+		}
+	}
+
 	now := time.Now()
-	html, err := display.RenderHTML(now, weatherResults, calResult, calErr, garageResult, garageErr, s.cfg.NewsText)
+	html, err := display.RenderHTML(now, weatherResults, calResult, calErr, garageResult, garageErr, newsText)
 	if err != nil {
 		log.Printf("poll: display render: %v", err)
 		return
@@ -145,6 +183,10 @@ func (s *srv) poll(ctx context.Context) {
 	s.cache.calendarErr = calErr
 	s.cache.garage = garageResult
 	s.cache.garageErr = garageErr
+	if llmText != "" {
+		s.cache.llmText = llmText
+	}
+	s.cache.llmErr = llmErr
 	s.cache.mu.Unlock()
 
 	log.Printf("poll: done — rendered %d-byte PNG at %s", len(png), now.Format("15:04:05"))

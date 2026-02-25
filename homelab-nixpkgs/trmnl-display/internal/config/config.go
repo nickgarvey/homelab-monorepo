@@ -27,12 +27,18 @@ type HomeAssistant struct {
 	CACert       string `yaml:"ca_cert"`
 }
 
+type LLM struct {
+	BaseURL string `yaml:"base_url"`
+	Model   string `yaml:"model"`
+}
+
 type Config struct {
 	PlaywrightURL   string         `yaml:"playwright_url"`
 	ListenAddr      string         `yaml:"listen_addr"`
 	Locations       []Location     `yaml:"locations"`
 	GoogleCal       GoogleCalendar `yaml:"google_calendar"`
 	HomeAssistant   HomeAssistant  `yaml:"homeassistant"`
+	LLM             LLM            `yaml:"llm"`
 	NewsText        string         `yaml:"news_text"`
 	PollIntervalMin int            `yaml:"poll_interval_minutes"`
 }
@@ -61,9 +67,6 @@ func Parse(data []byte) (*Config, error) {
 	}
 	if cfg.HomeAssistant.GarageEntity == "" {
 		cfg.HomeAssistant.GarageEntity = "cover.garage_door"
-	}
-	if cfg.NewsText == "" {
-		cfg.NewsText = "Lorem ipsum dolor sit amet, consectetur adipiscing elit."
 	}
 	return &cfg, nil
 }

@@ -24,4 +24,8 @@ homeassistant:
   garage_entity: "cover.garage_door"
   ca_cert: "/config/garvey-ca.pem"
 
-news_text: "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore."
+llm:
+  base_url: "http://10.28.15.204"
+  model: "Qwen3.5-35B-A3B-Q8_0"
+
+news_text: ""  # leave empty; LLM generates a rhyme each poll if llm.base_url is set
