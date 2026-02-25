@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"log"
+	"math/rand"
 	"net/http"
 	"sync"
 	"time"
@@ -127,23 +128,26 @@ func (s *srv) poll(ctx context.Context) {
 		}
 	}()
 
-	// Fetch LLM rhyme (only if configured and no static news_text override).
+	// Fetch word of the day (only if LLM is configured and no static news_text override).
 	if s.cfg.LLM.BaseURL != "" && s.cfg.NewsText == "" {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			llmCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			categories := s.cfg.LLM.WordOfDayCategories
+			category := categories[rand.Intn(len(categories))]
+			llmCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 			defer cancel()
-			r, err := llm.Fetch(llmCtx, &http.Client{Timeout: 30 * time.Second}, s.cfg.LLM.BaseURL, s.cfg.LLM.Model)
+			r, err := llm.Fetch(llmCtx, &http.Client{Timeout: 60 * time.Second}, s.cfg.LLM.BaseURL, s.cfg.LLM.Model, category)
 			if err != nil {
-				log.Printf("poll: llm: %v", err)
+				log.Printf("poll: llm (category=%q): %v", category, err)
 				s.cache.mu.RLock()
 				mu.Lock()
-				llmText = s.cache.llmText // keep last successful rhyme
-				llmErr = "Rhyme generator offline."
+				llmText = s.cache.llmText
+				llmErr = "Word of the day unavailable."
 				mu.Unlock()
 				s.cache.mu.RUnlock()
 			} else {
+				log.Printf("poll: llm: category=%q → %q", category, r.Text)
 				mu.Lock()
 				llmText = r.Text
 				mu.Unlock()

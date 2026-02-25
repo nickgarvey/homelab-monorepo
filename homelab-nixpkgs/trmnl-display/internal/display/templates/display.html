@@ -107,7 +107,6 @@ body {
   width: 100px;
   flex-shrink: 0;
   padding-left: 8px;
-  border-left: 1px solid #000;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -120,7 +119,6 @@ body {
   align-items: center;
   gap: 7px;
   padding-bottom: 2px;
-  border-bottom: 1px solid #000;
   margin-bottom: 3px;
   flex-shrink: 0;
 }
@@ -129,13 +127,11 @@ body {
 .wp-unit    { font-size: 13px; font-weight: normal; }
 .wp-detail  { font-size: 13px; line-height: 1.35; display: flex; align-items: center; justify-content: space-between; width: 100%; }
 .wp-hilo    { display: inline-flex; flex-direction: column; line-height: 1.2; font-size: 12px; }
-.wp-uv      { font-size: 14px; font-weight: bold; white-space: nowrap; }
+.wp-uv      { font-size: 20px; font-weight: bold; white-space: nowrap; }
 
 /* Stacked charts — temp sparkline / UV text / condition icons share x-axis */
 .wp-charts {
   margin-bottom: 5px;
-  padding-bottom: 5px;
-  border-bottom: 1px solid #000;
 }
 .chart-row {
   display: flex;
@@ -144,6 +140,16 @@ body {
 .chart-row-temp   { margin-bottom: 4px; }
 .chart-svg { flex: 1; min-width: 0; }
 .chart-svg svg { display: block; }
+.chart-label-uv {
+  width: 10px;
+  flex-shrink: 0;
+  font-size: 8px;
+  font-family: DejaVu Sans, Arial, sans-serif;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  text-align: center;
+  line-height: 10px;
+}
 
 /* 3-day forecast entries (right column) */
 .day-entry {
@@ -175,29 +181,28 @@ body {
   letter-spacing: 0.04em;
   border-bottom: 1px solid #000;
   padding-bottom: 3px;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   flex-shrink: 0;
 }
 .cal-events-wrap {
-  height: 163px;
-  columns: 2;
-  column-gap: 12px;
-  column-fill: auto;
+  flex: 1;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 .cal-event {
-  break-inside: avoid;
-  margin-bottom: 5px;
-  padding-bottom: 4px;
-  border-bottom: 1px solid #000;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 2px 0;
+  overflow: hidden;
 }
-.cal-event:last-child { border-bottom: none; }
-.event-day   { font-size: 9px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.event-time  { font-size: 10px; }
-.event-title { font-size: 11px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.event-day   { font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.event-title { font-size: 14px; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .event-title-oneoff { font-weight: bold; }
-.event-oneoff-dot { font-size: 8px; vertical-align: middle; margin-right: 2px; }
-.cal-empty   { font-size: 11px; font-style: italic; color: #000; }
+.event-oneoff-dot { font-size: 10px; vertical-align: middle; margin-right: 2px; }
+.cal-empty   { font-size: 13px; font-style: italic; color: #000; }
 
 /* ── Placeholder (bottom-right) ──────────────────────── */
 .placeholder-section {
@@ -219,7 +224,7 @@ body {
 /* ── Bottom bar ──────────────────────────────────────── */
 .garage    { font-size: 13px; font-weight: bold; white-space: nowrap; }
 .divider   { border-left: 1px solid #000; height: 26px; flex-shrink: 0; }
-.news      { font-size: 13px; flex: 1; overflow: hidden; color: #000; }
+.news      { font-size: 13px; flex: 1; overflow: hidden; color: #000; white-space: nowrap; text-overflow: ellipsis; text-align: center; }
 .stale-tag { font-size: 9px; font-style: italic; font-weight: normal; }
 </style>
 
@@ -229,14 +234,14 @@ body {
 
     <symbol id="wi-clear" viewBox="0 0 20 20">
       <circle cx="10" cy="10" r="3.8" stroke="#000" stroke-width="1.5" fill="none"/>
-      <line x1="10" y1="1"    x2="10" y2="4.5"  stroke="#000" stroke-width="1.4"/>
-      <line x1="10" y1="15.5" x2="10" y2="19"   stroke="#000" stroke-width="1.4"/>
-      <line x1="1"  y1="10"   x2="4.5"  y2="10" stroke="#000" stroke-width="1.4"/>
-      <line x1="15.5" y1="10" x2="19"   y2="10" stroke="#000" stroke-width="1.4"/>
-      <line x1="3.2" y1="3.2" x2="5.5" y2="5.5" stroke="#000" stroke-width="1.4"/>
-      <line x1="14.5" y1="14.5" x2="16.8" y2="16.8" stroke="#000" stroke-width="1.4"/>
-      <line x1="16.8" y1="3.2"  x2="14.5" y2="5.5"  stroke="#000" stroke-width="1.4"/>
-      <line x1="3.2"  y1="16.8" x2="5.5"  y2="14.5" stroke="#000" stroke-width="1.4"/>
+      <line x1="10" y1="1.5"  x2="10" y2="4.5"  stroke="#000" stroke-width="1.4" stroke-linecap="round"/>
+      <line x1="10" y1="15.5" x2="10" y2="18.5" stroke="#000" stroke-width="1.4" stroke-linecap="round"/>
+      <line x1="1.5" y1="10"  x2="4.5"  y2="10" stroke="#000" stroke-width="1.4" stroke-linecap="round"/>
+      <line x1="15.5" y1="10" x2="18.5" y2="10" stroke="#000" stroke-width="1.4" stroke-linecap="round"/>
+      <line x1="3.5" y1="3.5" x2="5.5" y2="5.5" stroke="#000" stroke-width="1.4" stroke-linecap="round"/>
+      <line x1="14.5" y1="14.5" x2="16.5" y2="16.5" stroke="#000" stroke-width="1.4" stroke-linecap="round"/>
+      <line x1="16.5" y1="3.5"  x2="14.5" y2="5.5"  stroke="#000" stroke-width="1.4" stroke-linecap="round"/>
+      <line x1="3.5"  y1="16.5" x2="5.5"  y2="14.5" stroke="#000" stroke-width="1.4" stroke-linecap="round"/>
     </symbol>
 
     <symbol id="wi-cloud" viewBox="0 0 20 20">
@@ -268,7 +273,7 @@ body {
 
     <symbol id="wi-fog" viewBox="0 0 20 20">
       <line x1="2"  y1="6"  x2="18" y2="6"  stroke="#000" stroke-width="1.5" stroke-linecap="round"/>
-      <line x1="1"  y1="10" x2="19" y2="10" stroke="#000" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="1.5" y1="10" x2="18.5" y2="10" stroke="#000" stroke-width="1.5" stroke-linecap="round"/>
       <line x1="2"  y1="14" x2="18" y2="14" stroke="#000" stroke-width="1.5" stroke-linecap="round"/>
       <line x1="4"  y1="18" x2="16" y2="18" stroke="#000" stroke-width="1.4" stroke-linecap="round"/>
     </symbol>
@@ -321,7 +326,7 @@ body {
                Q15.5 8 15.5 9.5
                Q15.5 11 14 11 Z"
             stroke="#000" stroke-width="1.3" fill="none" stroke-linejoin="round"/>
-      <polyline points="11,11 7.5,16.5 10.5,16.5 7,20"
+      <polyline points="11,11 7.5,16.5 10.5,16.5 7,18.5"
                 stroke="#000" stroke-width="1.8" fill="none"
                 stroke-linejoin="round" stroke-linecap="round"/>
     </symbol>
@@ -349,7 +354,7 @@ body {
         <span class="wp-temp">{{printf "%.0f" .CurrentTemp}}<span class="wp-unit">°F</span></span>
         <span class="wp-detail">
           <span class="wp-hilo"><span>{{printf "%.0f" .Today.TempMax}}°</span><span>{{printf "%.0f" .Today.TempMin}}°</span></span>
-          <span class="wp-uv">Current UV {{printf "%.0f" .CurrentUV}}</span>
+          <span class="wp-uv">UV {{printf "%.0f" .CurrentUV}}</span>
         </span>
       </div>
 
@@ -364,7 +369,7 @@ body {
       {{range .Daily}}
       <div class="day-entry">
         <div class="de-top">
-          <svg width="18" height="18"><use href="#{{condIconID .Condition}}" width="18" height="18"/></svg>
+          <svg width="20" height="20" style="flex-shrink:0"><use href="#{{condIconID .Condition}}" width="20" height="20"/></svg>
           <span class="de-day">{{.DayAbbr}}</span>
           <span class="de-temp">{{printf "%.0f" .TempMax}}°/{{printf "%.0f" .TempMin}}°</span>
         </div>
@@ -392,7 +397,7 @@ body {
 
   <div class="calendar-col">
     <div class="cal-section">
-      <div class="cal-title">Next 14 Days</div>
+      <div class="cal-title">Upcoming</div>
       <div class="cal-events-wrap">
         {{if .Calendar.ErrorMsg}}
           <div class="cal-empty">{{.Calendar.ErrorMsg}}</div>
@@ -411,10 +416,11 @@ body {
     </div>
     <div class="placeholder-section">
       <div class="placeholder-body">
-        <svg viewBox="0 0 320 125" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;max-width:320px;">
+        <svg viewBox="0 0 320 140" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;max-width:320px;">
 
-          <!-- BLACK CAT (centered at 80, scaled 1.155×) -->
-          <g transform="translate(80,-4) scale(1.155)">
+          <!-- BLACK CAT (centered at 80, scaled 1.274×) -->
+          <!-- paw bottom at cat y=111 → world y = -4 + 141.4 = 137.4 (level with tuxedo) -->
+          <g transform="translate(80,-4) scale(1.274)">
             <!-- Tail (drawn first, behind body) -->
             <path d="M24,86 C56,72 58,48 42,34 C34,25 42,13 50,7"
                   stroke="black" stroke-width="9" fill="none" stroke-linecap="round"/>
@@ -444,8 +450,9 @@ body {
             <ellipse cx="12" cy="106" rx="11" ry="5" fill="black"/>
           </g>
 
-          <!-- TUXEDO CAT (centered at 240, scaled 1.04×) -->
-          <g transform="translate(240,9) scale(1.04)">
+          <!-- TUXEDO CAT (centered at 240, scaled 1.147×) -->
+          <!-- paw bottom at cat y=111 → world y = 10 + 127.3 = 137.3 (level with black cat) -->
+          <g transform="translate(240,10) scale(1.147)">
             <!-- Tail -->
             <path d="M24,86 C56,72 58,48 42,34 C34,25 42,13 50,7"
                   stroke="black" stroke-width="9" fill="none" stroke-linecap="round"/>
@@ -455,8 +462,8 @@ body {
             <ellipse cx="0" cy="87" rx="13" ry="19" fill="white"/>
             <!-- Head (black) -->
             <circle cx="0" cy="37" r="22" fill="black"/>
-            <!-- White muzzle -->
-            <ellipse cx="0" cy="45" rx="12" ry="8" fill="white"/>
+            <!-- White chin patch (below nose only) -->
+            <ellipse cx="0" cy="51" rx="10" ry="6" fill="white"/>
             <!-- Ears (black with white inner) -->
             <polygon points="-18,21 -13,4 -2,18" fill="black"/>
             <polygon points="18,21 13,4 2,18" fill="black"/>
@@ -471,11 +478,15 @@ body {
             <ellipse cx="0" cy="32" rx="1" ry="2" fill="white"/>
             <!-- Nose (black on white muzzle) -->
             <polygon points="0,41 -3,45 3,45" fill="black"/>
-            <!-- Whiskers (black on white muzzle) -->
-            <line x1="-2" y1="43" x2="-23" y2="39" stroke="black" stroke-width="1"/>
-            <line x1="-2" y1="43" x2="-23" y2="45" stroke="black" stroke-width="1"/>
-            <line x1="2" y1="43" x2="23" y2="39" stroke="black" stroke-width="1"/>
-            <line x1="2" y1="43" x2="23" y2="45" stroke="black" stroke-width="1"/>
+            <!-- White whiskers: black outline drawn first, white on top -->
+            <line x1="-2" y1="43" x2="-23" y2="39" stroke="black" stroke-width="3"/>
+            <line x1="-2" y1="43" x2="-23" y2="45" stroke="black" stroke-width="3"/>
+            <line x1="2" y1="43" x2="23" y2="39" stroke="black" stroke-width="3"/>
+            <line x1="2" y1="43" x2="23" y2="45" stroke="black" stroke-width="3"/>
+            <line x1="-2" y1="43" x2="-23" y2="39" stroke="white" stroke-width="1.5"/>
+            <line x1="-2" y1="43" x2="-23" y2="45" stroke="white" stroke-width="1.5"/>
+            <line x1="2" y1="43" x2="23" y2="39" stroke="white" stroke-width="1.5"/>
+            <line x1="2" y1="43" x2="23" y2="45" stroke="white" stroke-width="1.5"/>
             <!-- White paws (outlined) -->
             <ellipse cx="-12" cy="106" rx="11" ry="5" fill="white" stroke="black" stroke-width="1.5"/>
             <ellipse cx="12" cy="106" rx="11" ry="5" fill="white" stroke="black" stroke-width="1.5"/>

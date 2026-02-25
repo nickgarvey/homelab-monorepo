@@ -205,6 +205,11 @@ func buildUVTextSVG(hourly []weather.HourlyPoint) template.HTML {
 
 	n := len(hourly)
 	var sb strings.Builder
+	// Rotated "UV" label anchored to the left edge of this row.
+	sb.WriteString(fmt.Sprintf(
+		`<text x="4" y="%.1f" font-size="8" font-family="DejaVu Sans,Arial,sans-serif" text-anchor="middle" dominant-baseline="middle" transform="rotate(-90,4,%.1f)">UV</text>`,
+		textY, textY,
+	))
 	for i, p := range hourly {
 		cx := slotCX(i, n)
 		uv := int(p.UVIndex + 0.5)
@@ -233,7 +238,7 @@ func buildConditionIconsSVG(hourly []weather.HourlyPoint) template.HTML {
 	if len(hourly) == 0 {
 		return ""
 	}
-	const iconSize = 18.0
+	const iconSize = 20.0
 	const labelH = 14.0 // extra space creates a gap between icon bottom and time label
 	const h = iconSize + labelH
 

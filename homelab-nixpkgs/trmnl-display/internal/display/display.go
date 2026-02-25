@@ -130,8 +130,12 @@ func RenderHTML(
 
 	if cal != nil {
 		stale, msg := staleInfo(cal.FetchedAt)
+		events := reformatEventsForTZ(cal.Events, displayLoc, renderedAt)
+		if len(events) > 4 {
+			events = events[:4]
+		}
 		data.Calendar = CalendarDisplay{
-			Events:   reformatEventsForTZ(cal.Events, displayLoc, renderedAt),
+			Events:   events,
 			Stale:    stale,
 			StaleMsg: msg,
 		}

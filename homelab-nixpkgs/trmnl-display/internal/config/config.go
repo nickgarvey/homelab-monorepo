@@ -28,8 +28,18 @@ type HomeAssistant struct {
 }
 
 type LLM struct {
-	BaseURL string `yaml:"base_url"`
-	Model   string `yaml:"model"`
+	BaseURL              string   `yaml:"base_url"`
+	Model                string   `yaml:"model"`
+	WordOfDayCategories  []string `yaml:"word_of_day_categories"`
+}
+
+var defaultWordOfDayCategories = []string{
+	"Basic words",
+	"Food",
+	"Computers",
+	"Kpop",
+	"Board games",
+	"Weird stuff (non-vulgar)",
 }
 
 type Config struct {
@@ -67,6 +77,9 @@ func Parse(data []byte) (*Config, error) {
 	}
 	if cfg.HomeAssistant.GarageEntity == "" {
 		cfg.HomeAssistant.GarageEntity = "cover.garage_door"
+	}
+	if len(cfg.LLM.WordOfDayCategories) == 0 {
+		cfg.LLM.WordOfDayCategories = defaultWordOfDayCategories
 	}
 	return &cfg, nil
 }

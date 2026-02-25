@@ -6,12 +6,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"strings"
 	"time"
 )
 
-// Result holds a generated rhyme and metadata.
+// Result holds a generated word of the day and metadata.
 type Result struct {
 	Text      string
 	FetchedAt time.Time
@@ -41,16 +42,23 @@ type chatResponse struct {
 	} `json:"error"`
 }
 
-const prompt = "Write a short, fun rhyme. Keep it under 200 characters total. Reply with only the rhyme."
+const wordOfDayPrompt = `Give me 30 Chinese word of the day entries for the category "%s".
+Return exactly 30 lines, one per line, in this exact format:
+<character> (<english meaning>) · Mandarin: <pinyin with tone marks> · Cantonese: <jyutping>
+Example: 水 (water) · Mandarin: shuǐ · Cantonese: seoi2
+Reply with only the 30 lines, no numbering, no extra text.`
 
-// Fetch generates a rhyme using the configured LLM.
-func Fetch(ctx context.Context, client *http.Client, baseURL, model string) (*Result, error) {
+// Fetch requests 30 word-of-the-day entries for the given category from the
+// LLM, then returns one chosen at random.
+func Fetch(ctx context.Context, client *http.Client, baseURL, model, category string) (*Result, error) {
+	prompt := fmt.Sprintf(wordOfDayPrompt, category)
+
 	reqBody := chatRequest{
 		Model: model,
 		Messages: []chatMessage{
 			{Role: "user", Content: prompt},
 		},
-		MaxTokens: 100,
+		MaxTokens: 1024,
 		Stream:    false,
 		ChatTemplateKwargs: map[string]any{
 			"enable_thinking": false,
@@ -91,9 +99,33 @@ func Fetch(ctx context.Context, client *http.Client, baseURL, model string) (*Re
 		return nil, fmt.Errorf("empty response from LLM")
 	}
 
-	text := strings.TrimSpace(cr.Choices[0].Message.Content)
-	// Collapse newlines to spaces so the rhyme flows across the bottom bar.
-	text = strings.ReplaceAll(text, "\n", " ")
+	lines := parseEntries(cr.Choices[0].Message.Content)
+	if len(lines) == 0 {
+		return nil, fmt.Errorf("no valid entries in LLM response")
+	}
 
-	return &Result{Text: text, FetchedAt: time.Now()}, nil
+	chosen := lines[rand.Intn(len(lines))]
+	return &Result{Text: chosen, FetchedAt: time.Now()}, nil
+}
+
+// parseEntries splits the LLM response into individual entry lines,
+// discarding empty lines and any that look like preamble/numbering.
+func parseEntries(raw string) []string {
+	var out []string
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		// Strip leading list markers like "1." or "1)" or "-"
+		if len(line) > 2 && (line[1] == '.' || line[1] == ')') {
+			line = strings.TrimSpace(line[2:])
+		} else if strings.HasPrefix(line, "- ") {
+			line = strings.TrimSpace(line[2:])
+		}
+		if line != "" {
+			out = append(out, line)
+		}
+	}
+	return out
 }
