@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  width: 800px;
+  height: 480px;
+  font-family: 'DejaVu Sans', Arial, sans-serif;
+  background: #fff;
+  color: #000;
+  overflow: hidden;
+}
+
+/* ── Chrome ─────────────────────────────────────────── */
+.top-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 2px solid #000;
+  padding: 0 10px;
+  height: 26px;
+}
+.top-bar .title   { font-weight: bold; font-size: 13px; letter-spacing: 0.06em; }
+.top-bar .updated { font-size: 11px; }
+
+.bottom-bar {
+  display: flex;
+  align-items: center;
+  border-top: 2px solid #000;
+  height: 40px;
+  padding: 0 10px;
+  gap: 10px;
+}
+
+/* ── Main columns ────────────────────────────────────── */
+.main {
+  display: flex;
+  height: 414px; /* 480 - 26 - 40 */
+}
+
+.weather-col {
+  width: 320px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 2px solid #000;
+}
+
+.calendar-col {
+  flex: 1;
+  padding: 8px 9px;
+  overflow: hidden;
+}
+
+/* ── Weather panel ───────────────────────────────────── */
+.weather-panel {
+  flex: 1;
+  padding: 4px 8px 3px;
+  overflow: hidden;
+}
+
+.weather-panel + .weather-panel {
+  border-top: 3px solid #000;
+}
+
+/* Header row */
+.wp-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 2px;
+}
+.wp-name  { font-weight: bold; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+.wp-stale { font-size: 9px; font-style: italic; }
+
+/* Current conditions */
+.wp-current {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid #000;
+  margin-bottom: 2px;
+}
+.wp-icon    { flex-shrink: 0; }
+.wp-temp    { font-size: 28px; font-weight: bold; line-height: 1; white-space: nowrap; }
+.wp-unit    { font-size: 13px; font-weight: normal; }
+.wp-detail  { font-size: 13px; line-height: 1.35; display: flex; align-items: center; justify-content: space-between; width: 100%; }
+.wp-hilo    { display: inline-flex; flex-direction: column; line-height: 1.2; font-size: 12px; }
+.wp-uv      { font-size: 14px; font-weight: normal; white-space: nowrap; }
+/* Stacked charts — temp sparkline / UV text / precip bars share x-axis */
+.wp-charts {
+  margin-bottom: 5px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid #000;
+}
+.chart-row {
+  display: flex;
+  align-items: center;
+}
+.chart-label {
+  width: 20px;
+  flex-shrink: 0;
+  font-size: 7px;
+  color: #000;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 3px;
+  box-sizing: border-box;
+}
+.chart-label-temp { height: 28px; }
+.chart-row-temp   { margin-bottom: 4px; }
+.chart-label-uv   { height: 12px; }
+.chart-label-rain { height: 26px; }
+.chart-svg { flex: 1; min-width: 0; }
+.chart-svg svg { display: block; }
+
+/* 3-day summary */
+.day-line {
+  display: flex;
+  gap: 0;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.dl-day  { font-weight: bold; width: 30px; flex-shrink: 0; }
+.dl-temp { width: 64px; flex-shrink: 0; }
+.dl-cond { flex: 1; color: #000; }
+.dl-rain { width: 56px; text-align: right; flex-shrink: 0; white-space: nowrap; }
+
+/* ── Calendar ────────────────────────────────────────── */
+.cal-title {
+  font-weight: bold;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid #000;
+  padding-bottom: 3px;
+  margin-bottom: 7px;
+}
+.cal-event {
+  margin-bottom: 6px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid #000;
+}
+.cal-event:last-child { border-bottom: none; }
+.event-time  { font-size: 10px; font-weight: bold; }
+.event-title { font-size: 12px; }
+.cal-empty   { font-size: 11px; font-style: italic; color: #000; }
+
+/* ── Bottom bar ──────────────────────────────────────── */
+.garage    { font-size: 13px; font-weight: bold; white-space: nowrap; }
+.divider   { border-left: 1px solid #000; height: 26px; flex-shrink: 0; }
+.news      { font-size: 10px; flex: 1; overflow: hidden; color: #000; }
+.stale-tag { font-size: 9px; font-style: italic; font-weight: normal; }
+</style>
+
+<!-- ── Weather icon symbol defs ────────────────────── -->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <defs>
+
+    <symbol id="wi-clear" viewBox="0 0 20 20">
+      <circle cx="10" cy="10" r="3.8" stroke="#000" stroke-width="1.5" fill="none"/>
+      <line x1="10" y1="1"    x2="10" y2="4.5"  stroke="#000" stroke-width="1.4"/>
+      <line x1="10" y1="15.5" x2="10" y2="19"   stroke="#000" stroke-width="1.4"/>
+      <line x1="1"  y1="10"   x2="4.5"  y2="10" stroke="#000" stroke-width="1.4"/>
+      <line x1="15.5" y1="10" x2="19"   y2="10" stroke="#000" stroke-width="1.4"/>
+      <line x1="3.2" y1="3.2" x2="5.5" y2="5.5" stroke="#000" stroke-width="1.4"/>
+      <line x1="14.5" y1="14.5" x2="16.8" y2="16.8" stroke="#000" stroke-width="1.4"/>
+      <line x1="16.8" y1="3.2"  x2="14.5" y2="5.5"  stroke="#000" stroke-width="1.4"/>
+      <line x1="3.2"  y1="16.8" x2="5.5"  y2="14.5" stroke="#000" stroke-width="1.4"/>
+    </symbol>
+
+    <symbol id="wi-cloud" viewBox="0 0 20 20">
+      <path d="M4.5 14.5 Q2.5 14.5 2.5 12.5 Q2.5 10.5 4.5 10.5
+               Q4.5 8 6.5 6.8 Q8.5 5.6 10.5 6.8
+               Q12.5 5.6 14.5 7.8
+               Q16.5 7.8 16.5 10.5
+               Q17.5 10.5 17.5 12.5
+               Q17.5 14.5 15.5 14.5 Z"
+            stroke="#000" stroke-width="1.4" fill="none" stroke-linejoin="round"/>
+    </symbol>
+
+    <symbol id="wi-partly" viewBox="0 0 20 20">
+      <circle cx="7.5" cy="7" r="2.5" stroke="#000" stroke-width="1.2" fill="none"/>
+      <line x1="7.5" y1="3"    x2="7.5" y2="4.5"   stroke="#000" stroke-width="1.2"/>
+      <line x1="7.5" y1="9.5"  x2="7.5" y2="11"    stroke="#000" stroke-width="1.2"/>
+      <line x1="3.5" y1="7"    x2="5"   y2="7"      stroke="#000" stroke-width="1.2"/>
+      <line x1="10"  y1="7"    x2="11.5" y2="7"     stroke="#000" stroke-width="1.2"/>
+      <line x1="4.7" y1="4.7"  x2="5.8" y2="5.8"    stroke="#000" stroke-width="1.2"/>
+      <line x1="10.2" y1="4.7" x2="9.1" y2="5.8"    stroke="#000" stroke-width="1.2"/>
+      <path d="M4 17.5 Q2.5 17.5 2.5 16 Q2.5 14.5 4 14.5
+               Q4 12.5 5.5 11.5 Q7 10.5 9 11.5
+               Q11 10.5 12.5 12.5
+               Q14 12.5 14 14.5
+               Q15 14.5 15 16
+               Q15 17.5 13.5 17.5 Z"
+            stroke="#000" stroke-width="1.3" fill="white" stroke-linejoin="round"/>
+    </symbol>
+
+    <symbol id="wi-fog" viewBox="0 0 20 20">
+      <line x1="2"  y1="6"  x2="18" y2="6"  stroke="#000" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="1"  y1="10" x2="19" y2="10" stroke="#000" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="2"  y1="14" x2="18" y2="14" stroke="#000" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="4"  y1="18" x2="16" y2="18" stroke="#000" stroke-width="1.4" stroke-linecap="round"/>
+    </symbol>
+
+    <symbol id="wi-showers" viewBox="0 0 20 20">
+      <path d="M4 11 Q2.5 11 2.5 9.5 Q2.5 8 4 8
+               Q4 6 5.5 5 Q7 4 9 5
+               Q11 4 12.5 6
+               Q14 6 14 8
+               Q15.5 8 15.5 9.5
+               Q15.5 11 14 11 Z"
+            stroke="#000" stroke-width="1.3" fill="none" stroke-linejoin="round"/>
+      <circle cx="6"  cy="14.5" r="1.2" fill="#000"/>
+      <circle cx="10" cy="16"   r="1.2" fill="#000"/>
+      <circle cx="14" cy="14.5" r="1.2" fill="#000"/>
+    </symbol>
+
+    <symbol id="wi-rain" viewBox="0 0 20 20">
+      <path d="M4 11 Q2.5 11 2.5 9.5 Q2.5 8 4 8
+               Q4 6 5.5 5 Q7 4 9 5
+               Q11 4 12.5 6
+               Q14 6 14 8
+               Q15.5 8 15.5 9.5
+               Q15.5 11 14 11 Z"
+            stroke="#000" stroke-width="1.3" fill="none" stroke-linejoin="round"/>
+      <line x1="5.5"  y1="13.5" x2="4.5"  y2="18" stroke="#000" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="10"   y1="13.5" x2="9"    y2="18" stroke="#000" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="14.5" y1="13.5" x2="13.5" y2="18" stroke="#000" stroke-width="1.5" stroke-linecap="round"/>
+    </symbol>
+
+    <symbol id="wi-snow" viewBox="0 0 20 20">
+      <path d="M4 11 Q2.5 11 2.5 9.5 Q2.5 8 4 8
+               Q4 6 5.5 5 Q7 4 9 5
+               Q11 4 12.5 6
+               Q14 6 14 8
+               Q15.5 8 15.5 9.5
+               Q15.5 11 14 11 Z"
+            stroke="#000" stroke-width="1.3" fill="none" stroke-linejoin="round"/>
+      <line x1="9"  y1="13" x2="9"  y2="19" stroke="#000" stroke-width="1.2"/>
+      <line x1="6"  y1="16" x2="12" y2="16" stroke="#000" stroke-width="1.2"/>
+      <line x1="6.9" y1="13.9" x2="11.1" y2="18.1" stroke="#000" stroke-width="1.2"/>
+      <line x1="11.1" y1="13.9" x2="6.9" y2="18.1" stroke="#000" stroke-width="1.2"/>
+    </symbol>
+
+    <symbol id="wi-thunder" viewBox="0 0 20 20">
+      <path d="M4 11 Q2.5 11 2.5 9.5 Q2.5 8 4 8
+               Q4 6 5.5 5 Q7 4 9 5
+               Q11 4 12.5 6
+               Q14 6 14 8
+               Q15.5 8 15.5 9.5
+               Q15.5 11 14 11 Z"
+            stroke="#000" stroke-width="1.3" fill="none" stroke-linejoin="round"/>
+      <polyline points="11,11 7.5,16.5 10.5,16.5 7,20"
+                stroke="#000" stroke-width="1.8" fill="none"
+                stroke-linejoin="round" stroke-linecap="round"/>
+    </symbol>
+
+  </defs>
+</svg>
+
+</head>
+<body>
+
+{{define "weather-panel"}}
+<div class="weather-panel">
+
+  <div class="wp-header">
+    <span class="wp-name">{{.LocationName}}</span>
+    {{if .Stale}}<span class="wp-stale">{{.StaleMsg}}</span>{{end}}
+  </div>
+
+  <div class="wp-current">
+    <span class="wp-icon">
+      <svg width="36" height="36"><use href="#{{.ConditionIconID}}" width="36" height="36"/></svg>
+    </span>
+    <span class="wp-temp">{{printf "%.0f" .CurrentTemp}}<span class="wp-unit">°F</span></span>
+    <span class="wp-detail">
+      <span class="wp-hilo"><span>{{printf "%.0f" .Today.TempMax}}°</span><span>{{printf "%.0f" .Today.TempMin}}°</span></span>
+      <span class="wp-uv">Current UV {{printf "%.0f" .CurrentUV}}</span>
+    </span>
+  </div>
+
+  <div class="wp-charts">
+    <div class="chart-row chart-row-temp"><span class="chart-label chart-label-temp">temp</span><div class="chart-svg">{{.TempSparkline}}</div></div>
+    <div class="chart-row"><span class="chart-label chart-label-uv">uv</span><div class="chart-svg">{{.UVText}}</div></div>
+    <div class="chart-row"><span class="chart-label chart-label-rain"></span><div class="chart-svg">{{.ConditionIcons}}</div></div>
+  </div>
+
+  {{range .Daily}}
+  <div class="day-line">
+    <span class="dl-day">{{.DayAbbr}}</span>
+    <span class="dl-temp">{{printf "%.0f" .TempMax}}°/{{printf "%.0f" .TempMin}}°</span>
+    <span class="dl-cond">{{.Condition}}</span>
+    <span class="dl-rain">{{.PrecipProbMax}}% rain</span>
+  </div>
+  {{end}}
+
+</div>
+{{end}}
+
+<div class="top-bar">
+  <span class="title">TRMNL</span>
+  <span class="updated">Updated: {{.UpdatedAt}}</span>
+</div>
+
+<div class="main">
+  <div class="weather-col">
+    {{range .Locations}}{{template "weather-panel" .}}{{end}}
+  </div>
+
+  <div class="calendar-col">
+    <div class="cal-title">Today&rsquo;s Events</div>
+    {{if .Calendar.ErrorMsg}}
+      <div class="cal-empty">{{.Calendar.ErrorMsg}}</div>
+    {{else if noEvents .Calendar.Events}}
+      <div class="cal-empty">No events today</div>
+    {{else}}
+      {{range .Calendar.Events}}
+      <div class="cal-event">
+        <div class="event-time">{{.TimeLabel}}</div>
+        <div class="event-title">{{.Title}}</div>
+      </div>
+      {{end}}
+    {{end}}
+    {{if .Calendar.Stale}}<div class="stale-tag">{{.Calendar.StaleMsg}}</div>{{end}}
+  </div>
+</div>
+
+<div class="bottom-bar">
+  <div class="garage">Garage: {{upper .Garage.State}}{{if .Garage.Stale}}&nbsp;<span class="stale-tag">{{.Garage.StaleMsg}}</span>{{end}}</div>
+  <div class="divider"></div>
+  <div class="news">{{.NewsText}}</div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,27 @@
+playwright_url: "http://10.28.15.209"
+listen_addr: ":8080"
+poll_interval_minutes: 15
+
+locations:
+  - name: "Sunnyvale"
+    lat: 37.3688
+    lon: -122.0363
+    show_weekly: true
+    show_uv: true
+  - name: "San Francisco"
+    lat: 37.7749
+    lon: -122.4194
+    show_weekly: false
+    show_uv: false
+
+google_calendar:
+  service_account_json: "/config/sa.json"
+  calendar_id: "your-calendar-id@group.calendar.google.com"
+
+homeassistant:
+  url: "https://homeassistant.home.arpa:8123"
+  token: "YOUR_LONG_LIVED_ACCESS_TOKEN"
+  garage_entity: "cover.garage_door"
+  ca_cert: "/config/garvey-ca.pem"
+
+news_text: "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore."

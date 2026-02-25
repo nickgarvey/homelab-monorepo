@@ -16,14 +16,19 @@
       url = "path:./playwright-renderer";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    trmnl-display = {
+      url = "path:./trmnl-display";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, flake-utils, llama-cpp, nickgarvey-com, playwright-renderer }:
+  outputs = { self, nixpkgs, flake-utils, llama-cpp, nickgarvey-com, playwright-renderer, trmnl-display }:
     flake-utils.lib.eachDefaultSystem (system: {
       packages = {
         llama-cpp = llama-cpp.dockerImage.${system};
         nickgarvey-com = nickgarvey-com.dockerImage.${system};
         playwright-renderer = playwright-renderer.dockerImage.${system};
+        trmnl-display = trmnl-display.dockerImage.${system};
       };
       devShells.default =
         let pkgs = nixpkgs.legacyPackages.${system}; in
