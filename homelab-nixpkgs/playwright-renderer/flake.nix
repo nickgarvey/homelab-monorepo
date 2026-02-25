@@ -16,7 +16,7 @@
           pythonEnv = pkgs.python3.withPackages (ps: [ ps.playwright ]);
 
           fontsConf = pkgs.makeFontsConf {
-            fontDirectories = [ pkgs.dejavu_fonts ];
+            fontDirectories = [ pkgs.dejavu_fonts pkgs.noto-fonts-cjk-sans ];
           };
 
           serverScript = pkgs.writeTextFile {
@@ -36,6 +36,7 @@
               serverScript
               pkgs.playwright-driver.browsers
               pkgs.dejavu_fonts
+              pkgs.noto-fonts-cjk-sans
               pkgs.busybox
               pkgs.dockerTools.fakeNss
             ];
