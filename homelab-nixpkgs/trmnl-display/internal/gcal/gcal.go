@@ -13,21 +13,24 @@ import (
 
 // Event is a single calendar event for display.
 type Event struct {
-	Title     string
-	TimeLabel string // "9:00 AM", "All day", etc.
-	AllDay    bool
-	Start     time.Time
+	Title       string
+	TimeLabel   string // "9:00 AM", "All day", etc.
+	DayLabel    string // "Today", "Tomorrow", "Mon Mar 3", etc.
+	AllDay      bool
+	IsRecurring bool // true if part of a recurring series
+	Start       time.Time
 }
 
-// Result holds today's calendar events.
+// Result holds the next 14 days of calendar events.
 type Result struct {
 	Events    []Event
 	FetchedAt time.Time
 }
 
 // ParseEvents converts a Google Calendar event list into display Events.
+// now is used to compute relative day labels; pass time.Now().In(loc) in production.
 // Exported so it can be tested independently.
-func ParseEvents(items []*googlecalendar.Event, loc *time.Location) []Event {
+func ParseEvents(items []*googlecalendar.Event, loc *time.Location, now time.Time) []Event {
 	if loc == nil {
 		loc = time.Local
 	}
@@ -36,7 +39,10 @@ func ParseEvents(items []*googlecalendar.Event, loc *time.Location) []Event {
 		if e.Status == "cancelled" {
 			continue
 		}
-		ev := Event{Title: e.Summary}
+		ev := Event{
+			Title:       e.Summary,
+			IsRecurring: e.RecurringEventId != "",
+		}
 		if e.Start.DateTime != "" {
 			t, err := time.Parse(time.RFC3339, e.Start.DateTime)
 			if err == nil {
@@ -51,9 +57,24 @@ func ParseEvents(items []*googlecalendar.Event, loc *time.Location) []Event {
 			t, _ := time.ParseInLocation("2006-01-02", e.Start.Date, loc)
 			ev.Start = t
 		}
+		ev.DayLabel = RelativeDayLabel(ev.Start, now)
 		out = append(out, ev)
 	}
 	return out
+}
+
+// RelativeDayLabel returns "Today", "Tomorrow", or "Mon Jan 2" for a given event time.
+func RelativeDayLabel(t, now time.Time) string {
+	tDay := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+	nowDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	switch int(tDay.Sub(nowDay).Hours() / 24) {
+	case 0:
+		return "Today"
+	case 1:
+		return "Tomorrow"
+	default:
+		return t.Format("Mon Jan 2")
+	}
 }
 
 // Fetch retrieves today's calendar events using a service account JSON key.
@@ -80,12 +101,12 @@ func fetchFromService(ctx context.Context, svc *googlecalendar.Service, calendar
 	now := time.Now()
 	loc := now.Location()
 	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
-	endOfDay := startOfDay.Add(24 * time.Hour)
+	endWindow := startOfDay.Add(14 * 24 * time.Hour)
 
 	events, err := svc.Events.List(calendarID).
 		Context(ctx).
 		TimeMin(startOfDay.Format(time.RFC3339)).
-		TimeMax(endOfDay.Format(time.RFC3339)).
+		TimeMax(endWindow.Format(time.RFC3339)).
 		SingleEvents(true).
 		OrderBy("startTime").
 		Do()
@@ -94,7 +115,7 @@ func fetchFromService(ctx context.Context, svc *googlecalendar.Service, calendar
 	}
 
 	return &Result{
-		Events:    ParseEvents(events.Items, loc),
+		Events:    ParseEvents(events.Items, loc, now),
 		FetchedAt: time.Now(),
 	}, nil
 }

@@ -50,7 +50,16 @@ body {
 
 .calendar-col {
   flex: 1;
-  padding: 8px 9px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.cal-section {
+  height: 207px;
+  padding: 8px 16px 6px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
@@ -138,17 +147,51 @@ body {
   letter-spacing: 0.04em;
   border-bottom: 1px solid #000;
   padding-bottom: 3px;
-  margin-bottom: 7px;
+  margin-bottom: 6px;
+  flex-shrink: 0;
+}
+.cal-events-wrap {
+  height: 163px;
+  columns: 2;
+  column-gap: 12px;
+  column-fill: auto;
+  overflow: hidden;
 }
 .cal-event {
-  margin-bottom: 6px;
-  padding-bottom: 5px;
+  break-inside: avoid;
+  margin-bottom: 5px;
+  padding-bottom: 4px;
   border-bottom: 1px solid #000;
 }
 .cal-event:last-child { border-bottom: none; }
-.event-time  { font-size: 10px; font-weight: bold; }
-.event-title { font-size: 12px; }
+.event-day   { font-size: 9px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.event-time  { font-size: 10px; }
+.event-title { font-size: 11px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.event-title-oneoff { font-weight: bold; }
+.event-oneoff-dot { font-size: 8px; vertical-align: middle; margin-right: 2px; }
 .cal-empty   { font-size: 11px; font-style: italic; color: #000; }
+
+/* ── Placeholder (bottom-right) ──────────────────────── */
+.placeholder-section {
+  flex: 1;
+  padding: 8px 16px;
+  border-top: 1px solid #000;
+  overflow: hidden;
+}
+.placeholder-title {
+  font-weight: bold;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid #000;
+  padding-bottom: 3px;
+  margin-bottom: 6px;
+}
+.placeholder-body {
+  font-size: 10px;
+  color: #000;
+  line-height: 1.4;
+}
 
 /* ── Bottom bar ──────────────────────────────────────── */
 .garage    { font-size: 13px; font-weight: bold; white-space: nowrap; }
@@ -314,20 +357,28 @@ body {
   </div>
 
   <div class="calendar-col">
-    <div class="cal-title">Today&rsquo;s Events</div>
-    {{if .Calendar.ErrorMsg}}
-      <div class="cal-empty">{{.Calendar.ErrorMsg}}</div>
-    {{else if noEvents .Calendar.Events}}
-      <div class="cal-empty">No events today</div>
-    {{else}}
-      {{range .Calendar.Events}}
-      <div class="cal-event">
-        <div class="event-time">{{.TimeLabel}}</div>
-        <div class="event-title">{{.Title}}</div>
+    <div class="cal-section">
+      <div class="cal-title">Next 14 Days</div>
+      <div class="cal-events-wrap">
+        {{if .Calendar.ErrorMsg}}
+          <div class="cal-empty">{{.Calendar.ErrorMsg}}</div>
+        {{else if noEvents .Calendar.Events}}
+          <div class="cal-empty">No upcoming events</div>
+        {{else}}
+          {{range .Calendar.Events}}
+          <div class="cal-event">
+            <div class="event-day">{{.DayLabel}} &middot; {{.TimeLabel}}</div>
+            <div class="event-title{{if not .IsRecurring}} event-title-oneoff{{end}}">{{if not .IsRecurring}}<span class="event-oneoff-dot">&#9679;</span>{{end}}{{.Title}}</div>
+          </div>
+          {{end}}
+        {{end}}
+        {{if .Calendar.Stale}}<div class="stale-tag">{{.Calendar.StaleMsg}}</div>{{end}}
       </div>
-      {{end}}
-    {{end}}
-    {{if .Calendar.Stale}}<div class="stale-tag">{{.Calendar.StaleMsg}}</div>{{end}}
+    </div>
+    <div class="placeholder-section">
+      <div class="placeholder-title">Placeholder</div>
+      <div class="placeholder-body">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco.</div>
+    </div>
   </div>
 </div>
 

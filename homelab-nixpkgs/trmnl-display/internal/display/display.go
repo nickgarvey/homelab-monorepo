@@ -131,7 +131,7 @@ func RenderHTML(
 	if cal != nil {
 		stale, msg := staleInfo(cal.FetchedAt)
 		data.Calendar = CalendarDisplay{
-			Events:   cal.Events,
+			Events:   reformatEventsForTZ(cal.Events, displayLoc, renderedAt),
 			Stale:    stale,
 			StaleMsg: msg,
 		}
@@ -172,4 +172,29 @@ func RenderHTML(
 	}
 
 	return buf.String(), nil
+}
+
+// reformatEventsForTZ converts event TimeLabel and DayLabel into the given timezone.
+// Events carry a Start time.Time in whatever tz the gcal server used; we display
+// them in the same timezone as the first weather location.
+func reformatEventsForTZ(events []gcal.Event, loc *time.Location, now time.Time) []gcal.Event {
+	if loc == nil {
+		return events
+	}
+	nowInLoc := now.In(loc)
+	out := make([]gcal.Event, len(events))
+	for i, ev := range events {
+		ev2 := ev
+		if !ev.Start.IsZero() {
+			local := ev.Start.In(loc)
+			if ev.AllDay {
+				ev2.TimeLabel = "All day"
+			} else {
+				ev2.TimeLabel = local.Format("3:04 PM")
+			}
+			ev2.DayLabel = gcal.RelativeDayLabel(local, nowInLoc)
+		}
+		out[i] = ev2
+	}
+	return out
 }

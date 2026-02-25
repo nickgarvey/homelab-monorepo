@@ -154,8 +154,8 @@ func TestRenderHTML_noCalendarEvents(t *testing.T) {
 	results := []*weather.Result{makeWeatherResult("A", false), makeWeatherResult("B", false)}
 	cal := &gcal.Result{Events: nil, FetchedAt: time.Now()}
 	html := renderTest(t, results, cal, "", nil, "")
-	if !strings.Contains(html, "No events today") {
-		t.Error("HTML should show 'No events today'")
+	if !strings.Contains(html, "No upcoming events") {
+		t.Error("HTML should show 'No upcoming events'")
 	}
 }
 
