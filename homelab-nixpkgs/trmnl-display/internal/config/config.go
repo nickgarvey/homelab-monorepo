@@ -51,6 +51,7 @@ type Config struct {
 	LLM             LLM            `yaml:"llm"`
 	NewsText        string         `yaml:"news_text"`
 	PollIntervalMin int            `yaml:"poll_interval_minutes"`
+	AuthKey         string         `yaml:"auth_key"`
 }
 
 func Load(path string) (*Config, error) {

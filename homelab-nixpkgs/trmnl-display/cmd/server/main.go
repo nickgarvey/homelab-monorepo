@@ -197,6 +197,11 @@ func (s *srv) poll(ctx context.Context) {
 }
 
 func (s *srv) handleDisplay(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.AuthKey != "" && r.URL.Query().Get("auth_key") != s.cfg.AuthKey {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	s.cache.mu.RLock()
 	png := s.cache.png
 	renderedAt := s.cache.renderedAt
