@@ -159,6 +159,7 @@ func RenderHTML(
 		"noEvents": func(events []gcal.Event) bool {
 			return len(events) == 0
 		},
+		"condIconID": conditionIconID,
 	}
 
 	tmpl, err := template.New("display").Funcs(funcMap).Parse(htmlTemplate)

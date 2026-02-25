@@ -85,7 +85,7 @@ func TestRenderHTML_containsExpectedFields(t *testing.T) {
 		{"sparkline SVG", `<path d=`},
 		{"charts container", "wp-charts"},
 		{"condition icon ref", "wi-clear"},
-		{"3-day forecast", "% rain"},
+		{"3-day forecast", "de-rain"},
 		{"calendar event", "Morning Standup"},
 		{"garage state", "CLOSED"},
 		{"updated timestamp", "Feb 24"},

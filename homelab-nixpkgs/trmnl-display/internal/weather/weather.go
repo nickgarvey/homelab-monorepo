@@ -113,7 +113,7 @@ func Fetch(client *http.Client, lat, lon float64, name string, showUV bool) (*Re
 		"https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f"+
 			"&hourly=temperature_2m,precipitation_probability,uv_index,precipitation,weather_code"+
 			"&daily=temperature_2m_max,temperature_2m_min,weathercode,uv_index_max,precipitation_probability_max"+
-			"&temperature_unit=fahrenheit&timezone=auto&forecast_days=3",
+			"&temperature_unit=fahrenheit&timezone=auto&forecast_days=4",
 		lat, lon,
 	)
 	return fetchFromURL(client, url, name, showUV)
@@ -169,10 +169,16 @@ func fetchFromURL(client *http.Client, url, name string, showUV bool) (*Result, 
 
 	hourly := parseHourly(data.Hourly, loc, 24)
 
+	// Daily holds the next 3 days (tomorrow through tomorrow+2), excluding today.
+	nextDays := daily[1:]
+	if len(nextDays) > 3 {
+		nextDays = nextDays[:3]
+	}
+
 	return &Result{
 		LocationName: name,
 		Today:        daily[0],
-		Daily:        daily,
+		Daily:        nextDays,
 		Hourly:       hourly,
 		ShowUV:       showUV,
 		Timezone:     data.Timezone,

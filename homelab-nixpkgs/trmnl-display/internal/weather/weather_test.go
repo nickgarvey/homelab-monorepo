@@ -58,12 +58,12 @@ func TestCondition(t *testing.T) {
 const mockWeatherResponse = `{
   "timezone": "America/Los_Angeles",
   "daily": {
-    "time": ["2026-02-24","2026-02-25","2026-02-26"],
-    "temperature_2m_max": [72.5, 74.1, 68.0],
-    "temperature_2m_min": [55.1, 56.0, 52.3],
-    "weathercode": [0, 1, 61],
-    "uv_index_max": [8.2, 7.5, 3.1],
-    "precipitation_probability_max": [5, 10, 80]
+    "time": ["2026-02-24","2026-02-25","2026-02-26","2026-02-27"],
+    "temperature_2m_max": [72.5, 74.1, 68.0, 65.0],
+    "temperature_2m_min": [55.1, 56.0, 52.3, 50.0],
+    "weathercode": [0, 1, 61, 3],
+    "uv_index_max": [8.2, 7.5, 3.1, 2.0],
+    "precipitation_probability_max": [5, 10, 80, 20]
   },
   "hourly": {
     "time": [
@@ -124,11 +124,20 @@ func TestFetch_success(t *testing.T) {
 	if len(result.Daily) != 3 {
 		t.Errorf("len(Daily) = %d, want 3", len(result.Daily))
 	}
-	if result.Daily[2].Condition != "Rain" {
-		t.Errorf("Daily[2].Condition = %q, want Rain", result.Daily[2].Condition)
+	// Daily[0] = tomorrow (2026-02-25)
+	if result.Daily[0].Condition != "Partly Cloudy" {
+		t.Errorf("Daily[0].Condition = %q, want Partly Cloudy", result.Daily[0].Condition)
 	}
-	if result.Daily[2].PrecipProbMax != 80 {
-		t.Errorf("Daily[2].PrecipProbMax = %d, want 80", result.Daily[2].PrecipProbMax)
+	// Daily[1] = tomorrow+1 (2026-02-26), rain day
+	if result.Daily[1].Condition != "Rain" {
+		t.Errorf("Daily[1].Condition = %q, want Rain", result.Daily[1].Condition)
+	}
+	if result.Daily[1].PrecipProbMax != 80 {
+		t.Errorf("Daily[1].PrecipProbMax = %d, want 80", result.Daily[1].PrecipProbMax)
+	}
+	// Daily[2] = tomorrow+2 (2026-02-27)
+	if result.Daily[2].Condition != "Overcast" {
+		t.Errorf("Daily[2].Condition = %q, want Overcast", result.Daily[2].Condition)
 	}
 	if !result.ShowUV {
 		t.Error("ShowUV should be true")

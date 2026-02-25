@@ -7,6 +7,7 @@
 body {
   width: 800px;
   height: 480px;
+  padding: 5px;
   font-family: 'DejaVu Sans', Arial, sans-serif;
   background: #fff;
   color: #000;
@@ -22,7 +23,7 @@ body {
   padding: 0 10px;
   height: 26px;
 }
-.top-bar .title   { font-weight: bold; font-size: 13px; letter-spacing: 0.06em; }
+.top-bar .title   { font-weight: bold; font-size: 18px; letter-spacing: 0.06em; }
 .top-bar .updated { font-size: 11px; }
 
 .bottom-bar {
@@ -37,11 +38,12 @@ body {
 /* ── Main columns ────────────────────────────────────── */
 .main {
   display: flex;
-  height: 414px; /* 480 - 26 - 40 */
+  height: 404px; /* 470 inner - 26 top-bar - 40 bottom-bar */
+  padding: 5px;
 }
 
 .weather-col {
-  width: 320px;
+  width: 400px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -55,7 +57,7 @@ body {
   overflow: hidden;
 }
 .cal-section {
-  height: 207px;
+  height: 202px;
   padding: 8px 16px 6px;
   flex-shrink: 0;
   display: flex;
@@ -68,6 +70,8 @@ body {
   flex: 1;
   padding: 4px 8px 3px;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .weather-panel + .weather-panel {
@@ -79,10 +83,36 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  margin-bottom: 2px;
+  margin-bottom: 3px;
+  flex-shrink: 0;
 }
 .wp-name  { font-weight: bold; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
 .wp-stale { font-size: 9px; font-style: italic; }
+
+/* Body: charts on left, 3-day on right */
+.wp-body {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+  overflow: hidden;
+}
+.wp-left {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.wp-right {
+  width: 100px;
+  flex-shrink: 0;
+  padding-left: 8px;
+  border-left: 1px solid #000;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
 
 /* Current conditions */
 .wp-current {
@@ -91,15 +121,17 @@ body {
   gap: 7px;
   padding-bottom: 2px;
   border-bottom: 1px solid #000;
-  margin-bottom: 2px;
+  margin-bottom: 3px;
+  flex-shrink: 0;
 }
 .wp-icon    { flex-shrink: 0; }
 .wp-temp    { font-size: 28px; font-weight: bold; line-height: 1; white-space: nowrap; }
 .wp-unit    { font-size: 13px; font-weight: normal; }
 .wp-detail  { font-size: 13px; line-height: 1.35; display: flex; align-items: center; justify-content: space-between; width: 100%; }
 .wp-hilo    { display: inline-flex; flex-direction: column; line-height: 1.2; font-size: 12px; }
-.wp-uv      { font-size: 14px; font-weight: normal; white-space: nowrap; }
-/* Stacked charts — temp sparkline / UV text / precip bars share x-axis */
+.wp-uv      { font-size: 14px; font-weight: bold; white-space: nowrap; }
+
+/* Stacked charts — temp sparkline / UV text / condition icons share x-axis */
 .wp-charts {
   margin-bottom: 5px;
   padding-bottom: 5px;
@@ -109,35 +141,31 @@ body {
   display: flex;
   align-items: center;
 }
-.chart-label {
-  width: 20px;
-  flex-shrink: 0;
-  font-size: 7px;
-  color: #000;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding-right: 3px;
-  box-sizing: border-box;
-}
-.chart-label-temp { height: 28px; }
 .chart-row-temp   { margin-bottom: 4px; }
-.chart-label-uv   { height: 12px; }
-.chart-label-rain { height: 26px; }
 .chart-svg { flex: 1; min-width: 0; }
 .chart-svg svg { display: block; }
 
-/* 3-day summary */
-.day-line {
+/* 3-day forecast entries (right column) */
+.day-entry {
+  flex: 1;
   display: flex;
-  gap: 0;
-  font-size: 11px;
-  line-height: 1.5;
+  flex-direction: column;
+  justify-content: center;
+  border-bottom: 1px solid #000;
+  padding: 2px 0;
 }
-.dl-day  { font-weight: bold; width: 30px; flex-shrink: 0; }
-.dl-temp { width: 64px; flex-shrink: 0; }
-.dl-cond { flex: 1; color: #000; }
-.dl-rain { width: 56px; text-align: right; flex-shrink: 0; white-space: nowrap; }
+.day-entry:last-child { border-bottom: none; }
+.de-top {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  line-height: 1.2;
+}
+.de-day  { font-size: 13px; font-weight: bold; flex-shrink: 0; }
+.de-temp { font-size: 11px; white-space: nowrap; flex: 1; text-align: right; }
+.de-bot  { display: flex; justify-content: space-between; font-size: 11px; line-height: 1.3; }
+.de-rain { white-space: nowrap; }
+.de-uv   { white-space: nowrap; }
 
 /* ── Calendar ────────────────────────────────────────── */
 .cal-title {
@@ -177,26 +205,21 @@ body {
   padding: 8px 16px;
   border-top: 1px solid #000;
   overflow: hidden;
-}
-.placeholder-title {
-  font-weight: bold;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  border-bottom: 1px solid #000;
-  padding-bottom: 3px;
-  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .placeholder-body {
-  font-size: 10px;
-  color: #000;
-  line-height: 1.4;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* ── Bottom bar ──────────────────────────────────────── */
 .garage    { font-size: 13px; font-weight: bold; white-space: nowrap; }
 .divider   { border-left: 1px solid #000; height: 26px; flex-shrink: 0; }
-.news      { font-size: 10px; flex: 1; overflow: hidden; color: #000; }
+.news      { font-size: 13px; flex: 1; overflow: hidden; color: #000; }
 .stale-tag { font-size: 9px; font-style: italic; font-weight: normal; }
 </style>
 
@@ -317,31 +340,42 @@ body {
     {{if .Stale}}<span class="wp-stale">{{.StaleMsg}}</span>{{end}}
   </div>
 
-  <div class="wp-current">
-    <span class="wp-icon">
-      <svg width="36" height="36"><use href="#{{.ConditionIconID}}" width="36" height="36"/></svg>
-    </span>
-    <span class="wp-temp">{{printf "%.0f" .CurrentTemp}}<span class="wp-unit">°F</span></span>
-    <span class="wp-detail">
-      <span class="wp-hilo"><span>{{printf "%.0f" .Today.TempMax}}°</span><span>{{printf "%.0f" .Today.TempMin}}°</span></span>
-      <span class="wp-uv">Current UV {{printf "%.0f" .CurrentUV}}</span>
-    </span>
-  </div>
+  <div class="wp-body">
+    <div class="wp-left">
+      <div class="wp-current">
+        <span class="wp-icon">
+          <svg width="36" height="36"><use href="#{{.ConditionIconID}}" width="36" height="36"/></svg>
+        </span>
+        <span class="wp-temp">{{printf "%.0f" .CurrentTemp}}<span class="wp-unit">°F</span></span>
+        <span class="wp-detail">
+          <span class="wp-hilo"><span>{{printf "%.0f" .Today.TempMax}}°</span><span>{{printf "%.0f" .Today.TempMin}}°</span></span>
+          <span class="wp-uv">Current UV {{printf "%.0f" .CurrentUV}}</span>
+        </span>
+      </div>
 
-  <div class="wp-charts">
-    <div class="chart-row chart-row-temp"><span class="chart-label chart-label-temp">temp</span><div class="chart-svg">{{.TempSparkline}}</div></div>
-    <div class="chart-row"><span class="chart-label chart-label-uv">uv</span><div class="chart-svg">{{.UVText}}</div></div>
-    <div class="chart-row"><span class="chart-label chart-label-rain"></span><div class="chart-svg">{{.ConditionIcons}}</div></div>
-  </div>
+      <div class="wp-charts">
+        <div class="chart-row chart-row-temp"><div class="chart-svg">{{.TempSparkline}}</div></div>
+        <div class="chart-row"><div class="chart-svg">{{.UVText}}</div></div>
+        <div class="chart-row"><div class="chart-svg">{{.ConditionIcons}}</div></div>
+      </div>
+    </div>
 
-  {{range .Daily}}
-  <div class="day-line">
-    <span class="dl-day">{{.DayAbbr}}</span>
-    <span class="dl-temp">{{printf "%.0f" .TempMax}}°/{{printf "%.0f" .TempMin}}°</span>
-    <span class="dl-cond">{{.Condition}}</span>
-    <span class="dl-rain">{{.PrecipProbMax}}% rain</span>
+    <div class="wp-right">
+      {{range .Daily}}
+      <div class="day-entry">
+        <div class="de-top">
+          <svg width="18" height="18"><use href="#{{condIconID .Condition}}" width="18" height="18"/></svg>
+          <span class="de-day">{{.DayAbbr}}</span>
+          <span class="de-temp">{{printf "%.0f" .TempMax}}°/{{printf "%.0f" .TempMin}}°</span>
+        </div>
+        <div class="de-bot">
+          <span class="de-rain">Rain {{.PrecipProbMax}}%</span>
+          <span class="de-uv">UV {{printf "%.0f" .UVMax}}</span>
+        </div>
+      </div>
+      {{end}}
+    </div>
   </div>
-  {{end}}
 
 </div>
 {{end}}
@@ -377,10 +411,10 @@ body {
     </div>
     <div class="placeholder-section">
       <div class="placeholder-body">
-        <svg viewBox="0 0 320 125" xmlns="http://www.w3.org/2000/svg" style="display:block;margin:4px auto 0;">
+        <svg viewBox="0 0 320 125" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;max-width:320px;">
 
-          <!-- BLACK CAT (centered at 80,5) -->
-          <g transform="translate(80,5)">
+          <!-- BLACK CAT (centered at 80, scaled 1.155×) -->
+          <g transform="translate(80,-4) scale(1.155)">
             <!-- Tail (drawn first, behind body) -->
             <path d="M24,86 C56,72 58,48 42,34 C34,25 42,13 50,7"
                   stroke="black" stroke-width="9" fill="none" stroke-linecap="round"/>
@@ -410,8 +444,8 @@ body {
             <ellipse cx="12" cy="106" rx="11" ry="5" fill="black"/>
           </g>
 
-          <!-- TUXEDO CAT (centered at 240,5, scaled to 70%) -->
-          <g transform="translate(240,16) scale(0.9)">
+          <!-- TUXEDO CAT (centered at 240, scaled 1.04×) -->
+          <g transform="translate(240,9) scale(1.04)">
             <!-- Tail -->
             <path d="M24,86 C56,72 58,48 42,34 C34,25 42,13 50,7"
                   stroke="black" stroke-width="9" fill="none" stroke-linecap="round"/>

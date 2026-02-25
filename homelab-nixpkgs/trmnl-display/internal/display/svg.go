@@ -9,8 +9,8 @@ import (
 )
 
 // svgW is the shared coordinate width for all inline SVGs.
-// Matched to the weather column's inner pixel width (320px col - 2×8px padding - 20px label col).
-const svgW = 284.0
+// Matched to the full wp-left width (400px col - 2×8px padding - 100px right col - 8px gap = 276px).
+const svgW = 276.0
 
 // slotCX returns the x centre of slot i when there are n equal slots across svgW.
 func slotCX(i, n int) float64 {
@@ -96,8 +96,8 @@ func buildSparklineSVG(hourly []weather.HourlyPoint) template.HTML {
 	if len(hourly) == 0 {
 		return ""
 	}
-	const h = 28.0
-	const padY = 4.0
+	const h = 44.0
+	const padY = 5.0
 
 	minT, maxT := hourly[0].TempF, hourly[0].TempF
 	for _, p := range hourly {
@@ -144,23 +144,39 @@ func buildSparklineSVG(hourly []weather.HourlyPoint) template.HTML {
 			cp1x, cp1y, cp2x, cp2y, p2.x, p2.y))
 	}
 
-	// Min/max labels at the left edge; merge if they'd collide (< 11px apart).
-	const labelX = 4.0
-	maxLabelY := padY + 8
-	minLabelY := h - 1
+	// Min/max labels at the left edge with white background rects so the sparkline
+	// doesn't visually bleed through the text.
+	const (
+		labelX    = 1.0
+		labelW    = 36.0
+		labelH    = 14.0
+		fontSize  = 12.0
+	)
+	maxRectY  := padY - 1
+	maxTextY  := maxRectY + fontSize - 1 // baseline inside rect
+	minRectY  := h - labelH
+	minTextY  := h - 2
 	var labelsSVG string
-	if minLabelY-maxLabelY < 11 {
-		midY := (maxLabelY + minLabelY) / 2
+	if minRectY-maxRectY < labelH+2 {
+		// Too close — merge into a single mid label.
+		midRectY := (maxRectY + minRectY) / 2
+		midTextY := midRectY + fontSize - 1
 		labelsSVG = fmt.Sprintf(
-			`<text x="%.0f" y="%.0f" font-size="8" font-family="DejaVu Sans,Arial,sans-serif" text-anchor="start" fill="#000">%.0f–%.0f°</text>`,
-			labelX, midY, minT, maxT,
+			`<rect x="%.0f" y="%.0f" width="%.0f" height="%.0f" fill="white"/>`+
+				`<text x="%.0f" y="%.0f" font-size="%.0f" font-family="DejaVu Sans,Arial,sans-serif" text-anchor="start" fill="#000">%.0f–%.0f°</text>`,
+			labelX, midRectY, labelW, labelH,
+			labelX+2, midTextY, fontSize, minT, maxT,
 		)
 	} else {
 		labelsSVG = fmt.Sprintf(
-			`<text x="%.0f" y="%.0f" font-size="8" font-family="DejaVu Sans,Arial,sans-serif" text-anchor="start" fill="#000">%.0f°</text>`+
-				`<text x="%.0f" y="%.0f" font-size="8" font-family="DejaVu Sans,Arial,sans-serif" text-anchor="start" fill="#000">%.0f°</text>`,
-			labelX, maxLabelY, maxT,
-			labelX, minLabelY, minT,
+			`<rect x="%.0f" y="%.0f" width="%.0f" height="%.0f" fill="white"/>`+
+				`<text x="%.0f" y="%.0f" font-size="%.0f" font-family="DejaVu Sans,Arial,sans-serif" text-anchor="start" fill="#000">%.0f°</text>`+
+				`<rect x="%.0f" y="%.0f" width="%.0f" height="%.0f" fill="white"/>`+
+				`<text x="%.0f" y="%.0f" font-size="%.0f" font-family="DejaVu Sans,Arial,sans-serif" text-anchor="start" fill="#000">%.0f°</text>`,
+			labelX, maxRectY, labelW, labelH,
+			labelX+2, maxTextY, fontSize, maxT,
+			labelX, minRectY, labelW, labelH,
+			labelX+2, minTextY, fontSize, minT,
 		)
 	}
 
@@ -181,9 +197,9 @@ func buildUVTextSVG(hourly []weather.HourlyPoint) template.HTML {
 	if len(hourly) == 0 {
 		return ""
 	}
-	const h = 12.0
+	const h = 16.0
 
-	// Text baseline: vertically center the 9px numbers in the SVG.
+	// Text baseline: vertically center the numbers in the SVG.
 	// Use dominant-baseline so the glyph centre sits at h/2.
 	const textY = h / 2
 
@@ -199,7 +215,7 @@ func buildUVTextSVG(hourly []weather.HourlyPoint) template.HTML {
 			uv = 11
 		}
 		sb.WriteString(fmt.Sprintf(
-			`<text x="%.1f" y="%.0f" font-size="9" font-family="DejaVu Sans,Arial,sans-serif" text-anchor="middle" dominant-baseline="middle">%d</text>`,
+			`<text x="%.1f" y="%.0f" font-size="11" font-family="DejaVu Sans,Arial,sans-serif" text-anchor="middle" dominant-baseline="middle">%d</text>`,
 			cx, textY, uv,
 		))
 	}
@@ -217,8 +233,8 @@ func buildConditionIconsSVG(hourly []weather.HourlyPoint) template.HTML {
 	if len(hourly) == 0 {
 		return ""
 	}
-	const iconSize = 14.0
-	const labelH = 12.0 // extra space creates a gap between icon bottom and time label
+	const iconSize = 18.0
+	const labelH = 14.0 // extra space creates a gap between icon bottom and time label
 	const h = iconSize + labelH
 
 	n := len(hourly)
@@ -230,7 +246,7 @@ func buildConditionIconsSVG(hourly []weather.HourlyPoint) template.HTML {
 
 		// Time label at the bottom.
 		sb.WriteString(fmt.Sprintf(
-			`<text x="%.1f" y="%.1f" font-size="9" font-family="DejaVu Sans,Arial,sans-serif" text-anchor="middle">%s</text>`,
+			`<text x="%.1f" y="%.1f" font-size="11" font-family="DejaVu Sans,Arial,sans-serif" text-anchor="middle">%s</text>`,
 			cx, h-1, p.ShortLabel,
 		))
 
