@@ -8,20 +8,30 @@
       supportedSystems = [ "x86_64-linux" "aarch64-linux" ];
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
 
-      # Override llama-cpp to use version 7938
+      # Override llama-cpp to use version 8149
       llamaCppOverlay = final: prev: {
         llama-cpp = prev.llama-cpp.overrideAttrs (oldAttrs: rec {
-          version = "7938";
+          version = "8149";
           src = prev.fetchFromGitHub {
             owner = "ggml-org";
             repo = "llama.cpp";
             tag = "b${version}";
-            hash = "sha256-u1lZbwhQXbZExP6LAy04XkUSYSb4RubpawaC0d7hSvE=";
+            hash = "sha256-E1Qm6a31v0MPyaj47rB1PL0XzsXNSqBuBYJmJJ5nHtE=";
             leaveDotGit = true;
             postFetch = ''
               git -C "$out" rev-parse --short HEAD > $out/COMMIT
               find "$out" -name .git -print0 | xargs -0 rm -rf
             '';
+          };
+          npmDepsHash = "sha256-FKjoZTKm0ddoVdpxzYrRUmTiuafEfbKc4UD2fz2fb8A=";
+          npmDeps = prev.fetchNpmDeps {
+            name = "${oldAttrs.pname}-${version}-npm-deps";
+            inherit src;
+            inherit (oldAttrs) patches;
+            preBuild = ''
+              pushd ${oldAttrs.npmRoot}
+            '';
+            hash = "sha256-FKjoZTKm0ddoVdpxzYrRUmTiuafEfbKc4UD2fz2fb8A=";
           };
         });
         llama-cpp-vulkan = final.llama-cpp.override { vulkanSupport = true; };
