@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
+	"fmt"
 	"log"
 	"math/rand"
 	"net/http"
@@ -17,6 +19,63 @@ import (
 	"github.com/ngarvey/trmnl-display/internal/renderer"
 	"github.com/ngarvey/trmnl-display/internal/weather"
 )
+
+type apiSetupResponse struct {
+	Status     int    `json:"status"`
+	APIKey     string `json:"api_key"`
+	FriendlyID string `json:"friendly_id"`
+	ImageURL   string `json:"image_url"`
+	Message    string `json:"message"`
+}
+
+type apiDisplayResponse struct {
+	Filename        string `json:"filename"`
+	FirmwareURL     string `json:"firmware_url"`
+	FirmwareVersion string `json:"firmware_version"`
+	ImageURL        string `json:"image_url"`
+	ImageURLTimeout int    `json:"image_url_timeout"`
+	RefreshRate     int    `json:"refresh_rate"`
+	ResetFirmware   bool   `json:"reset_firmware"`
+	SpecialFunction string `json:"special_function"`
+	UpdateFirmware  bool   `json:"update_firmware"`
+}
+
+// pollIntervalSeconds returns how often the server should re-render.
+// Daytime (08:00–21:00): every 25 min. Overnight: every 90 min.
+func pollIntervalSeconds(t time.Time) int {
+	h := t.Hour()
+	if h >= 8 && h < 21 {
+		return 25 * 60
+	}
+	return 90 * 60
+}
+
+// deviceRefreshRateSeconds tells the device how long to sleep before checking
+// again. It targets 2 minutes after the next expected server render, so the
+// device always wakes to fresh content. Clamped to a minimum of 60s.
+func deviceRefreshRateSeconds(renderedAt, now time.Time) int {
+	nextRender := renderedAt.Add(time.Duration(pollIntervalSeconds(renderedAt)) * time.Second)
+	target := nextRender.Add(2 * time.Minute)
+	secs := int(target.Sub(now).Seconds())
+	if secs < 60 {
+		return 60
+	}
+	return secs
+}
+
+// baseURL builds the scheme+host prefix from the incoming request.
+// It respects X-Forwarded-Proto for reverse-proxy setups.
+func baseURL(r *http.Request) string {
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
+		scheme = proto
+	}
+	return scheme + "://" + r.Host
+}
+
 
 type dataCache struct {
 	mu          sync.RWMutex
@@ -196,12 +255,102 @@ func (s *srv) poll(ctx context.Context) {
 	log.Printf("poll: done — rendered %d-byte PNG at %s", len(png), now.Format("15:04:05"))
 }
 
-func (s *srv) handleDisplay(w http.ResponseWriter, r *http.Request) {
-	if s.cfg.AuthKey != "" && r.URL.Query().Get("auth_key") != s.cfg.AuthKey {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+func (s *srv) handleAPISetup(w http.ResponseWriter, r *http.Request) {
+	resp := apiSetupResponse{
+		Status:     http.StatusOK,
+		APIKey:     s.cfg.APIKey,
+		FriendlyID: "TRMNL1",
+		ImageURL:   baseURL(r) + "/display",
+		Message:    "Welcome to TRMNL Local",
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp) //nolint:errcheck
+}
+
+func (s *srv) handleAPIDisplay(w http.ResponseWriter, r *http.Request) {
+	s.cache.mu.RLock()
+	ready := len(s.cache.png) > 0
+	renderedAt := s.cache.renderedAt
+	s.cache.mu.RUnlock()
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if !ready {
+		// Return 200 with a short refresh_rate so the device retries gracefully
+		// rather than treating HTTP 503 as WIFI_INTERNAL_ERROR.
+		resp := apiDisplayResponse{
+			RefreshRate: 60,
+		}
+		json.NewEncoder(w).Encode(resp) //nolint:errcheck
 		return
 	}
 
+	// Use a timestamp-based filename so the device re-downloads whenever we have
+	// a new render. The firmware's filesystem_purge_old_file parses the last 10
+	// chars as a Unix epoch: a static name like "display.png" produces epoch=0
+	// which is always >24h old, and checkCurrentFileName caches it forever.
+	filename := fmt.Sprintf("display-%d", renderedAt.Unix())
+
+	resp := apiDisplayResponse{
+		Filename:        filename,
+		FirmwareURL:     "",
+		FirmwareVersion: "",
+		ImageURL:        baseURL(r) + "/display",
+		ImageURLTimeout: 0,
+		RefreshRate:     deviceRefreshRateSeconds(renderedAt, time.Now()),
+		ResetFirmware:   false,
+		SpecialFunction: "",
+		UpdateFirmware:  false,
+	}
+	json.NewEncoder(w).Encode(resp) //nolint:errcheck
+}
+
+type deviceLogEntry struct {
+	ID              int     `json:"id"`
+	CreatedAt       int64   `json:"created_at"`
+	Message         string  `json:"message"`
+	SourceLine      int     `json:"source_line"`
+	SourcePath      string  `json:"source_path"`
+	FirmwareVersion string  `json:"firmware_version"`
+	WifiSignal      int     `json:"wifi_signal"`
+	WifiStatus      string  `json:"wifi_status"`
+	RefreshRate     int     `json:"refresh_rate"`
+	SleepDuration   int     `json:"sleep_duration"`
+	BatteryVoltage  float64 `json:"battery_voltage"`
+	WakeReason      string  `json:"wake_reason"`
+	FreeHeapSize    int     `json:"free_heap_size"`
+	MaxAllocSize    int     `json:"max_alloc_size"`
+	Retry           int     `json:"retry,omitempty"`
+}
+
+type deviceLogPayload struct {
+	Logs []deviceLogEntry `json:"logs"`
+}
+
+func (s *srv) handleAPILog(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var payload deviceLogPayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil && err.Error() != "EOF" {
+		http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	mac := r.Header.Get("ID")
+	for _, entry := range payload.Logs {
+		log.Printf("device-log mac=%s fw=%s rssi=%d batt=%.2fV heap=%d wake=%q | %s (%s:%d)",
+			mac, entry.FirmwareVersion, entry.WifiSignal, entry.BatteryVoltage,
+			entry.FreeHeapSize, entry.WakeReason, entry.Message,
+			entry.SourcePath, entry.SourceLine)
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *srv) handleDisplay(w http.ResponseWriter, r *http.Request) {
 	s.cache.mu.RLock()
 	png := s.cache.png
 	renderedAt := s.cache.renderedAt
@@ -213,6 +362,7 @@ func (s *srv) handleDisplay(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(png)))
 	w.Header().Set("X-Rendered-At", renderedAt.Format(time.RFC3339))
 	w.Header().Set("Cache-Control", "no-store")
 	w.Write(png) //nolint:errcheck
@@ -257,22 +407,32 @@ func main() {
 	log.Println("running initial poll...")
 	s.poll(context.Background())
 
-	interval := time.Duration(cfg.PollIntervalMin) * time.Minute
-	log.Printf("starting background poller (interval: %s)", interval)
+	log.Println("starting background poller (25m daytime / 90m overnight, ahead of device schedule)")
 	go func() {
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for range ticker.C {
+		for {
+			next := time.Duration(pollIntervalSeconds(time.Now())) * time.Second
+			timer := time.NewTimer(next)
+			<-timer.C
+			timer.Stop()
 			s.poll(context.Background())
 		}
 	}()
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("/api/setup", s.handleAPISetup)
+	mux.HandleFunc("/api/display", s.handleAPIDisplay)
+	mux.HandleFunc("/api/log", s.handleAPILog)
 	mux.HandleFunc("/display", s.handleDisplay)
 	mux.HandleFunc("/health", s.handleHealth)
 
+	logged := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%s %s %s (ID:%s FW:%s)", r.Method, r.URL.Path, r.RemoteAddr,
+			r.Header.Get("ID"), r.Header.Get("FW-Version"))
+		mux.ServeHTTP(w, r)
+	})
+
 	log.Printf("listening on %s", cfg.ListenAddr)
-	if err := http.ListenAndServe(cfg.ListenAddr, mux); err != nil {
+	if err := http.ListenAndServe(cfg.ListenAddr, logged); err != nil {
 		log.Fatalf("server: %v", err)
 	}
 }

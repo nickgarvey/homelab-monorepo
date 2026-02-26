@@ -82,6 +82,29 @@ func TestParse_defaults(t *testing.T) {
 	if cfg.HomeAssistant.GarageEntity != "cover.garage_door" {
 		t.Errorf("default GarageEntity = %q", cfg.HomeAssistant.GarageEntity)
 	}
+	if cfg.APIKey != "trmnl-local" {
+		t.Errorf("default APIKey = %q, want trmnl-local", cfg.APIKey)
+	}
+}
+
+func TestParse_customAPIKey(t *testing.T) {
+	cfg, err := Parse([]byte("api_key: my-secret-key"))
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+	if cfg.APIKey != "my-secret-key" {
+		t.Errorf("APIKey = %q, want my-secret-key", cfg.APIKey)
+	}
+}
+
+func TestParse_noAuthKey(t *testing.T) {
+	cfg, err := Parse([]byte("{}"))
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+	if cfg.APIKey == "" {
+		t.Error("APIKey should have a default value")
+	}
 }
 
 func TestParse_invalid_yaml(t *testing.T) {

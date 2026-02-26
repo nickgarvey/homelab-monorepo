@@ -51,7 +51,7 @@ type Config struct {
 	LLM             LLM            `yaml:"llm"`
 	NewsText        string         `yaml:"news_text"`
 	PollIntervalMin int            `yaml:"poll_interval_minutes"`
-	AuthKey         string         `yaml:"auth_key"`
+	APIKey          string         `yaml:"api_key"`
 }
 
 func Load(path string) (*Config, error) {
@@ -81,6 +81,9 @@ func Parse(data []byte) (*Config, error) {
 	}
 	if len(cfg.LLM.WordOfDayCategories) == 0 {
 		cfg.LLM.WordOfDayCategories = defaultWordOfDayCategories
+	}
+	if cfg.APIKey == "" {
+		cfg.APIKey = "trmnl-local"
 	}
 	return &cfg, nil
 }
