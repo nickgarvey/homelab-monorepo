@@ -74,7 +74,7 @@ func TestHandleAPISetup_imageURLUsesHost(t *testing.T) {
 
 	var resp apiSetupResponse
 	json.NewDecoder(w.Body).Decode(&resp) //nolint:errcheck
-	want := "http://trmnl.home.arpa:8080/display"
+	want := "http://trmnl.home.arpa:8080/dashboard.png"
 	if resp.ImageURL != want {
 		t.Errorf("image_url = %q, want %q", resp.ImageURL, want)
 	}
@@ -214,7 +214,7 @@ func TestHandleAPIDisplay_ready_imageURLUsesHost(t *testing.T) {
 
 	var resp apiDisplayResponse
 	json.NewDecoder(w.Body).Decode(&resp) //nolint:errcheck
-	want := "http://trmnl.home.arpa:8080/display"
+	want := "http://trmnl.home.arpa:8080/dashboard.png"
 	if resp.ImageURL != want {
 		t.Errorf("image_url = %q, want %q", resp.ImageURL, want)
 	}
@@ -290,7 +290,7 @@ func TestPollIntervalSeconds_overnight(t *testing.T) {
 // writes and the device logs "file size too big: -1".
 func TestHandleDisplay_ready_hasContentLength(t *testing.T) {
 	w := httptest.NewRecorder()
-	newTestSrv(true).handleDisplay(w, newRequest(http.MethodGet, "/display"))
+	newTestSrv(true).handleDisplay(w, newRequest(http.MethodGet, "/dashboard.png"))
 	if w.Header().Get("Content-Length") == "" {
 		t.Error("Content-Length header missing — firmware needs it to allocate image buffer")
 	}

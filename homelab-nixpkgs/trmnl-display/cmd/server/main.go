@@ -260,7 +260,7 @@ func (s *srv) handleAPISetup(w http.ResponseWriter, r *http.Request) {
 		Status:     http.StatusOK,
 		APIKey:     s.cfg.APIKey,
 		FriendlyID: "TRMNL1",
-		ImageURL:   baseURL(r) + "/display",
+		ImageURL:   baseURL(r) + "/dashboard.png",
 		Message:    "Welcome to TRMNL Local",
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -295,7 +295,7 @@ func (s *srv) handleAPIDisplay(w http.ResponseWriter, r *http.Request) {
 		Filename:        filename,
 		FirmwareURL:     "",
 		FirmwareVersion: "",
-		ImageURL:        baseURL(r) + "/display",
+		ImageURL:        baseURL(r) + "/dashboard.png",
 		ImageURLTimeout: 0,
 		RefreshRate:     deviceRefreshRateSeconds(renderedAt, time.Now()),
 		ResetFirmware:   false,
@@ -357,7 +357,7 @@ func (s *srv) handleDisplay(w http.ResponseWriter, r *http.Request) {
 	s.cache.mu.RUnlock()
 
 	if len(png) == 0 {
-		http.Error(w, "display not ready yet — poll in progress", http.StatusServiceUnavailable)
+		http.Error(w, "dashboard not ready yet — poll in progress", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -422,7 +422,7 @@ func main() {
 	mux.HandleFunc("/api/setup", s.handleAPISetup)
 	mux.HandleFunc("/api/display", s.handleAPIDisplay)
 	mux.HandleFunc("/api/log", s.handleAPILog)
-	mux.HandleFunc("/display", s.handleDisplay)
+	mux.HandleFunc("/dashboard.png", s.handleDisplay)
 	mux.HandleFunc("/health", s.handleHealth)
 
 	logged := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
