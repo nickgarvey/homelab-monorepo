@@ -112,13 +112,8 @@ func RenderHTML(
 	garageErr string,
 	newsText string,
 ) (string, error) {
-	// Format the timestamp in the first location's timezone; fall back to UTC.
-	displayLoc := time.UTC
-	if len(weatherResults) > 0 && weatherResults[0] != nil && weatherResults[0].Timezone != "" {
-		if l, err := time.LoadLocation(weatherResults[0].Timezone); err == nil {
-			displayLoc = l
-		}
-	}
+	// Use the process timezone (TZ env var) for all display formatting.
+	displayLoc := time.Local
 	data := TemplateData{
 		UpdatedAt: renderedAt.In(displayLoc).Format("Jan 2 3:04 PM"),
 		NewsText:  newsText,
