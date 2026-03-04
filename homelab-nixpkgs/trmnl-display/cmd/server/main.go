@@ -404,8 +404,25 @@ func main() {
 		haClient: haClient,
 	}
 
-	log.Println("running initial poll...")
-	s.poll(context.Background())
+	const maxStartupAttempts = 5
+	const startupRetryDelay = 15 * time.Second
+	for attempt := 1; attempt <= maxStartupAttempts; attempt++ {
+		log.Printf("running initial poll (attempt %d/%d)...", attempt, maxStartupAttempts)
+		s.poll(context.Background())
+		s.cache.mu.RLock()
+		hasWeather := len(s.cache.weather) > 0 && s.cache.weather[0] != nil
+		s.cache.mu.RUnlock()
+		if hasWeather {
+			log.Println("initial poll succeeded with weather data")
+			break
+		}
+		if attempt < maxStartupAttempts {
+			log.Printf("initial poll missing weather data, retrying in %s...", startupRetryDelay)
+			time.Sleep(startupRetryDelay)
+		} else {
+			log.Println("initial poll still missing weather data after all attempts, proceeding anyway")
+		}
+	}
 
 	log.Println("starting background poller (25m daytime / 90m overnight, ahead of device schedule)")
 	go func() {
