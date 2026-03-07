@@ -20,3 +20,5 @@ include/secrets/ha_key.h
 tests/build/
 
 .prompts/
+
+devices/led-blinker
