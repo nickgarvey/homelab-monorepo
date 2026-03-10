@@ -1,3 +1,5 @@
+# ESP32 development shell with ESP-IDF and OpenOCD.
+# See docs/esp-prog-2.md for ESP-Prog-2 usage and udev setup.
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
