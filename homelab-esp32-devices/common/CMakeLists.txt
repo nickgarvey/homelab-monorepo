@@ -3,6 +3,7 @@ idf_component_register(
         "src/wifi_manager.c"
         "src/ha_client.c"
         "src/neopixel.c"
+        "src/openthread_manager.c"
     INCLUDE_DIRS "include"
     REQUIRES
         esp_wifi
@@ -12,4 +13,5 @@ idf_component_register(
         driver
         led_strip
         nvs_flash
+        openthread
 )

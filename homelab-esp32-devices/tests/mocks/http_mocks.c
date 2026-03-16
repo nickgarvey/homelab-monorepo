@@ -8,7 +8,8 @@
  * Tests set these before calling ha_post / ha_get to simulate specific
  * server responses.
  */
-static int    s_mock_status   = 200;
+static int      s_mock_status        = 200;
+static esp_err_t s_perform_result    = ESP_OK;
 static char   s_mock_body[1024] = {0};
 static char   s_last_url[512]   = {0};
 static char   s_last_auth[512]  = {0};
@@ -20,13 +21,19 @@ void http_mock_set_response(int status, const char *body)
     strncpy(s_mock_body, body ? body : "", sizeof(s_mock_body) - 1);
 }
 
+void http_mock_set_perform_result(esp_err_t result)
+{
+    s_perform_result = result;
+}
+
 const char *http_mock_last_url(void)  { return s_last_url; }
 const char *http_mock_last_auth(void) { return s_last_auth; }
 const char *http_mock_last_body(void) { return s_last_body; }
 
 void http_mock_reset(void)
 {
-    s_mock_status = 200;
+    s_mock_status    = 200;
+    s_perform_result = ESP_OK;
     s_mock_body[0] = '\0';
     s_last_url[0]  = '\0';
     s_last_auth[0] = '\0';
@@ -85,6 +92,7 @@ esp_err_t esp_http_client_set_post_field(esp_http_client_handle_t client,
 
 esp_err_t esp_http_client_perform(esp_http_client_handle_t client)
 {
+    if (s_perform_result != ESP_OK) return s_perform_result;
     struct EspHttpClient *c = (struct EspHttpClient *)client;
     if (c->event_handler && s_mock_body[0] != '\0') {
         esp_http_client_event_t evt = {

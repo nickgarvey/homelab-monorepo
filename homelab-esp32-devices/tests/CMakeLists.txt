@@ -15,18 +15,25 @@ set(COMMON_SRC
     ${CMAKE_CURRENT_SOURCE_DIR}/../common/src/wifi_manager.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../common/src/ha_client.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../common/src/neopixel.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../common/src/openthread_manager.c
 )
 
 set(MOCK_SRC
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/wifi_mocks.c
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/http_mocks.c
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/neopixel_mocks.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/openthread_mocks.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/ds18b20_mocks.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/system_mocks.c
 )
 
 set(TEST_SRC
     ${CMAKE_CURRENT_SOURCE_DIR}/test_wifi_manager.c
     ${CMAKE_CURRENT_SOURCE_DIR}/test_ha_client.c
     ${CMAKE_CURRENT_SOURCE_DIR}/test_neopixel.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_openthread_manager.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_main.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../devices/freezer-temp-sensor/main/main.c
     ${CMAKE_CURRENT_SOURCE_DIR}/test_runner.c
 )
 

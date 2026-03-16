@@ -19,6 +19,12 @@ cmake --build "$UNIT_BUILD"
 
 echo ""
 echo "========================================="
-echo " Step 2: Firmware build verification"
+echo " Step 2: Firmware build verification (garage-opener)"
 echo "========================================="
 bash "$REPO_ROOT/tests/test_build.sh"
+
+echo ""
+echo "========================================="
+echo " Step 3: Firmware build verification (freezer-temp-sensor)"
+echo "========================================="
+bash "$REPO_ROOT/tests/test_build_freezer.sh"

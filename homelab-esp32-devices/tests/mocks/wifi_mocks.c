@@ -47,8 +47,16 @@ EventBits_t xEventGroupWaitBits(EventGroupHandle_t xEventGroup,
 
 /* ---- WiFi stubs --------------------------------------------------------- */
 
-static esp_event_handler_t s_wifi_handler;
-static esp_event_handler_t s_ip_handler;
+static esp_event_handler_t  s_wifi_handler;
+static esp_event_handler_t  s_ip_handler;
+/*
+ * Store the event_base pointers as registered by the caller so that
+ * esp_wifi_start() can pass the exact same pointer back to the handler.
+ * wifi_event_handler compares event_base with == (pointer equality), so the
+ * pointer fired must be the one from the caller's translation unit.
+ */
+static esp_event_base_t     s_wifi_event_base;
+static esp_event_base_t     s_ip_event_base;
 
 esp_err_t esp_wifi_init(wifi_init_config_t *cfg)   { (void)cfg; return ESP_OK; }
 esp_err_t esp_wifi_set_mode(int mode)               { (void)mode; return ESP_OK; }
@@ -64,11 +72,11 @@ esp_err_t esp_wifi_connect(void)                    { return ESP_OK; }
 esp_err_t esp_wifi_start(void)
 {
     if (s_wifi_handler) {
-        s_wifi_handler(NULL, WIFI_EVENT, WIFI_EVENT_STA_START, NULL);
+        s_wifi_handler(NULL, s_wifi_event_base, WIFI_EVENT_STA_START, NULL);
     }
     if (s_ip_handler) {
         ip_event_got_ip_t evt = {0};
-        s_ip_handler(NULL, IP_EVENT, IP_EVENT_STA_GOT_IP, &evt);
+        s_ip_handler(NULL, s_ip_event_base, IP_EVENT_STA_GOT_IP, &evt);
     }
     return ESP_OK;
 }
@@ -86,10 +94,12 @@ esp_err_t esp_event_handler_instance_register(esp_event_base_t event_base,
     (void)event_id;
     (void)event_handler_arg;
     (void)instance;
-    if (event_base == WIFI_EVENT) {
-        s_wifi_handler = event_handler;
-    } else if (event_base == IP_EVENT) {
-        s_ip_handler = event_handler;
+    if (strcmp(event_base, "WIFI_EVENT") == 0) {
+        s_wifi_handler    = event_handler;
+        s_wifi_event_base = event_base;
+    } else if (strcmp(event_base, "IP_EVENT") == 0) {
+        s_ip_handler    = event_handler;
+        s_ip_event_base = event_base;
     }
     return ESP_OK;
 }

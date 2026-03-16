@@ -11,6 +11,7 @@ result
 # Secrets (never commit real keys)
 secrets/
 include/secrets/ha_key.h
+include/secrets/thread_auth.h
 
 # Editor
 .vscode/

@@ -20,6 +20,8 @@
         pkgs.gcc
         pkgs.cmake
         pkgs.ninja
+        pkgs.sops
+        pkgs.age
       ];
     };
   };

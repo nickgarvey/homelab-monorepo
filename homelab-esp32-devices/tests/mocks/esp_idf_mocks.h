@@ -12,11 +12,17 @@
 
 /* ---- esp_err ------------------------------------------------------------ */
 typedef int esp_err_t;
-#define ESP_OK    0
-#define ESP_FAIL -1
-#define ESP_ERR_NVS_NO_FREE_PAGES  0x1101
+#define ESP_OK              0
+#define ESP_FAIL           -1
+#define ESP_ERR_TIMEOUT     0x107
+#define ESP_ERR_NVS_NO_FREE_PAGES     0x1101
 #define ESP_ERR_NVS_NEW_VERSION_FOUND 0x1102
 #define ESP_ERROR_CHECK(x) do { esp_err_t _rc = (x); (void)_rc; } while (0)
+
+/* ---- FreeRTOS base types ------------------------------------------------ */
+typedef int      BaseType_t;
+#define pdPASS   1
+#define pdFAIL   0
 
 /* ---- Logging ------------------------------------------------------------ */
 #define ESP_LOGI(tag, fmt, ...) printf("[I][%s] " fmt "\n", tag, ##__VA_ARGS__)
@@ -133,6 +139,21 @@ esp_err_t esp_http_client_set_post_field(esp_http_client_handle_t client,
 esp_err_t esp_http_client_perform(esp_http_client_handle_t client);
 int       esp_http_client_get_status_code(esp_http_client_handle_t client);
 esp_err_t esp_http_client_cleanup(esp_http_client_handle_t client);
+
+/* ---- NVS stubs ---------------------------------------------------------- */
+static inline esp_err_t nvs_flash_init(void)  { return ESP_OK; }
+static inline esp_err_t nvs_flash_erase(void) { return ESP_OK; }
+
+/* ---- Deep sleep stubs --------------------------------------------------- */
+static inline esp_err_t esp_sleep_enable_timer_wakeup(uint64_t time_us)
+{
+    (void)time_us;
+    return ESP_OK;
+}
+
+/* Implemented in system_mocks.c so tests can count calls. */
+extern int g_deep_sleep_count;
+void esp_deep_sleep(uint64_t time_us);
 
 /* ---- GPIO / LED strip stubs (neopixel) ---------------------------------- */
 typedef uint64_t gpio_mode_t;
