@@ -6,8 +6,8 @@ set(SOPS_FILE   "${DEVICE_ROOT}/secrets/thread_auth.sops.yaml")
 set(OUT_DIR     "${CMAKE_BINARY_DIR}/generated")
 include("${DEVICE_ROOT}/cmake/generate_secrets.cmake")
 
-set(MAIN_SRCS "main.c")
-set(MAIN_REQUIRES openthread_manager ha_client neopixel)
+set(MAIN_SRCS "main.cpp")
+set(MAIN_REQUIRES esp_matter neopixel)
 
 if(CONFIG_USE_FAKE_TEMP_SENSOR)
     list(APPEND MAIN_SRCS "fake_temp_sensor.c")
@@ -18,7 +18,6 @@ endif()
 idf_component_register(
     SRCS ${MAIN_SRCS}
     INCLUDE_DIRS "." "${CMAKE_BINARY_DIR}/generated"
-    EMBED_TXTFILES "certs/ca_bundle.pem"
     REQUIRES ${MAIN_REQUIRES}
     PRIV_REQUIRES driver nvs_flash esp_timer
 )
