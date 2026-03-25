@@ -5,6 +5,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "esp_vfs_eventfd.h"
 #include "esp_openthread.h"
 #include "esp_openthread_netif_glue.h"
 #include "openthread/thread.h"
@@ -21,6 +22,13 @@ esp_err_t ot_manager_init(const ot_credentials_t *creds, uint32_t timeout_ms)
 {
     s_attached = false;
 
+    esp_vfs_eventfd_config_t eventfd_config = ESP_VFS_EVENTD_CONFIG_DEFAULT();
+    esp_err_t ret = esp_vfs_eventfd_register(&eventfd_config);
+    if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
+        ESP_LOGE(TAG, "esp_vfs_eventfd_register failed: %d", ret);
+        return ret;
+    }
+
     esp_openthread_config_t ot_config = {
         .netif_config = ESP_NETIF_DEFAULT_OPENTHREAD(),
         .platform_config = {
@@ -34,7 +42,7 @@ esp_err_t ot_manager_init(const ot_credentials_t *creds, uint32_t timeout_ms)
         },
     };
 
-    esp_err_t ret = esp_openthread_start(&ot_config);
+    ret = esp_openthread_start(&ot_config);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "esp_openthread_start failed: %d", ret);
         return ret;

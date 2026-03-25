@@ -1,0 +1,10 @@
+menu "Freezer Temp Sensor"
+
+    config USE_FAKE_TEMP_SENSOR
+        bool "Use fake sine-wave temperature sensor"
+        default n
+        help
+            Replace the real DS18B20 sensor with a fake sine-wave generator.
+            Useful for testing firmware on boards without a sensor attached.
+
+endmenu

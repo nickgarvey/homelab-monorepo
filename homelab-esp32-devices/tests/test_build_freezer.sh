@@ -8,6 +8,10 @@
 #   3. Passes esptool.py image_info (validates image header/checksums)
 #   4. Contains expected ELF symbols
 #
+# Secrets are handled automatically by cmake/generate_secrets.cmake —
+# if sops or the encrypted file is unavailable, placeholder headers are
+# generated in the build tree.
+#
 # Requires the ESP-IDF environment to be active:
 #   nix develop --command bash tests/test_build_freezer.sh
 #
@@ -18,7 +22,6 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEVICE_DIR="$REPO_ROOT/devices/freezer-temp-sensor"
 BUILD_DIR="$DEVICE_DIR/build"
-SECRETS_FILE="$DEVICE_DIR/include/secrets/thread_auth.h"
 BINARY="$BUILD_DIR/freezer_temp_sensor.bin"
 ELF="$BUILD_DIR/freezer_temp_sensor.elf"
 
@@ -42,33 +45,8 @@ fi
 echo "IDF version: $(idf.py --version 2>&1 | head -1)"
 echo ""
 
-# ---- 2. Provide a placeholder secrets file if not present ------------------
-CREATED_SECRETS=false
-if [[ ! -f "$SECRETS_FILE" ]]; then
-    echo "No thread_auth.h found; creating build-time placeholder."
-    mkdir -p "$(dirname "$SECRETS_FILE")"
-    cat > "$SECRETS_FILE" <<'EOF'
-#ifndef THREAD_AUTH_H
-#define THREAD_AUTH_H
-/* Placeholder values inserted by test_build_freezer.sh for build verification only. */
-#include <stdint.h>
-#define THREAD_NETWORK_NAME   "DummyThread"
-#define THREAD_CHANNEL        15
-#define THREAD_PAN_ID         0x1234
-static const uint8_t THREAD_EXT_PAN_ID[8]  = {0x11,0x22,0x33,0x44,0x55,0x66,0x77,0x88};
-static const uint8_t THREAD_NETWORK_KEY[16] = {
-    0x00,0x11,0x22,0x33,0x44,0x55,0x66,0x77,
-    0x88,0x99,0xaa,0xbb,0xcc,0xdd,0xee,0xff
-};
-#define THREAD_MESH_LOCAL_PREFIX  "fd11:22::/64"
-#define THREAD_HA_BASE_URL        "https://homeassistant.example.home:8123"
-#define THREAD_HA_API_KEY         "build-test-placeholder-key"
-#endif
-EOF
-    CREATED_SECRETS=true
-fi
-
-# ---- 3. Run the build -------------------------------------------------------
+# ---- 2. Run the build ------------------------------------------------------
+# CMake will auto-generate placeholder secrets if sops is unavailable.
 echo "Building $DEVICE_DIR ..."
 if idf.py -C "$DEVICE_DIR" build 2>&1; then
     pass "idf.py build succeeded"
@@ -76,14 +54,14 @@ else
     fail "idf.py build failed"
 fi
 
-# ---- 4. Binary existence ---------------------------------------------------
+# ---- 3. Binary existence ---------------------------------------------------
 if [[ -f "$BINARY" ]]; then
     pass "firmware binary exists: $BINARY"
 else
     fail "firmware binary not found: $BINARY"
 fi
 
-# ---- 5. Binary size sanity check -------------------------------------------
+# ---- 4. Binary size sanity check -------------------------------------------
 if [[ -f "$BINARY" ]]; then
     SIZE=$(stat -c%s "$BINARY")
     if [[ "$SIZE" -ge "$MIN_BINARY_SIZE" ]]; then
@@ -93,7 +71,7 @@ if [[ -f "$BINARY" ]]; then
     fi
 fi
 
-# ---- 6. esptool image_info --------------------------------------------------
+# ---- 5. esptool image_info --------------------------------------------------
 if [[ -f "$BINARY" ]]; then
     echo ""
     echo "--- esptool.py image_info ---"
@@ -104,7 +82,7 @@ if [[ -f "$BINARY" ]]; then
     fi
 fi
 
-# ---- 7. ELF symbol checks (RISC-V toolchain for ESP32-C6) ------------------
+# ---- 6. ELF symbol checks (RISC-V toolchain for ESP32-C6) ------------------
 if [[ -f "$ELF" ]]; then
     echo ""
     echo "--- ELF symbol checks ---"
@@ -118,11 +96,6 @@ if [[ -f "$ELF" ]]; then
             fail "symbol missing: $sym"
         fi
     done
-fi
-
-# ---- Cleanup ---------------------------------------------------------------
-if [[ "$CREATED_SECRETS" == true ]]; then
-    rm -f "$SECRETS_FILE"
 fi
 
 # ---- Summary ---------------------------------------------------------------

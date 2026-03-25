@@ -8,10 +8,9 @@ dependencies.lock
 .direnv/
 result
 
-# Secrets (never commit real keys)
-secrets/
-include/secrets/ha_key.h
-include/secrets/thread_auth.h
+# Secrets — ignore contents of any secrets/ dir, but allow SOPS-encrypted files
+**/secrets/*
+!**/secrets/*.sops.*
 
 # Editor
 .vscode/

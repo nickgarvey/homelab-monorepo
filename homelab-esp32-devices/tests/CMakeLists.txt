@@ -33,7 +33,9 @@ set(TEST_SRC
     ${CMAKE_CURRENT_SOURCE_DIR}/test_neopixel.c
     ${CMAKE_CURRENT_SOURCE_DIR}/test_openthread_manager.c
     ${CMAKE_CURRENT_SOURCE_DIR}/test_main.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_fake_temp_sensor.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../devices/freezer-temp-sensor/main/main.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../devices/freezer-temp-sensor/main/fake_temp_sensor.c
     ${CMAKE_CURRENT_SOURCE_DIR}/test_runner.c
 )
 
@@ -45,11 +47,12 @@ add_executable(run_tests
 
 target_include_directories(run_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../common/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../devices/freezer-temp-sensor/main
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks
     ${unity_SOURCE_DIR}/src
 )
 
-target_link_libraries(run_tests PRIVATE unity)
+target_link_libraries(run_tests PRIVATE unity m)
 
 # Expose the Unity include path used by FetchContent
 target_include_directories(run_tests PRIVATE ${unity_SOURCE_DIR}/src)

@@ -20,4 +20,6 @@ void ds18b20_mock_reset(void);
 
 /* system_mocks.c */
 extern int g_deep_sleep_count;
+extern int g_vTaskDelay_count;
+extern int g_vTaskDelay_max;
 void system_mock_reset(void);

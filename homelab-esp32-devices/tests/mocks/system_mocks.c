@@ -1,4 +1,11 @@
 #include "esp_idf_mocks.h"
+#include <setjmp.h>
+
+/* ---- vTaskDelay loop-breaker ------------------------------------------- */
+
+jmp_buf g_test_jmp_buf;
+int g_vTaskDelay_count = 0;
+int g_vTaskDelay_max   = 0;
 
 /* ---- esp_deep_sleep with call counter ---------------------------------- */
 
@@ -24,4 +31,6 @@ const char _binary_ca_bundle_pem_end[]   = "";
 void system_mock_reset(void)
 {
     g_deep_sleep_count = 0;
+    g_vTaskDelay_count = 0;
+    g_vTaskDelay_max   = 0;
 }
