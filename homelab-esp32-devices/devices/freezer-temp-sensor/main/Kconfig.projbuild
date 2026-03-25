@@ -7,4 +7,17 @@ menu "Freezer Temp Sensor"
             Replace the real DS18B20 sensor with a fake sine-wave generator.
             Useful for testing firmware on boards without a sensor attached.
 
+    config DEVICE_PRODUCT_NAME
+        string "Matter product name"
+        default "Freezer Temp Sensor"
+        help
+            The product name reported via the Matter Basic Information cluster.
+            Shown in Home Assistant after commissioning.
+
+    config DEVICE_VENDOR_NAME
+        string "Matter vendor name"
+        default "Homelab"
+        help
+            The vendor name reported via the Matter Basic Information cluster.
+
 endmenu

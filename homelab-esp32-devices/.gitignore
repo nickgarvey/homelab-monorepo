@@ -2,7 +2,6 @@
 build/
 sdkconfig
 managed_components/
-dependencies.lock
 
 # Nix
 .direnv/
@@ -11,6 +10,10 @@ result
 # Secrets — ignore contents of any secrets/ dir, but allow SOPS-encrypted files
 **/secrets/*
 !**/secrets/*.sops.*
+
+# Python
+__pycache__/
+*.pyc
 
 # Editor
 .vscode/

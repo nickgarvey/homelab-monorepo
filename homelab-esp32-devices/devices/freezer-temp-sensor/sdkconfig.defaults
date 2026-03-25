@@ -34,6 +34,7 @@ CONFIG_USE_BLE_ONLY_FOR_COMMISSIONING=y
 CONFIG_ESP_COEX_SW_COEXIST_ENABLE=y
 
 # Matter
+CONFIG_CHIP_PROJECT_CONFIG="main/CHIPProjectConfig.h"
 CONFIG_ENABLE_EXTENDED_DISCOVERY=y
 # Use platform DNS-SD (SRP via border router) instead of minimal mDNS.
 # With USE_MINIMAL_MDNS=y the device broadcasts mDNS directly on the Thread

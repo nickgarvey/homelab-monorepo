@@ -291,12 +291,11 @@ extern "C" void app_main(void)
     }
     ESP_ERROR_CHECK(ret);
 
-    /* 2. Create Matter node. */
+    /* 2. Create Matter node.
+     *    Product/vendor names come from CHIP_DEVICE_CONFIG_DEVICE_PRODUCT_NAME /
+     *    CHIP_DEVICE_CONFIG_DEVICE_VENDOR_NAME, defined in CHIPProjectConfig.h
+     *    from Kconfig values (CONFIG_DEVICE_PRODUCT_NAME / CONFIG_DEVICE_VENDOR_NAME). */
     node::config_t node_config;
-    strncpy(node_config.basic_information.product_name, "Freezer Temp Sensor",
-            sizeof(node_config.basic_information.product_name) - 1);
-    strncpy(node_config.basic_information.vendor_name, "Homelab",
-            sizeof(node_config.basic_information.vendor_name) - 1);
     node_t *node = node::create(&node_config,
                                 app_attribute_update_cb,
                                 app_identification_cb);

@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+"""Re-pin the freezerComponents FOD hash in flake.nix.
+
+Run this after changing idf_component.yml or updating dependencies.lock
+(e.g. after `idf.py update-dependencies`).  The script triggers a Nix
+build of the components-only derivation with a fake hash, extracts the
+correct hash from the error output, and patches flake.nix in place.
+
+Usage:
+    ./scripts/update-components-hash.py
+"""
+
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+FLAKE = REPO_ROOT / "flake.nix"
+MARKER = "# freezer-components"
+
+
+def main() -> None:
+    print("Building freezer-temp-sensor-components with fake hash to discover real hash...")
+    text = FLAKE.read_text()
+
+    # Replace existing hash with the Nix fake hash so the build always fails
+    # and prints the correct hash.
+    patched = re.sub(
+        r'(outputHash\s*=\s*)"[^"]*"(\s*;[^\n]*' + re.escape(MARKER) + r')',
+        r'\1"sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="\2',
+        text,
+    )
+    if patched == text:
+        print(f"error: could not find outputHash line with marker '{MARKER}' in flake.nix",
+              file=sys.stderr)
+        sys.exit(1)
+
+    FLAKE.write_text(patched)
+
+    result = subprocess.run(
+        ["nix", "build", ".#freezer-temp-sensor-components", "--no-link"],
+        capture_output=True, text=True, cwd=REPO_ROOT,
+    )
+
+    match = re.search(r"got:\s*(sha256-[A-Za-z0-9+/=]+)", result.stderr)
+    if not match:
+        if result.returncode == 0:
+            print("Build succeeded — hash was already correct (or fake hash matched).")
+            FLAKE.write_text(text)  # restore
+            return
+        print("error: could not extract hash from Nix output", file=sys.stderr)
+        print("stderr:", result.stderr[-2000:], file=sys.stderr)
+        FLAKE.write_text(text)  # restore
+        sys.exit(1)
+
+    new_hash = match.group(1)
+    updated = re.sub(
+        r'(outputHash\s*=\s*)"[^"]*"(\s*;[^\n]*' + re.escape(MARKER) + r')',
+        rf'\1"{new_hash}"\2',
+        FLAKE.read_text(),
+    )
+    FLAKE.write_text(updated)
+    print(f"Updated outputHash to {new_hash}")
+    print("Commit flake.nix and dependencies.lock together.")
+
+
+if __name__ == "__main__":
+    main()
