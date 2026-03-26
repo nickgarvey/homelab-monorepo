@@ -1,119 +1,90 @@
 # Flash Script
 
-`scripts/flash.py` is the repo-wide tool for building, flashing, and monitoring ESP32 devices.
+`scripts/flash.py` builds firmware via Nix and flashes it using `esptool.py`.
 
-Run `./scripts/flash.py --help` for the full option reference.
+Run `nix develop --command python3 scripts/flash.py --help` for the full option reference.
 
 ---
 
 ## Prerequisites
 
-- `idf.py` on your `PATH` — enter the Nix devshell first (see below)
+- Enter the Nix devshell first (`nix develop`) — it provides `esptool.py` and `esp_idf_monitor`
 - For USB method: udev rule for ESP32-C6 USB-JTAG (see `docs/flashing-workarounds.md`)
 - For esp-prog method: FT2232-based esp-prog connected via USB
 
-### Running inside the Nix devshell
-
-`idf.py` is provided by the Nix flake. You must be inside the devshell for it to be
-on your `PATH`.
-
-**Interactive shell** — enter once, then run flash commands normally:
-```bash
-nix develop
-./scripts/flash.py --matter-name "Freezer Sensor" devices/freezer-temp-sensor
-```
-
-**One-shot** — run without entering an interactive shell:
-```bash
-nix develop --command ./scripts/flash.py --matter-name "Freezer Sensor" devices/freezer-temp-sensor
-```
-
 ---
 
-## Hardware Setup
+## Architecture
 
-### USB (default)
+Build and flash are decoupled:
 
-The board's USB connector plugs directly into your machine. The ESP32-C6 presents a
-CDC-ACM serial device at `/dev/ttyACM0`.
+1. **Build** — `nix build .#<package>` produces a read-only store path containing the `.bin`, `.elf`, and `flasher_args.json`
+2. **Flash** — `esptool.py write_flash` reads offsets from `flasher_args.json` and writes binaries directly from the Nix store (no `idf.py` at flash time, no writable build dir needed)
+3. **Monitor** — `esp_idf_monitor` attaches to serial with the `.elf` for address decoding
 
-```
-Board USB ──► /dev/ttyACM0  (flash + monitor)
-```
-
-### esp-prog
-
-The esp-prog has an FT2232H chip with two channels. Connect both the esp-prog and the
-board's UART pins (TX/RX):
-
-```
-esp-prog Channel A (ttyUSB0) ──► flash via esptool
-esp-prog Channel B (ttyUSB1) ──► serial monitor
-```
+Nix builds are dispatched to the remote builder (`desktop-nixos`) and cached. Rebuilds only happen when firmware source files change — `scripts/`, `tests/`, and `docs/` are excluded from the source hash via `cleanSrc` in `flake.nix`.
 
 ---
 
 ## Common Workflows
 
-### Flash a Matter device (USB)
+All commands assume you are at the repo root.
+
+### Flash a device (USB)
 
 ```bash
-./scripts/flash.py --matter-name "Freezer Sensor" devices/freezer-temp-sensor
+nix develop --command python3 scripts/flash.py devices/freezer-temp-sensor
 ```
 
-Builds (incremental via Ninja), flashes, then starts the serial monitor. The Matter QR
-code and manual pairing code appear in the monitor output on first boot.
+Builds, flashes, then opens serial monitor. The Matter QR code and manual pairing code appear in the monitor on boot.
 
-### Flash a Matter device (esp-prog)
+### Flash without monitor
 
 ```bash
-./scripts/flash.py --method esp-prog --matter-name "Freezer Sensor" devices/freezer-temp-sensor
+nix develop --command python3 scripts/flash.py --no-monitor devices/freezer-temp-sensor
+```
+
+### Flash with fake temperature sensor
+
+```bash
+nix develop --command python3 scripts/flash.py --fake-sensor devices/freezer-temp-sensor
+```
+
+Builds the `freezer-temp-sensor-fake` Nix package which uses a sine-wave generator instead of the real DS18B20. Useful for testing Matter integration without hardware.
+
+### Flash via esp-prog
+
+```bash
+nix develop --command python3 scripts/flash.py --method esp-prog devices/freezer-temp-sensor
 ```
 
 Flashes via `/dev/ttyUSB0`, monitors via `/dev/ttyUSB1`.
 
-### Flash a non-Matter device
-
-```bash
-./scripts/flash.py devices/led-blinker
-./scripts/flash.py devices/garage-opener
-```
-
-No `--matter-name` needed or allowed.
-
 ### Erase flash before flashing
 
-Clears NVS, commissioning data, and all stored state. Required when re-commissioning a
-Matter device or recovering from a corrupted NVS partition.
+Clears NVS, commissioning data, and all stored state. Required when re-commissioning a Matter device or recovering from corrupted NVS.
 
 ```bash
-./scripts/flash.py --erase --matter-name "Freezer Sensor" devices/freezer-temp-sensor
+nix develop --command python3 scripts/flash.py --erase devices/freezer-temp-sensor
 ```
 
-### Flash without opening monitor
+### Override serial port
 
 ```bash
-./scripts/flash.py --no-monitor --matter-name "Freezer Sensor" devices/freezer-temp-sensor
-```
-
-### Override detected serial port
-
-```bash
-./scripts/flash.py --port /dev/ttyACM1 --matter-name "Freezer Sensor" devices/freezer-temp-sensor
+nix develop --command python3 scripts/flash.py --port /dev/ttyACM1 devices/freezer-temp-sensor
 ```
 
 ---
 
-## Matter Device Name
+## Nix Packages
 
-`--matter-name` sets `CONFIG_DEVICE_PRODUCT_NAME` at build time. It is baked into the
-firmware and reported to Home Assistant via the Matter Basic Information cluster.
+| Package | Description |
+|---|---|
+| `freezer-temp-sensor` | Real DS18B20 temperature sensor firmware |
+| `freezer-temp-sensor-fake` | Fake sine-wave sensor (no hardware needed) |
+| `garage-opener` | Garage door opener firmware |
 
-Changing the name on an already-commissioned device requires removing the device from HA
-and re-commissioning after reflashing with the new name.
-
-When `--matter-name` is provided, `sdkconfig` is deleted before building so the new name
-is picked up from defaults. This triggers a full rebuild (same cost as a clean build).
+Both freezer variants are produced by `makeFreezerFirmware` in `flake.nix` with a `useFakeSensor` parameter.
 
 ---
 
@@ -130,8 +101,9 @@ is picked up from defaults. This triggers a full rebuild (same cost as a clean b
 
 **`Permission denied: /dev/ttyACM0`**
 - Add your user to the `dialout` group: `sudo usermod -aG dialout $USER` (re-login required)
-- Or run with `sudo` as a one-off
 
-**Name not showing in Home Assistant after reflash**
-- HA caches the device name from commissioning time
-- Remove the device from HA (Settings → Devices → Matter → Remove) and re-commission
+**Stale entities in Home Assistant after reflash**
+- HA caches endpoint/cluster data from commissioning time
+- Removing an endpoint from firmware won't remove the HA entity automatically
+- Delete the stale entity in HA: Settings > Devices > find entity > delete
+- For name changes or major restructuring: remove device from HA and re-commission

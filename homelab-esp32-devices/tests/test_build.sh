@@ -3,26 +3,17 @@
 # Build verification test for devices/garage-opener.
 #
 # Checks that the firmware image:
-#   1. Compiles successfully with ESP-IDF
+#   1. Builds successfully via `nix build`
 #   2. Produces a non-trivially-sized .bin
-#   3. Passes esptool.py image_info (validates image header, app descriptor,
-#      segment checksums)
+#   3. Passes esptool.py image_info (validates image header/checksums)
+#   4. Contains expected ELF symbols
 #
-# Requires the ESP-IDF environment to be active (run via: nix develop --command
-# bash tests/test_build.sh, or from within the flake devShell).
-#
-# Exit codes: 0 = all checks passed, non-zero = failure.
+# Usage (from repo root):
+#   nix develop --command bash tests/test_build.sh
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DEVICE_DIR="$REPO_ROOT/devices/garage-opener"
-BUILD_DIR="$DEVICE_DIR/build"
-SECRETS_FILE="$DEVICE_DIR/include/secrets/ha_key.h"
-BINARY="$BUILD_DIR/garage_door_opener.bin"
-
-# Minimum expected binary size in bytes. A minimal ESP32-S2 IDF app is
-# several hundred KB; anything smaller suggests a truncated or empty image.
 MIN_BINARY_SIZE=131072   # 128 KiB
 
 PASS=0
@@ -34,46 +25,29 @@ fail() { echo "[FAIL] $1"; ((FAIL++)) || true; }
 echo "=== Build verification: garage-opener ==="
 echo ""
 
-# ---- 1. Ensure idf.py is available ----------------------------------------
-if ! command -v idf.py &>/dev/null; then
-    echo "ERROR: idf.py not found. Run inside the Nix devShell:"
-    echo "  nix develop --command bash tests/test_build.sh"
+# ---- 1. nix build -----------------------------------------------------------
+echo "Running: nix build .#garage-opener ..."
+OUT=$(nix build .#garage-opener --no-link --print-out-paths 2>/dev/null | tail -1)
+if [[ -n "$OUT" ]]; then
+    pass "nix build succeeded"
+else
+    fail "nix build failed"
     exit 1
 fi
-echo "IDF version: $(idf.py --version 2>&1 | head -1)"
+echo "Output: $OUT"
 echo ""
 
-# ---- 2. Provide a placeholder secrets file if not present ------------------
-CREATED_SECRETS=false
-if [[ ! -f "$SECRETS_FILE" ]]; then
-    echo "No secrets/ha_key.h found; creating build-time placeholder."
-    mkdir -p "$(dirname "$SECRETS_FILE")"
-    cat > "$SECRETS_FILE" <<'EOF'
-#ifndef SECRETS_H
-#define SECRETS_H
-/* Placeholder key inserted by test_build.sh for build verification only. */
-const char* HA_API_KEY = "build-test-placeholder-key";
-#endif
-EOF
-    CREATED_SECRETS=true
-fi
+BINARY="$OUT/garage_door_opener.bin"
+ELF="$OUT/garage_door_opener.elf"
 
-# ---- 3. Run the build -------------------------------------------------------
-echo "Building $DEVICE_DIR ..."
-if idf.py -C "$DEVICE_DIR" build 2>&1; then
-    pass "idf.py build succeeded"
-else
-    fail "idf.py build failed"
-fi
-
-# ---- 4. Binary existence ---------------------------------------------------
+# ---- 2. Binary existence ----------------------------------------------------
 if [[ -f "$BINARY" ]]; then
-    pass "firmware binary exists: $BINARY"
+    pass "firmware binary exists"
 else
     fail "firmware binary not found: $BINARY"
 fi
 
-# ---- 5. Binary size sanity check -------------------------------------------
+# ---- 3. Binary size sanity check -------------------------------------------
 if [[ -f "$BINARY" ]]; then
     SIZE=$(stat -c%s "$BINARY")
     if [[ "$SIZE" -ge "$MIN_BINARY_SIZE" ]]; then
@@ -83,7 +57,7 @@ if [[ -f "$BINARY" ]]; then
     fi
 fi
 
-# ---- 6. esptool image_info --------------------------------------------------
+# ---- 4. esptool image_info --------------------------------------------------
 if [[ -f "$BINARY" ]]; then
     echo ""
     echo "--- esptool.py image_info ---"
@@ -94,13 +68,13 @@ if [[ -f "$BINARY" ]]; then
     fi
 fi
 
-# ---- 7. ELF symbol checks --------------------------------------------------
-ELF="$BUILD_DIR/garage_door_opener.elf"
+# ---- 5. ELF symbol checks ---------------------------------------------------
 if [[ -f "$ELF" ]]; then
     echo ""
     echo "--- ELF symbol checks ---"
+    NM_OUT=$(xtensa-esp32s2-elf-nm "$ELF" 2>/dev/null)
     for sym in app_main wifi_manager_init ha_client_init neopixel_init neopixel_set wifi_manager_connected; do
-        if xtensa-esp32s2-elf-nm "$ELF" 2>/dev/null | grep -q " T $sym\b\| t $sym\b"; then
+        if grep -q " T ${sym}\b\| t ${sym}\b" <<< "$NM_OUT"; then
             pass "symbol present: $sym"
         else
             fail "symbol missing: $sym"
@@ -108,12 +82,7 @@ if [[ -f "$ELF" ]]; then
     done
 fi
 
-# ---- Cleanup ---------------------------------------------------------------
-if [[ "$CREATED_SECRETS" == true ]]; then
-    rm -f "$SECRETS_FILE"
-fi
-
-# ---- Summary ---------------------------------------------------------------
+# ---- Summary ----------------------------------------------------------------
 echo ""
 echo "==============================="
 echo "Build tests: $PASS passed, $FAIL failed"

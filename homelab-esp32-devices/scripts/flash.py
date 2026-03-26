@@ -5,26 +5,40 @@ Supports USB (direct USB-Serial/JTAG) and esp-prog (FT2232 UART) flash methods.
 
 Build behaviour:
   Runs `nix build .#<device>` which dispatches to the remote builder (desktop-nixos)
-  on first build and uses the binary cache thereafter.  The built firmware is flashed
-  directly from the Nix store.  Falls back to a local `idf.py build` for devices that
-  don't have a Nix package yet.
+  on first build and uses the binary cache thereafter.  The firmware is flashed
+  directly from the Nix store output using esptool.py (no idf.py at flash time).
 
-Examples:
-  ./scripts/flash.py devices/freezer-temp-sensor
-  ./scripts/flash.py --method esp-prog devices/freezer-temp-sensor
-  ./scripts/flash.py --erase devices/freezer-temp-sensor
-  ./scripts/flash.py devices/led-blinker
-  ./scripts/flash.py --no-monitor devices/led-blinker
+Usage (from repo root, inside nix develop):
+  nix develop --command python3 scripts/flash.py devices/freezer-temp-sensor
+  nix develop --command python3 scripts/flash.py --fake-sensor devices/freezer-temp-sensor
+  nix develop --command python3 scripts/flash.py --method esp-prog devices/freezer-temp-sensor
+  nix develop --command python3 scripts/flash.py --erase devices/freezer-temp-sensor
+  nix develop --command python3 scripts/flash.py devices/garage-opener
+  nix develop --command python3 scripts/flash.py --no-monitor devices/garage-opener
 """
 
 import argparse
+import csv
 import glob
+import json
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# Mapping from SOPS key names to (NVS namespace, NVS key) for garage-opener.
+# NVS keys must be ≤15 chars.
+GARAGE_NVS_KEYS = {
+    "WIFI_SSID":     ("garage", "wifi_ssid"),
+    "WIFI_PASSWORD":  ("garage", "wifi_pass"),
+    "HA_BASE_URL":    ("garage", "ha_url"),
+    "HA_ENTITY_ID":   ("garage", "ha_entity"),
+    "HA_API_KEY":     ("garage", "ha_key"),
+}
 
 
 def die(msg: str) -> None:
@@ -62,50 +76,153 @@ def detect_port(method: str) -> tuple[str, str]:
         return candidates[0], candidates[1]
 
 
-def has_nix_package(device_dir: Path) -> bool:
-    """Return True if the device has a matching nix package in the flake."""
+def build(package_name: str) -> Path:
+    """Build firmware via nix; return the store path containing flash artifacts."""
+    package = f".#{package_name}"
+    print(f"Building via nix: {package}")
     result = subprocess.run(
-        ["nix", "eval", f".#packages.x86_64-linux.{device_dir.name}", "--apply", "x: true"],
+        ["nix", "build", package, "--no-link", "--print-out-paths"],
         capture_output=True, text=True, cwd=REPO_ROOT,
     )
-    return result.returncode == 0
+    if result.returncode != 0:
+        # Show nix build output on failure
+        print(result.stderr, file=sys.stderr, end="")
+        sys.exit(result.returncode)
+    return Path(result.stdout.strip().splitlines()[-1])
 
 
-def build(device_dir: Path) -> Path:
-    """Build firmware; return the directory containing flash artifacts."""
-    if has_nix_package(device_dir):
-        # Nix build: dispatches to remote builder; result is cached.
-        package = f".#{device_dir.name}"
-        print(f"Building via nix: {package}")
-        result = subprocess.run(
-            ["nix", "build", package, "--no-link", "--print-out-paths"],
-            capture_output=False, text=True, cwd=REPO_ROOT,
-        )
-        if result.returncode != 0:
-            sys.exit(result.returncode)
-        out = subprocess.check_output(
-            ["nix", "build", package, "--no-link", "--print-out-paths"],
-            text=True, cwd=REPO_ROOT,
-        ).strip()
-        return Path(out)
+def decrypt_sops(sops_file: Path) -> dict[str, str]:
+    """Decrypt a SOPS YAML file and return KEY=VALUE pairs as a dict."""
+    result = subprocess.run(
+        ["sops", "--decrypt", str(sops_file)],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        die(f"sops decrypt failed: {result.stderr.strip()}")
 
-    # Fallback: local idf.py build (for devices without a nix package yet)
-    run(["idf.py", "-C", str(device_dir), "build"])
-    return device_dir / "build"
+    pairs = {}
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        if "=" in line and not line.startswith("data:"):
+            key, _, value = line.partition("=")
+            pairs[key.strip()] = value.strip()
+    return pairs
 
 
-def flash(device_dir: Path, build_dir: Path, flash_port: str, erase: bool) -> None:
-    """Flash the firmware to the device using the pre-built artifacts in build_dir."""
-    base = ["idf.py", "-C", str(device_dir), "-B", str(build_dir), "-p", flash_port]
+def generate_nvs_partition(device_dir: Path, build_dir: Path) -> Path | None:
+    """Generate an NVS binary partition from SOPS secrets for garage-opener.
+
+    Returns the path to the generated .bin, or None if device has no secrets.
+    """
+    sops_file = device_dir / "secrets" / "garage.sops.yaml"
+    if not sops_file.exists():
+        return None
+
+    print("Decrypting secrets from SOPS...")
+    secrets = decrypt_sops(sops_file)
+
+    # Verify all required keys are present
+    missing = [k for k in GARAGE_NVS_KEYS if k not in secrets]
+    if missing:
+        die(f"SOPS file missing required keys: {', '.join(missing)}")
+
+    # Generate CSV for nvs_partition_gen.py
+    # Format: key,type,encoding,value
+    tmpdir = tempfile.mkdtemp(prefix="nvs_")
+    csv_path = Path(tmpdir) / "nvs.csv"
+    bin_path = Path(tmpdir) / "nvs.bin"
+
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["key", "type", "encoding", "value"])
+
+        # Write namespace header
+        writer.writerow(["garage", "namespace", "", ""])
+
+        # Write each secret
+        for sops_key, (_, nvs_key) in GARAGE_NVS_KEYS.items():
+            writer.writerow([nvs_key, "data", "string", secrets[sops_key]])
+
+    # Get NVS partition size from partition table
+    nvs_size = "0x6000"  # 24K — matches default partition table
+
+    idf_path = os.environ.get("IDF_PATH", "")
+    nvs_gen = Path(idf_path) / "components" / "nvs_flash" / "nvs_partition_generator" / "nvs_partition_gen.py"
+    if not nvs_gen.exists():
+        die(f"nvs_partition_gen.py not found at {nvs_gen} — is IDF_PATH set?")
+
+    run(["python3", str(nvs_gen), "generate", str(csv_path), str(bin_path), nvs_size])
+
+    # Clean up CSV (contains plaintext secrets)
+    csv_path.unlink()
+
+    print(f"NVS partition: {bin_path}")
+    return bin_path
+
+
+def flash(build_dir: Path, flash_port: str, erase: bool) -> None:
+    """Flash firmware using esptool.py, reading offsets from flasher_args.json."""
+    args_file = build_dir / "flasher_args.json"
+    if not args_file.exists():
+        die(f"flasher_args.json not found in {build_dir}")
+
+    with open(args_file) as f:
+        fargs = json.load(f)
+
+    extra = fargs["extra_esptool_args"]
+    base = [
+        "esptool.py",
+        "--chip", extra["chip"],
+        "-p", flash_port,
+        "--before", extra["before"],
+        "--after", extra["after"],
+    ]
+
     if erase:
-        run(base + ["erase-flash", "flash"])
-    else:
-        run(base + ["flash"])
+        run(base + ["erase_flash"])
+
+    write_cmd = base + ["write_flash"] + fargs["write_flash_args"]
+    for offset, relpath in fargs["flash_files"].items():
+        write_cmd += [offset, str(build_dir / relpath)]
+
+    run(write_cmd)
 
 
-def monitor(device_dir: Path, monitor_port: str) -> None:
-    """Start idf.py monitor (blocks until Ctrl+C)."""
-    run(["idf.py", "-C", str(device_dir), "-p", monitor_port, "monitor"])
+def flash_nvs(nvs_bin: Path, flash_port: str, chip: str) -> None:
+    """Flash the NVS partition binary to the NVS offset."""
+    nvs_offset = "0x9000"  # Matches default partition table
+    base = [
+        "esptool.py",
+        "--chip", chip,
+        "-p", flash_port,
+        "--before", "default_reset",
+        "--after", "hard_reset",
+        "write_flash", nvs_offset, str(nvs_bin),
+    ]
+    run(base)
+
+
+def monitor(build_dir: Path, monitor_port: str) -> None:
+    """Start esp_idf_monitor with ELF for address decoding (blocks until Ctrl+C)."""
+    elfs = list(build_dir.glob("*.elf"))
+    if not elfs:
+        die(f"no .elf file found in {build_dir}")
+    elf = elfs[0]
+
+    # Read chip target from flasher_args.json for the --target flag
+    args_file = build_dir / "flasher_args.json"
+    target = None
+    if args_file.exists():
+        with open(args_file) as f:
+            fargs = json.load(f)
+        target = fargs.get("extra_esptool_args", {}).get("chip")
+
+    cmd = ["python3", "-m", "esp_idf_monitor", "-p", monitor_port]
+    if target:
+        cmd += ["--target", target]
+    cmd.append(str(elf))
+
+    run(cmd)
 
 
 def main() -> None:
@@ -139,6 +256,11 @@ def main() -> None:
         action="store_true",
         help="skip serial monitor after flash",
     )
+    parser.add_argument(
+        "--fake-sensor",
+        action="store_true",
+        help="flash the fake sine-wave sensor build (freezer-temp-sensor only)",
+    )
 
     args = parser.parse_args()
 
@@ -151,11 +273,22 @@ def main() -> None:
     if not device_dir.is_dir():
         die(f"device directory not found: {device_dir}")
 
+    if args.fake_sensor and device_dir.name != "freezer-temp-sensor":
+        die("--fake-sensor is only valid for freezer-temp-sensor")
+
+    package_name = device_dir.name
+    if args.fake_sensor:
+        package_name = "freezer-temp-sensor-fake"
+
     print(f"Device:  {device_dir.name}")
     print(f"Method:  {args.method}")
+    if args.fake_sensor:
+        print(f"Sensor:  fake (sine-wave)")
     print()
 
-    build_dir = build(device_dir)
+    build_dir = build(package_name)
+    print(f"Output:  {build_dir}")
+    print()
 
     # Resolve port only when we need to flash (device must be plugged in by now).
     if args.port:
@@ -169,10 +302,22 @@ def main() -> None:
         print(f"Monitor: {monitor_port}")
     print()
 
-    flash(device_dir, build_dir, flash_port, args.erase)
+    # Generate and flash NVS secrets partition for devices that need it
+    nvs_bin = generate_nvs_partition(device_dir, build_dir)
+
+    flash(build_dir, flash_port, args.erase)
+
+    if nvs_bin:
+        # Read chip type from flasher_args.json
+        with open(build_dir / "flasher_args.json") as f:
+            chip = json.load(f)["extra_esptool_args"]["chip"]
+        flash_nvs(nvs_bin, flash_port, chip)
+        # Clean up NVS binary (contains secrets)
+        nvs_bin.unlink()
+        nvs_bin.parent.rmdir()
 
     if not args.no_monitor:
-        monitor(device_dir, monitor_port)
+        monitor(build_dir, monitor_port)
 
 
 if __name__ == "__main__":

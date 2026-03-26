@@ -10,14 +10,17 @@ struct Ds18b20Device     { int dummy; };
 
 static esp_err_t s_bus_init_result = ESP_OK;
 static float     s_temperature     = 0.0f;
+static int       s_bus_init_count  = 0;
 
 void ds18b20_mock_set_bus_init_result(esp_err_t result) { s_bus_init_result = result; }
 void ds18b20_mock_set_temperature(float t)              { s_temperature = t; }
+int  ds18b20_mock_get_bus_init_count(void)              { return s_bus_init_count; }
 
 void ds18b20_mock_reset(void)
 {
     s_bus_init_result = ESP_OK;
     s_temperature     = 0.0f;
+    s_bus_init_count  = 0;
 }
 
 /* ---- 1-Wire bus stubs -------------------------------------------------- */
@@ -30,6 +33,7 @@ esp_err_t onewire_new_bus_rmt(const onewire_bus_config_t *bus_cfg,
                                onewire_bus_handle_t *ret_bus)
 {
     (void)bus_cfg; (void)rmt_cfg;
+    s_bus_init_count++;
     if (s_bus_init_result == ESP_OK) {
         *ret_bus = &s_fake_bus;
     }

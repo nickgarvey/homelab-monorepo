@@ -14,14 +14,22 @@
       config.permittedInsecurePackages = [ "python3.13-ecdsa-0.19.1" ];
     };
 
-    # Source filter: strip build artifacts and downloaded components so only
-    # committed source is included in the Nix store.
+    # Source filter for firmware builds: strip build artifacts, downloaded
+    # components, and repo-level directories that are not compiled into firmware
+    # (scripts/, tests/, docs/).  Excluding these means edits to flash.py or
+    # test files don't invalidate the firmware derivation cache.
     cleanSrc = root: pkgs.lib.cleanSourceWith {
       src = root;
       filter = name: type:
-        let base = builtins.baseNameOf name; in
+        let
+          base = builtins.baseNameOf name;
+          rel  = pkgs.lib.removePrefix (toString root + "/") name;
+        in
         !(builtins.elem base [
           "build" "managed_components" ".git" "sdkconfig" "result"
+        ]) &&
+        !(builtins.elem (pkgs.lib.head (pkgs.lib.splitString "/" rel)) [
+          "scripts" "tests" "docs"
         ]);
     };
 
@@ -56,7 +64,7 @@
 
         # Run cmake configure which invokes the IDF component manager download.
         # We only need the managed_components to be populated; reconfigure may
-        # fail after downloading them (e.g. SOPS secrets unavailable) — that is fine.
+        # fail after downloading them — that is fine.
         idf.py reconfigure || true
 
         # Verify components were actually downloaded
@@ -70,10 +78,13 @@
     };
 
     # Firmware build derivation — fully sandboxed (no network).
-    # Secrets fall back to placeholders (no SOPS key in sandbox); use flash.py
-    # for production firmware with real Thread credentials baked in.
-    freezerFirmware = pkgs.stdenv.mkDerivation {
-      name = "freezer-temp-sensor-firmware";
+    #
+    # useFakeSensor: when true, appends CONFIG_USE_FAKE_TEMP_SENSOR=y to
+    # sdkconfig.defaults before building, selecting the sine-wave sensor path.
+    makeFreezerFirmware = { useFakeSensor ? false }: pkgs.stdenv.mkDerivation {
+      name = if useFakeSensor
+             then "freezer-temp-sensor-fake-firmware"
+             else "freezer-temp-sensor-firmware";
       # Full repo needed: CMakeLists.txt references ../../components
       src = cleanSrc self;
 
@@ -116,13 +127,15 @@
         done
         echo "Component cache pre-populated ($(ls $CACHE_DIR | wc -l) components)"
 
+        ${pkgs.lib.optionalString useFakeSensor ''
+          printf '\nCONFIG_USE_FAKE_TEMP_SENSOR=y\n' >> devices/freezer-temp-sensor/sdkconfig.defaults
+        ''}
+
         idf.py -C devices/freezer-temp-sensor reconfigure
         idf.py -C devices/freezer-temp-sensor build
       '';
 
       installPhase = ''
-        # Mirror the idf.py build output layout so that flash.py can invoke
-        # `idf.py -B $out flash` and flasher_args.json relative paths resolve.
         mkdir -p $out/bootloader $out/partition_table
         cp devices/freezer-temp-sensor/build/freezer_temp_sensor.bin $out/
         cp devices/freezer-temp-sensor/build/freezer_temp_sensor.elf $out/
@@ -131,6 +144,197 @@
         cp devices/freezer-temp-sensor/build/flash_args $out/ 2>/dev/null || true
         cp devices/freezer-temp-sensor/build/flasher_args.json $out/ 2>/dev/null || true
       '';
+    };
+
+    freezerFirmware     = makeFreezerFirmware {};
+    freezerFirmwareFake = makeFreezerFirmware { useFakeSensor = true; };
+
+    # --------------------------------------------------------------------------
+    # garage-opener
+    # --------------------------------------------------------------------------
+
+    garageComponents = pkgs.stdenv.mkDerivation {
+      name = "garage-opener-idf-components";
+      src = cleanSrc self;
+      outputHashAlgo = "sha256";
+      outputHashMode = "recursive";
+      outputHash = "sha256-laTtLy+4bl5QV84lXNCQ2cgr1xT76hJCi0LKdQwvEgM="; # garage-components
+      nativeBuildInputs = [ pkgs.esp-idf-full ];
+      phases = [ "unpackPhase" "buildPhase" ];
+      buildPhase = ''
+        cd devices/garage-opener
+        export HOME=$TMPDIR
+        export IDF_COMPONENT_MANAGER_CACHE_DIR=$TMPDIR/idf-component-cache
+        idf.py reconfigure || true
+        if [ ! -d managed_components ]; then
+          echo "ERROR: managed_components not created by idf.py reconfigure"
+          exit 1
+        fi
+        cp -r managed_components $out
+      '';
+    };
+
+    garageFirmware = pkgs.stdenv.mkDerivation {
+      name = "garage-opener-firmware";
+      src = cleanSrc self;
+      nativeBuildInputs = [ pkgs.esp-idf-full pkgs.cmake pkgs.ninja ];
+
+      dontConfigure = true;
+      postUnpack = ''
+        cp -r ${garageComponents} $sourceRoot/devices/garage-opener/managed_components
+        chmod -R u+w $sourceRoot/devices/garage-opener/managed_components
+      '';
+      buildPhase = ''
+        export HOME=$TMPDIR
+        CACHE_DIR="$TMPDIR/.cache/Espressif/ComponentManager"
+        mkdir -p "$CACHE_DIR"
+        for src_dir in ${garageComponents}/*/; do
+          name=$(basename "$src_dir")
+          version=$(grep -m1 '^version:' "$src_dir/idf_component.yml" \
+                    | sed 's/.*version: *//; s/"//g; s/[[:space:]]//g')
+          hash=$(cat "$src_dir/.component_hash")
+          cache_name="''${name}_''${version}_''${hash:0:8}"
+          cp -r "$src_dir" "$CACHE_DIR/$cache_name"
+        done
+        echo "Component cache pre-populated ($(ls $CACHE_DIR | wc -l) components)"
+        idf.py -C devices/garage-opener reconfigure
+        idf.py -C devices/garage-opener build
+      '';
+      installPhase = ''
+        mkdir -p $out/bootloader $out/partition_table
+        cp devices/garage-opener/build/garage_door_opener.bin $out/
+        cp devices/garage-opener/build/garage_door_opener.elf $out/
+        cp devices/garage-opener/build/bootloader/bootloader.bin $out/bootloader/
+        cp devices/garage-opener/build/partition_table/partition-table.bin $out/partition_table/
+        cp devices/garage-opener/build/flash_args $out/ 2>/dev/null || true
+        cp devices/garage-opener/build/flasher_args.json $out/ 2>/dev/null || true
+      '';
+    };
+
+    # --------------------------------------------------------------------------
+    # Unit tests (native, host gcc)
+    # --------------------------------------------------------------------------
+
+    # Test source includes tests/ and components/ but excludes build artifacts.
+    testSrc = pkgs.lib.cleanSourceWith {
+      src = self;
+      filter = name: type:
+        let
+          base = builtins.baseNameOf name;
+          rel  = pkgs.lib.removePrefix (toString self + "/") name;
+          top  = pkgs.lib.head (pkgs.lib.splitString "/" rel);
+        in
+        !(builtins.elem base [
+          "build" "managed_components" ".git" "sdkconfig" "result"
+        ]) &&
+        builtins.elem top [
+          "tests" "components" "devices"
+        ];
+    };
+
+    unity = pkgs.fetchFromGitHub {
+      owner = "ThrowTheSwitch";
+      repo = "Unity";
+      rev = "v2.6.0";
+      hash = "sha256-SCcUGNN/UJlu3ALJiZ9bQKxYRZey3cm9QG+NOehp6Ow=";
+    };
+
+    tests = pkgs.stdenv.mkDerivation {
+      name = "homelab-esp32-tests";
+      src = testSrc;
+      nativeBuildInputs = [ pkgs.cmake pkgs.ninja ];
+
+      cmakeDir = "tests";
+
+      configurePhase = ''
+        cmake -S tests -B build -G Ninja \
+          -DUNITY_SOURCE_DIR=${unity}
+      '';
+
+      buildPhase = ''
+        ninja -C build
+      '';
+
+      # Run tests as the install step — if they fail, the derivation fails.
+      installPhase = ''
+        ./build/run_tests
+        mkdir -p $out
+        cp ./build/run_tests $out/
+      '';
+    };
+
+    # Helper: build verification check for a firmware derivation.
+    # Validates binary size, esptool image header, and expected ELF symbols.
+    mkFirmwareCheck = { name, firmware, binName, chip, nmTool, symbols }: pkgs.stdenv.mkDerivation {
+      name = "check-${name}";
+      dontUnpack = true;
+      dontConfigure = true;
+      nativeBuildInputs = [ pkgs.esp-idf-full ];
+      buildPhase = ''
+        PASS=0; FAIL=0
+        pass() { echo "[PASS] $1"; PASS=$((PASS+1)); }
+        fail() { echo "[FAIL] $1"; FAIL=$((FAIL+1)); }
+
+        BINARY="${firmware}/${binName}.bin"
+        ELF="${firmware}/${binName}.elf"
+
+        # Binary existence
+        if [ -f "$BINARY" ]; then pass "binary exists"
+        else fail "binary not found: $BINARY"; fi
+
+        # Size check (>128 KiB)
+        SIZE=$(stat -c%s "$BINARY")
+        if [ "$SIZE" -ge 131072 ]; then pass "binary size $SIZE >= 128K"
+        else fail "binary size $SIZE too small"; fi
+
+        # esptool image validation
+        if esptool.py --chip ${chip} image_info "$BINARY" >/dev/null 2>&1; then
+          pass "esptool image_info valid"
+        else fail "esptool image_info failed"; fi
+
+        # ELF symbol checks
+        for sym in ${builtins.concatStringsSep " " symbols}; do
+          if ${nmTool} --demangle "$ELF" 2>/dev/null | grep -q " [Tt] $sym"; then
+            pass "symbol: $sym"
+          else fail "missing symbol: $sym"; fi
+        done
+
+        echo ""
+        echo "$PASS passed, $FAIL failed"
+        [ "$FAIL" -eq 0 ] || exit 1
+      '';
+      installPhase = "mkdir -p $out && echo ok > $out/result";
+    };
+
+    checkFreezer = mkFirmwareCheck {
+      name = "freezer-temp-sensor";
+      firmware = freezerFirmware;
+      binName = "freezer_temp_sensor";
+      chip = "esp32c6";
+      nmTool = "riscv32-esp-elf-nm";
+      symbols = [
+        "app_main"
+        "ds18b20_reader_read"
+        "ds18b20_get_temperature"
+        "onewire_bus_reset"
+        "MatterTemperatureMeasurementPluginServerInitCallback"
+      ];
+    };
+
+    checkGarage = mkFirmwareCheck {
+      name = "garage-opener";
+      firmware = garageFirmware;
+      binName = "garage_door_opener";
+      chip = "esp32s2";
+      nmTool = "xtensa-esp32s2-elf-nm";
+      symbols = [
+        "app_main"
+        "wifi_manager_init"
+        "ha_client_init"
+        "neopixel_init"
+        "neopixel_set"
+        "wifi_manager_connected"
+      ];
     };
 
   in {
@@ -146,8 +350,18 @@
     };
 
     packages.${system} = {
-      freezer-temp-sensor = freezerFirmware;
+      freezer-temp-sensor      = freezerFirmware;
+      freezer-temp-sensor-fake = freezerFirmwareFake;
       freezer-temp-sensor-components = freezerComponents;
+      garage-opener = garageFirmware;
+      garage-opener-components = garageComponents;
+      inherit tests;
+    };
+
+    checks.${system} = {
+      unit-tests = tests;
+      freezer-temp-sensor = checkFreezer;
+      garage-opener = checkGarage;
     };
   };
 }

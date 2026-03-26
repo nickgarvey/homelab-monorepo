@@ -141,6 +141,11 @@ esp_err_t esp_http_client_perform(esp_http_client_handle_t client);
 int       esp_http_client_get_status_code(esp_http_client_handle_t client);
 esp_err_t esp_http_client_cleanup(esp_http_client_handle_t client);
 
+/* ---- VFS eventfd stubs -------------------------------------------------- */
+typedef struct { int max_fds; } esp_vfs_eventfd_config_t;
+#define ESP_VFS_EVENTD_CONFIG_DEFAULT() { .max_fds = 5 }
+esp_err_t esp_vfs_eventfd_register(const esp_vfs_eventfd_config_t *config);
+
 /* ---- NVS stubs ---------------------------------------------------------- */
 static inline esp_err_t nvs_flash_init(void)  { return ESP_OK; }
 static inline esp_err_t nvs_flash_erase(void) { return ESP_OK; }

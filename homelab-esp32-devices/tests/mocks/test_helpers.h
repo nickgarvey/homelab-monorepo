@@ -16,6 +16,7 @@ void neopixel_mock_get_color(uint8_t *r, uint8_t *g, uint8_t *b);
 /* ds18b20_mocks.c */
 void ds18b20_mock_set_bus_init_result(esp_err_t result);
 void ds18b20_mock_set_temperature(float t);
+int  ds18b20_mock_get_bus_init_count(void);
 void ds18b20_mock_reset(void);
 
 /* system_mocks.c */

@@ -10,23 +10,16 @@ extern "C" {
 #ifdef CONFIG_USE_FAKE_TEMP_SENSOR
 #include "fake_temp_sensor.h"
 #else
-#include "onewire_bus.h"
-#include "ds18b20.h"
+#include "ds18b20_reader.h"
 #endif
 }
 
 #include <esp_matter.h>
 #include <esp_matter_endpoint.h>
-#include <esp_openthread.h>
 #include <esp_openthread_types.h>
-#include <openthread/dataset.h>
-#include <openthread/instance.h>
-#include <openthread/thread.h>
 #include <platform/ESP32/OpenthreadLauncher.h>
 #include <setup_payload/OnboardingCodesUtil.h>
 #include <app/server/Dnssd.h>
-
-#include "secrets/thread_creds.h"
 
 static const char *TAG = "freezer";
 
@@ -86,51 +79,7 @@ static bool read_temperature(float *out_celsius)
 
 static bool read_temperature(float *out_celsius)
 {
-    onewire_bus_handle_t bus = NULL;
-    onewire_bus_config_t bus_cfg = {
-        .bus_gpio_num   = TEMP_SENSOR_PIN,
-    };
-    bus_cfg.flags.en_pull_up = true;
-    onewire_bus_rmt_config_t rmt_cfg = {
-        .max_rx_bytes = 10,
-    };
-    if (onewire_new_bus_rmt(&bus_cfg, &rmt_cfg, &bus) != ESP_OK) {
-        ESP_LOGE(TAG, "1-Wire bus init failed on GPIO %d", TEMP_SENSOR_PIN);
-        return false;
-    }
-
-    onewire_device_iter_handle_t iter = NULL;
-    ESP_ERROR_CHECK(onewire_new_device_iter(bus, &iter));
-
-    onewire_device_t device;
-    esp_err_t result = onewire_device_iter_get_next(iter, &device);
-    onewire_del_device_iter(iter);
-
-    if (result != ESP_OK) {
-        ESP_LOGE(TAG, "No DS18B20 found on GPIO %d", TEMP_SENSOR_PIN);
-        return false;
-    }
-
-    ds18b20_device_handle_t sensor = NULL;
-    ds18b20_config_t cfg = {};
-    if (ds18b20_new_device(&device, &cfg, &sensor) != ESP_OK) {
-        ESP_LOGE(TAG, "ds18b20_new_device failed");
-        return false;
-    }
-
-    if (ds18b20_trigger_temperature_conversion(sensor) != ESP_OK) {
-        ESP_LOGE(TAG, "Temperature conversion failed");
-        return false;
-    }
-    vTaskDelay(pdMS_TO_TICKS(800));
-
-    if (ds18b20_get_temperature(sensor, out_celsius) != ESP_OK) {
-        ESP_LOGE(TAG, "Temperature read failed");
-        return false;
-    }
-
-    ESP_LOGI(TAG, "Temperature: %.2f°C", *out_celsius);
-    return true;
+    return ds18b20_reader_read(TEMP_SENSOR_PIN, out_celsius);
 }
 
 #endif /* CONFIG_USE_FAKE_TEMP_SENSOR */
@@ -192,50 +141,6 @@ static void app_event_cb(const ChipDeviceEvent *event, intptr_t arg)
 }
 
 /* -------------------------------------------------------------------------- */
-/* Thread credential injection                                                */
-/* -------------------------------------------------------------------------- */
-
-static void inject_thread_dataset(void)
-{
-    otInstance *instance = esp_openthread_get_instance();
-    if (!instance) {
-        ESP_LOGE(TAG, "OpenThread instance not available");
-        return;
-    }
-
-    otOperationalDataset dataset;
-    memset(&dataset, 0, sizeof(dataset));
-
-    strncpy(dataset.mNetworkName.m8, THREAD_NETWORK_NAME, OT_NETWORK_NAME_MAX_SIZE);
-    dataset.mComponents.mIsNetworkNamePresent = true;
-
-    dataset.mChannel = THREAD_CHANNEL;
-    dataset.mComponents.mIsChannelPresent = true;
-
-    dataset.mPanId = THREAD_PAN_ID;
-    dataset.mComponents.mIsPanIdPresent = true;
-
-    memcpy(dataset.mExtendedPanId.m8, THREAD_EXT_PAN_ID, OT_EXT_PAN_ID_SIZE);
-    dataset.mComponents.mIsExtendedPanIdPresent = true;
-
-    memcpy(dataset.mNetworkKey.m8, THREAD_NETWORK_KEY, OT_NETWORK_KEY_SIZE);
-    dataset.mComponents.mIsNetworkKeyPresent = true;
-
-    otOperationalDatasetTlvs tlvs;
-    otDatasetConvertToTlvs(&dataset, &tlvs);
-
-    otError err = otDatasetSetActiveTlvs(instance, &tlvs);
-    if (err != OT_ERROR_NONE) {
-        ESP_LOGE(TAG, "otDatasetSetActiveTlvs failed: %d", err);
-        return;
-    }
-
-    otIp6SetEnabled(instance, true);
-    otThreadSetEnabled(instance, true);
-    ESP_LOGI(TAG, "Thread dataset injected, network joining...");
-}
-
-/* -------------------------------------------------------------------------- */
 /* Temperature reporting task                                                 */
 /* -------------------------------------------------------------------------- */
 
@@ -245,7 +150,9 @@ static void temp_report_task(void *arg)
         set_debug_led(0, 0, LED_DIM); /* blue: reading sensor */
 
         float celsius = 0.0f;
-        if (read_temperature(&celsius)) {
+        bool read_ok = read_temperature(&celsius);
+
+        if (read_ok) {
             int16_t matter_temp = (int16_t)(celsius * 100);
             esp_matter_attr_val_t val = esp_matter_nullable_int16(matter_temp);
 

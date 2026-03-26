@@ -3,28 +3,17 @@
 # Build verification test for devices/freezer-temp-sensor.
 #
 # Checks that the firmware image:
-#   1. Compiles successfully with ESP-IDF (target: esp32c6)
+#   1. Builds successfully via `nix build`
 #   2. Produces a non-trivially-sized .bin
 #   3. Passes esptool.py image_info (validates image header/checksums)
 #   4. Contains expected ELF symbols
 #
-# Secrets are handled automatically by cmake/generate_secrets.cmake —
-# if sops or the encrypted file is unavailable, placeholder headers are
-# generated in the build tree.
-#
-# Requires the ESP-IDF environment to be active:
+# Usage (from repo root):
 #   nix develop --command bash tests/test_build_freezer.sh
-#
-# Exit codes: 0 = all checks passed, non-zero = failure.
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DEVICE_DIR="$REPO_ROOT/devices/freezer-temp-sensor"
-BUILD_DIR="$DEVICE_DIR/build"
-BINARY="$BUILD_DIR/freezer_temp_sensor.bin"
-ELF="$BUILD_DIR/freezer_temp_sensor.elf"
-
 MIN_BINARY_SIZE=131072   # 128 KiB
 
 PASS=0
@@ -36,32 +25,29 @@ fail() { echo "[FAIL] $1"; ((FAIL++)) || true; }
 echo "=== Build verification: freezer-temp-sensor ==="
 echo ""
 
-# ---- 1. Ensure idf.py is available ----------------------------------------
-if ! command -v idf.py &>/dev/null; then
-    echo "ERROR: idf.py not found. Run inside the Nix devShell:"
-    echo "  nix develop --command bash tests/test_build_freezer.sh"
+# ---- 1. nix build -----------------------------------------------------------
+echo "Running: nix build .#freezer-temp-sensor ..."
+OUT=$(nix build .#freezer-temp-sensor --no-link --print-out-paths 2>/dev/null | tail -1)
+if [[ -n "$OUT" ]]; then
+    pass "nix build succeeded"
+else
+    fail "nix build failed"
     exit 1
 fi
-echo "IDF version: $(idf.py --version 2>&1 | head -1)"
+echo "Output: $OUT"
 echo ""
 
-# ---- 2. Run the build ------------------------------------------------------
-# CMake will auto-generate placeholder secrets if sops is unavailable.
-echo "Building $DEVICE_DIR ..."
-if idf.py -C "$DEVICE_DIR" build 2>&1; then
-    pass "idf.py build succeeded"
-else
-    fail "idf.py build failed"
-fi
+BINARY="$OUT/freezer_temp_sensor.bin"
+ELF="$OUT/freezer_temp_sensor.elf"
 
-# ---- 3. Binary existence ---------------------------------------------------
+# ---- 2. Binary existence ----------------------------------------------------
 if [[ -f "$BINARY" ]]; then
-    pass "firmware binary exists: $BINARY"
+    pass "firmware binary exists"
 else
     fail "firmware binary not found: $BINARY"
 fi
 
-# ---- 4. Binary size sanity check -------------------------------------------
+# ---- 3. Binary size sanity check -------------------------------------------
 if [[ -f "$BINARY" ]]; then
     SIZE=$(stat -c%s "$BINARY")
     if [[ "$SIZE" -ge "$MIN_BINARY_SIZE" ]]; then
@@ -71,7 +57,7 @@ if [[ -f "$BINARY" ]]; then
     fi
 fi
 
-# ---- 5. esptool image_info --------------------------------------------------
+# ---- 4. esptool image_info --------------------------------------------------
 if [[ -f "$BINARY" ]]; then
     echo ""
     echo "--- esptool.py image_info ---"
@@ -82,14 +68,12 @@ if [[ -f "$BINARY" ]]; then
     fi
 fi
 
-# ---- 6. ELF symbol checks (RISC-V toolchain for ESP32-C6) ------------------
+# ---- 5. ELF symbol checks (RISC-V toolchain for ESP32-C6) ------------------
 if [[ -f "$ELF" ]]; then
     echo ""
     echo "--- ELF symbol checks ---"
-    # Capture nm output once to avoid SIGPIPE under set -o pipefail when grep -q
-    # exits early after finding its first match.
-    NM_OUT=$(riscv32-esp-elf-nm "$ELF" 2>/dev/null)
-    for sym in app_main ot_manager_init ot_manager_deinit ha_client_init ha_post; do
+    NM_OUT=$(riscv32-esp-elf-nm --demangle "$ELF" 2>/dev/null)
+    for sym in app_main ds18b20_reader_read ds18b20_get_temperature onewire_bus_reset MatterTemperatureMeasurementPluginServerInitCallback; do
         if grep -q " T ${sym}\b\| t ${sym}\b" <<< "$NM_OUT"; then
             pass "symbol present: $sym"
         else
@@ -98,7 +82,7 @@ if [[ -f "$ELF" ]]; then
     done
 fi
 
-# ---- Summary ---------------------------------------------------------------
+# ---- Summary ----------------------------------------------------------------
 echo ""
 echo "==============================="
 echo "Build tests: $PASS passed, $FAIL failed"

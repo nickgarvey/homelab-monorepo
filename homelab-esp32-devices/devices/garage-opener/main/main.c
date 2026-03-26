@@ -10,21 +10,54 @@
 #include "wifi_manager.h"
 #include "ha_client.h"
 #include "neopixel.h"
-#include "secrets/ha_key.h"
+#include "nvs.h"
 
 extern const char ca_bundle_pem_start[] asm("_binary_ca_bundle_pem_start");
 extern const char ca_bundle_pem_end[]   asm("_binary_ca_bundle_pem_end");
 
 static const char *TAG = "garage";
 
-// WiFi credentials
-#define WIFI_SSID        "REDACTED_SSID"
-#define WIFI_PASSWORD    "REDACTED_PASSWORD"
 #define WIFI_MAX_RETRIES 5
+#define NVS_NAMESPACE    "garage"
+#define MAX_STR_LEN      256
 
-// Home Assistant
-#define HA_BASE_URL  "https://homeassistant.home.arpa:8123"
-#define ENTITY_ID    "cover.garage_door"
+static char s_wifi_ssid[MAX_STR_LEN];
+static char s_wifi_pass[MAX_STR_LEN];
+static char s_ha_url[MAX_STR_LEN];
+static char s_ha_entity[MAX_STR_LEN];
+static char s_ha_key[512];
+
+static bool load_secrets(void)
+{
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &h);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "NVS open failed (%s) — flash secrets partition first", esp_err_to_name(err));
+        return false;
+    }
+
+    size_t len;
+    bool ok = true;
+
+    #define READ_STR(nvs_key, buf) do { \
+        len = sizeof(buf); \
+        err = nvs_get_str(h, nvs_key, buf, &len); \
+        if (err != ESP_OK) { \
+            ESP_LOGE(TAG, "NVS key '%s' missing (%s)", nvs_key, esp_err_to_name(err)); \
+            ok = false; \
+        } \
+    } while (0)
+
+    READ_STR("wifi_ssid", s_wifi_ssid);
+    READ_STR("wifi_pass",  s_wifi_pass);
+    READ_STR("ha_url",     s_ha_url);
+    READ_STR("ha_entity",  s_ha_entity);
+    READ_STR("ha_key",     s_ha_key);
+
+    #undef READ_STR
+    nvs_close(h);
+    return ok;
+}
 
 // GPIO
 #define BUTTON_PIN       17
@@ -57,9 +90,9 @@ static const char *TAG = "garage";
 
 static void toggle_garage(void)
 {
-    ESP_LOGI(TAG, "Toggling garage: %s", ENTITY_ID);
-    char payload[128];
-    snprintf(payload, sizeof(payload), "{\"entity_id\":\"%s\"}", ENTITY_ID);
+    ESP_LOGI(TAG, "Toggling garage: %s", s_ha_entity);
+    char payload[MAX_STR_LEN + 32];
+    snprintf(payload, sizeof(payload), "{\"entity_id\":\"%s\"}", s_ha_entity);
     int code = ha_post("/api/services/cover/toggle", payload);
     if (code < 0) {
         ESP_LOGE(TAG, "Toggle request failed");
@@ -70,7 +103,9 @@ static bool poll_garage_status(void)
 {
     ESP_LOGI(TAG, "Polling garage status...");
     char resp[HTTP_BUF_SIZE] = {0};
-    int code = ha_get("/api/states/" ENTITY_ID, resp, HTTP_BUF_SIZE);
+    char url_buf[MAX_STR_LEN + 16];
+    snprintf(url_buf, sizeof(url_buf), "/api/states/%s", s_ha_entity);
+    int code = ha_get(url_buf, resp, HTTP_BUF_SIZE);
 
     if (code != 200) {
         ESP_LOGE(TAG, "Poll failed, HTTP %d", code);
@@ -136,8 +171,15 @@ void app_main(void)
     };
     ESP_ERROR_CHECK(gpio_config(&btn_cfg));
 
-    wifi_manager_init(WIFI_SSID, WIFI_PASSWORD, WIFI_MAX_RETRIES);
-    ha_client_init(HA_BASE_URL, HA_API_KEY, ca_bundle_pem_start);
+    if (!load_secrets()) {
+        ESP_LOGE(TAG, "Cannot start without secrets — flash the NVS secrets partition");
+        neopixel_set(COLOR_RED_R, COLOR_RED_G, COLOR_RED_B);
+        return;
+    }
+    ESP_LOGI(TAG, "Secrets loaded from NVS");
+
+    wifi_manager_init(s_wifi_ssid, s_wifi_pass, WIFI_MAX_RETRIES);
+    ha_client_init(s_ha_url, s_ha_key, ca_bundle_pem_start);
 
     poll_garage_status();
 
