@@ -29,8 +29,8 @@ static const char *TAG = "freezer";
 #else
 #define REPORT_INTERVAL_MS (60 * 1000)
 #endif
-#define DEBUG_NEOPIXEL_PIN       8
-#define DEBUG_NEOPIXEL_POWER_PIN -1
+#define DEBUG_NEOPIXEL_PIN       9
+#define DEBUG_NEOPIXEL_POWER_PIN 20
 
 #define LED_DIM 24
 
