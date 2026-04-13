@@ -1,9 +1,14 @@
 import json
+import socket
 import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from playwright.sync_api import sync_playwright
 
 PORT = 3000
+
+
+class HTTPServerV6(HTTPServer):
+    address_family = socket.AF_INET6  # Binding [::] accepts IPv4 too (via mapped addrs) on Linux
 
 
 class RenderHandler(BaseHTTPRequestHandler):
@@ -77,6 +82,6 @@ class RenderHandler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    server = HTTPServer(("0.0.0.0", PORT), RenderHandler)
+    server = HTTPServerV6(("::", PORT), RenderHandler)
     print(f"playwright-renderer listening on :{PORT}", flush=True)
     server.serve_forever()

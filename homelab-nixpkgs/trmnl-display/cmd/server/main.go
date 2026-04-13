@@ -63,9 +63,13 @@ func deviceRefreshRateSeconds(renderedAt, now time.Time) int {
 	return secs
 }
 
-// baseURL builds the scheme+host prefix from the incoming request.
-// It respects X-Forwarded-Proto for reverse-proxy setups.
-func baseURL(r *http.Request) string {
+// baseURL returns the scheme+host prefix for image URLs.
+// If a base_url is configured, it is used directly; otherwise
+// the prefix is derived from the incoming request.
+func (s *srv) baseURL(r *http.Request) string {
+	if s.cfg.BaseURL != "" {
+		return s.cfg.BaseURL
+	}
 	scheme := "http"
 	if r.TLS != nil {
 		scheme = "https"
@@ -260,7 +264,7 @@ func (s *srv) handleAPISetup(w http.ResponseWriter, r *http.Request) {
 		Status:     http.StatusOK,
 		APIKey:     s.cfg.APIKey,
 		FriendlyID: "TRMNL1",
-		ImageURL:   baseURL(r) + "/dashboard.png",
+		ImageURL:   s.baseURL(r) + "/dashboard.png",
 		Message:    "Welcome to TRMNL Local",
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -295,7 +299,7 @@ func (s *srv) handleAPIDisplay(w http.ResponseWriter, r *http.Request) {
 		Filename:        filename,
 		FirmwareURL:     "",
 		FirmwareVersion: "",
-		ImageURL:        baseURL(r) + "/dashboard.png",
+		ImageURL:        s.baseURL(r) + "/dashboard.png",
 		ImageURLTimeout: 0,
 		RefreshRate:     deviceRefreshRateSeconds(renderedAt, time.Now()),
 		ResetFirmware:   false,
@@ -448,8 +452,13 @@ func main() {
 		mux.ServeHTTP(w, r)
 	})
 
-	log.Printf("listening on %s", cfg.ListenAddr)
-	if err := http.ListenAndServe(cfg.ListenAddr, logged); err != nil {
-		log.Fatalf("server: %v", err)
+	errc := make(chan error, len(cfg.ListenAddrs))
+	for _, addr := range cfg.ListenAddrs {
+		addr := addr
+		log.Printf("listening on %s", addr)
+		go func() {
+			errc <- http.ListenAndServe(addr, logged)
+		}()
 	}
+	log.Fatalf("server: %v", <-errc)
 }

@@ -35,8 +35,8 @@ news_text: "Today's news here."
 	if cfg.PlaywrightURL != "http://playwright:3000" {
 		t.Errorf("PlaywrightURL = %q", cfg.PlaywrightURL)
 	}
-	if cfg.ListenAddr != ":9090" {
-		t.Errorf("ListenAddr = %q", cfg.ListenAddr)
+	if len(cfg.ListenAddrs) != 1 || cfg.ListenAddrs[0] != ":9090" {
+		t.Errorf("ListenAddrs = %q, want [\":9090\"]", cfg.ListenAddrs)
 	}
 	if cfg.PollIntervalMin != 30 {
 		t.Errorf("PollIntervalMin = %d", cfg.PollIntervalMin)
@@ -70,8 +70,8 @@ func TestParse_defaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse error: %v", err)
 	}
-	if cfg.ListenAddr != ":8080" {
-		t.Errorf("default ListenAddr = %q, want :8080", cfg.ListenAddr)
+	if len(cfg.ListenAddrs) != 1 || cfg.ListenAddrs[0] != ":8080" {
+		t.Errorf("default ListenAddrs = %q, want [\":8080\"]", cfg.ListenAddrs)
 	}
 	if cfg.PollIntervalMin != 15 {
 		t.Errorf("default PollIntervalMin = %d, want 15", cfg.PollIntervalMin)
@@ -104,6 +104,19 @@ func TestParse_noAuthKey(t *testing.T) {
 	}
 	if cfg.APIKey == "" {
 		t.Error("APIKey should have a default value")
+	}
+}
+
+func TestParse_listenAddrList(t *testing.T) {
+	cfg, err := Parse([]byte(`listen_addr: ["[::]:8080", "0.0.0.0:8080"]`))
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+	if len(cfg.ListenAddrs) != 2 {
+		t.Fatalf("ListenAddrs = %q, want 2 entries", cfg.ListenAddrs)
+	}
+	if cfg.ListenAddrs[0] != "[::]:8080" || cfg.ListenAddrs[1] != "0.0.0.0:8080" {
+		t.Errorf("ListenAddrs = %q", cfg.ListenAddrs)
 	}
 }
 

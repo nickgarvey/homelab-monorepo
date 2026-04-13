@@ -1,5 +1,6 @@
 playwright_url: "http://10.28.15.209"
 listen_addr: ":8080"
+base_url: "http://trmnl-display.home.arpa"
 poll_interval_minutes: 15
 
 locations:
