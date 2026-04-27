@@ -25,7 +25,7 @@
   outputs = { self, nixpkgs, flake-utils, llama-cpp, nickgarvey-com, playwright-renderer, trmnl-display }:
     flake-utils.lib.eachDefaultSystem (system: {
       packages = {
-        llama-cpp = llama-cpp.dockerImage.${system};
+        llama-cpp = llama-cpp.packages.${system}.default;
         nickgarvey-com = nickgarvey-com.dockerImage.${system};
         playwright-renderer = playwright-renderer.dockerImage.${system};
         trmnl-display = trmnl-display.dockerImage.${system};
