@@ -30,7 +30,6 @@
               trmnlDisplay
               pkgs.cacert
               pkgs.busybox
-              pkgs.dockerTools.fakeNss
               pkgs.tzdata
             ];
             pathsToLink = [ "/bin" "/etc" "/share" ];

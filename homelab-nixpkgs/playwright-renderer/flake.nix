@@ -38,7 +38,6 @@
               pkgs.dejavu_fonts
               pkgs.noto-fonts-cjk-sans
               pkgs.busybox
-              pkgs.dockerTools.fakeNss
             ];
             pathsToLink = [ "/bin" "/lib" "/share" "/etc" "/" ];
           };
