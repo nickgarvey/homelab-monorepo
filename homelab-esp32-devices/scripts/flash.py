@@ -42,6 +42,9 @@ PID_ESP32_S2_CDC = "0002"     # Built-in USB-CDC on ESP32-S2
 
 SYSFS_TTY_BASE = Path("/sys/class/tty")
 
+# Offset of the `nvs` partition in the default partition table.
+NVS_OFFSET = "0x9000"
+
 # Mapping from SOPS key names to (NVS namespace, NVS key) for garage-opener.
 # NVS keys must be ≤15 chars.
 GARAGE_NVS_KEYS = {
@@ -379,8 +382,17 @@ def generate_thread_nvs_partition(build_dir: Path, sops_file: Path) -> Path | No
 
 
 def flash(build_dir: Path, flash_port: str, erase: bool,
-          deep_sleep: bool = False) -> None:
+          deep_sleep: bool = False,
+          extra_images: list[tuple[str, Path]] | None = None,
+          in_bootloader: bool = False) -> None:
     """Flash firmware using esptool.py, reading offsets from flasher_args.json.
+
+    extra_images is a list of (offset, path) pairs — NVS partitions and the like
+    — written in the same esptool invocation as the firmware. Writing them
+    separately would work on a UART adapter but not on a part with native USB
+    (ESP32-S2/S3): esptool resets the chip when it finishes, and between
+    invocations the CDC port belongs to firmware that may not be running yet, so
+    the next invocation finds no port to open.
 
     If deep_sleep is True, a post-flash USB disconnect (esptool exit code 2
     with "Serial data stream stopped") is treated as success — the device
@@ -395,20 +407,32 @@ def flash(build_dir: Path, flash_port: str, erase: bool,
         fargs = json.load(f)
 
     extra = fargs["extra_esptool_args"]
+    # A device already sitting in the ROM download loader must not be reset first:
+    # on a native-USB part the DTR/RTS toggle drops it off the bus and the port
+    # disappears mid-command. This is the recovery path after a full erase, where
+    # there is no firmware left to re-enter the bootloader on its own.
+    before = "no_reset" if in_bootloader else extra["before"]
     base = [
         "esptool.py",
         "--chip", extra["chip"],
         "-p", flash_port,
-        "--before", extra["before"],
+        "--before", before,
         "--after", extra["after"],
     ]
 
+    write_cmd = base + ["write_flash"]
     if erase:
-        run(base + ["erase_flash"])
-
-    write_cmd = base + ["write_flash"] + fargs["write_flash_args"]
+        # --erase-all rather than a preceding `erase_flash` run: that was a second
+        # esptool invocation, and its trailing hard reset left a native-USB part
+        # with an erased flash and therefore no firmware to enumerate the CDC
+        # port. The following write_flash then died with "Could not open
+        # /dev/ttyACM0". Doing it inside one invocation keeps the connection.
+        write_cmd += ["--erase-all"]
+    write_cmd += fargs["write_flash_args"]
     for offset, relpath in fargs["flash_files"].items():
         write_cmd += [offset, str(build_dir / relpath)]
+    for offset, image in (extra_images or []):
+        write_cmd += [offset, str(image)]
 
     print(f"+ {' '.join(write_cmd)}", flush=True)
     result = subprocess.run(write_cmd, capture_output=True, text=True)
@@ -422,21 +446,24 @@ def flash(build_dir: Path, flash_port: str, erase: bool,
         if deep_sleep and "Serial data stream stopped" in output and "(100 %)" in output:
             print("(USB disconnected after flash — device rebooted into deep sleep, flash OK)")
         else:
+            # On a native-USB part (ESP32-S2/S3) the CDC port belongs to whatever
+            # firmware is running. Once the flash is erased there is nothing left
+            # to provide it, so esptool cannot talk to the chip and no amount of
+            # retrying helps — the download loader has to be entered by hand.
+            if not in_bootloader and (
+                "Could not open" in output
+                or "No serial data received" in output
+                or "Failed to connect" in output
+            ):
+                print(
+                    "\nThe chip is not reachable over USB. If a previous flash was\n"
+                    "interrupted the flash may be erased, leaving no firmware to\n"
+                    "enumerate the port. Put it into the download loader by hand:\n"
+                    "  hold BOOT, tap RESET, release BOOT\n"
+                    "then re-run with --in-bootloader.",
+                    file=sys.stderr,
+                )
             sys.exit(result.returncode)
-
-
-def flash_nvs(nvs_bin: Path, flash_port: str, chip: str) -> None:
-    """Flash the NVS partition binary to the NVS offset."""
-    nvs_offset = "0x9000"  # Matches default partition table
-    base = [
-        "esptool.py",
-        "--chip", chip,
-        "-p", flash_port,
-        "--before", "default_reset",
-        "--after", "hard_reset",
-        "write_flash", nvs_offset, str(nvs_bin),
-    ]
-    run(base)
 
 
 def monitor(build_dir: Path, monitor_port: str) -> None:
@@ -626,6 +653,13 @@ def main() -> None:
         action="store_true",
         help="embed Thread network credentials from SOPS into NVS partition",
     )
+    parser.add_argument(
+        "--in-bootloader",
+        action="store_true",
+        help="device is already in the ROM download loader (hold BOOT, tap RESET); "
+             "skips the reset esptool would otherwise do, which knocks a "
+             "native-USB chip off the bus. Use to recover after an interrupted erase.",
+    )
 
     args = parser.parse_args()
 
@@ -672,10 +706,14 @@ def main() -> None:
         print(f"Monitor: {monitor_port}")
     print()
 
-    # Generate and flash NVS secrets partition for devices that need it.
-    # Only when --erase is set — writing the NVS image clobbers the entire
-    # partition including Matter fabric data.  Secrets persist across reboots.
-    nvs_bin = generate_nvs_partition(device_dir, build_dir) if args.erase else None
+    # Generate the NVS secrets partition. Unconditional: generate_nvs_partition
+    # only returns a binary for garage-opener, which is not a Matter device, so
+    # there is no fabric/commissioning data in its NVS to clobber — the region
+    # holds nothing but the SOPS-derived secrets this rebuilds from scratch.
+    # Gating it on --erase (as the Matter devices below need) meant a plain flash
+    # silently left the device unprovisioned, booting straight to
+    # "NVS open failed ... flash secrets partition first".
+    nvs_bin = generate_nvs_partition(device_dir, build_dir)
 
     # Generate Thread NVS partition if --thread flag is set.
     # Only flash NVS secrets partitions when --erase is also set, because writing
@@ -689,25 +727,20 @@ def main() -> None:
     elif args.thread:
         print("Note: --thread without --erase skips NVS flash (credentials persist in NVS)")
 
+    # NVS images go into the same esptool invocation as the firmware rather than
+    # a follow-up one, so the write cannot land on a port that disappeared when
+    # the firmware write reset the chip. See flash() for the full reasoning.
+    extra_images = [(NVS_OFFSET, b) for b in (nvs_bin, thread_nvs_bin) if b]
+
     uses_deep_sleep = device_uses_deep_sleep(device_dir)
-    flash(build_dir, flash_port, args.erase, deep_sleep=uses_deep_sleep)
+    flash(build_dir, flash_port, args.erase, deep_sleep=uses_deep_sleep,
+          extra_images=extra_images, in_bootloader=args.in_bootloader)
 
-    if nvs_bin or thread_nvs_bin:
-        # Read chip type from flasher_args.json for NVS flashing
-        with open(build_dir / "flasher_args.json") as f:
-            chip = json.load(f)["extra_esptool_args"]["chip"]
-
-    if nvs_bin:
-        flash_nvs(nvs_bin, flash_port, chip)
-        # Clean up NVS binary (contains secrets)
-        nvs_bin.unlink()
-        nvs_bin.parent.rmdir()
-
-    if thread_nvs_bin:
-        flash_nvs(thread_nvs_bin, flash_port, chip)
-        # Clean up NVS binary (contains secrets)
-        thread_nvs_bin.unlink()
-        thread_nvs_bin.parent.rmdir()
+    # Clean up NVS binaries (they contain plaintext secrets)
+    for tmp_bin in (nvs_bin, thread_nvs_bin):
+        if tmp_bin:
+            tmp_bin.unlink()
+            tmp_bin.parent.rmdir()
 
     # Display Matter pairing codes
     info = get_pairing_info(device_dir)

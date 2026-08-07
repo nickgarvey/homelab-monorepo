@@ -303,14 +303,48 @@ class TestFlash(unittest.TestCase):
             build_dir = self._make_build_dir(tmpdir)
             flash.flash(build_dir, "/dev/ttyACM1", erase=True)
 
-            # run() called once for erase_flash
-            mock_run.assert_called_once()
-            erase_cmd = mock_run.call_args[0][0]
-            self.assertIn("erase_flash", erase_cmd)
-            # subprocess.run called once for write_flash
+            # The erase must happen inside the single write_flash invocation. A
+            # separate erase_flash run resets the chip, and on a native-USB part
+            # that leaves no firmware to enumerate the CDC port, so the write
+            # that follows cannot open it.
+            mock_run.assert_not_called()
             mock_subproc.assert_called_once()
             write_cmd = mock_subproc.call_args[0][0]
             self.assertIn("write_flash", write_cmd)
+            self.assertIn("--erase-all", write_cmd)
+            self.assertNotIn("erase_flash", write_cmd)
+
+    @patch("subprocess.run")
+    @patch("flash.run")
+    def test_flash_in_bootloader_skips_reset(self, mock_run, mock_subproc):
+        """--in-bootloader must not let esptool reset the chip.
+
+        A device in the ROM download loader has no firmware behind its CDC port,
+        so the DTR/RTS toggle of a reset drops it off the USB bus entirely.
+        """
+        mock_subproc.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            build_dir = self._make_build_dir(tmpdir)
+            flash.flash(build_dir, "/dev/ttyACM1", erase=False, in_bootloader=True)
+
+            write_cmd = mock_subproc.call_args[0][0]
+            self.assertIn("no_reset", write_cmd)
+            self.assertEqual("no_reset", write_cmd[write_cmd.index("--before") + 1])
+
+    @patch("subprocess.run")
+    @patch("flash.run")
+    def test_flash_writes_extra_images_in_same_invocation(self, mock_run, mock_subproc):
+        """NVS images must ride along with the firmware, not a follow-up call."""
+        mock_subproc.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            build_dir = self._make_build_dir(tmpdir)
+            flash.flash(build_dir, "/dev/ttyACM1", erase=False,
+                        extra_images=[("0x9000", Path("/tmp/nvs.bin"))])
+
+            mock_subproc.assert_called_once()
+            write_cmd = mock_subproc.call_args[0][0]
+            self.assertIn("0x9000", write_cmd)
+            self.assertIn("/tmp/nvs.bin", write_cmd)
 
     def test_flash_missing_flasher_args_raises(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -562,7 +596,35 @@ class TestThreadNvsFlashGuard(unittest.TestCase):
 
         mock_thread_nvs.assert_not_called()
 
-    @patch("flash.flash_nvs")
+    @patch("flash.monitor")
+    @patch("flash.flash")
+    @patch("flash.generate_thread_nvs_partition")
+    @patch("flash.generate_nvs_partition", return_value=None)
+    @patch("flash.detect_port", return_value=("/dev/ttyACM1", "/dev/ttyACM1"))
+    @patch("flash.build")
+    @patch("flash.device_uses_deep_sleep", return_value=False)
+    @patch("time.sleep")
+    def test_garage_nvs_generated_without_erase(
+        self, mock_sleep, mock_deep_sleep, mock_build,
+        mock_detect, mock_nvs, mock_thread_nvs, mock_flash, mock_monitor
+    ):
+        """garage-opener secrets must be provisioned on a plain flash.
+
+        They used to be gated on --erase alongside the Matter devices, but
+        garage-opener has no fabric data to protect, so a normal flash left the
+        device unprovisioned and it booted straight to "NVS open failed".
+        """
+        mock_build.return_value = Path("/nix/store/fake-firmware")
+
+        with patch("sys.argv", ["flash.py", "--no-monitor", "devices/garage-opener"]):
+            with patch("pathlib.Path.is_dir", return_value=True):
+                try:
+                    flash.main()
+                except SystemExit:
+                    pass
+
+        mock_nvs.assert_called_once()
+
     @patch("flash.monitor")
     @patch("flash.flash")
     @patch("flash.generate_thread_nvs_partition")
@@ -574,8 +636,7 @@ class TestThreadNvsFlashGuard(unittest.TestCase):
     @patch("time.sleep")
     def test_thread_nvs_flashed_with_erase(
         self, mock_sleep, mock_deep_sleep, mock_jtag, mock_build,
-        mock_detect, mock_nvs, mock_thread_nvs, mock_flash, mock_monitor,
-        mock_flash_nvs
+        mock_detect, mock_nvs, mock_thread_nvs, mock_flash, mock_monitor
     ):
         """--thread with --erase SHOULD call generate_thread_nvs_partition."""
         mock_build.return_value = Path("/nix/store/fake-firmware")

@@ -431,6 +431,11 @@
         pkgs.sops
         pkgs.age
       ];
+
+      # tests/run_all.sh drives cmake directly and needs the same Unity checkout
+      # the packaged test derivation uses; without it the build fails with
+      # "Cannot find source file: /src/unity.c".
+      UNITY_SOURCE_DIR = unity;
     };
 
     packages.${system} = {
