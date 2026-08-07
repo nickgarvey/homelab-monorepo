@@ -34,6 +34,12 @@ nix develop
 
 ---
 
+## Troubleshooting: JTAG timeouts
+
+If OpenOCD repeatedly fails with `LIBUSB_ERROR_TIMEOUT` even though the target is powered and wired correctly, **reset the ESP-Prog-2** by unplugging and re-plugging its USB cable. The programmer can get into a stuck state where it finds the device but can't communicate over JTAG until power-cycled.
+
+---
+
 ## Identify the ports
 
 When plugged in, the ESP-Prog-2 appears as two `/dev/ttyACM*` nodes. Identify them:

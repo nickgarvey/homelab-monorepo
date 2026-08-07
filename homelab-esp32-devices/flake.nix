@@ -212,6 +212,90 @@
     };
 
     # --------------------------------------------------------------------------
+    # laundry-detector
+    # --------------------------------------------------------------------------
+
+    laundryComponents = pkgs.stdenv.mkDerivation {
+      name = "laundry-detector-idf-components";
+      src = cleanSrc self;
+      outputHashAlgo = "sha256";
+      outputHashMode = "recursive";
+      outputHash = "sha256-l+uYi5vu3Ko2XwCsHYy9EKS6okqZy5o/wpVOQgxVJDE="; # laundry-components
+      nativeBuildInputs = [ pkgs.esp-idf-full ];
+      phases = [ "unpackPhase" "buildPhase" ];
+      buildPhase = ''
+        cd devices/laundry-detector
+        export HOME=$TMPDIR
+        export IDF_COMPONENT_MANAGER_CACHE_DIR=$TMPDIR/idf-component-cache
+        idf.py reconfigure || true
+        if [ ! -d managed_components ]; then
+          echo "ERROR: managed_components not created by idf.py reconfigure"
+          exit 1
+        fi
+        mkdir -p $out
+        cp -r managed_components $out/managed_components
+        cp dependencies.lock $out/dependencies.lock
+      '';
+    };
+
+    laundryFirmware = pkgs.stdenv.mkDerivation {
+      name = "laundry-detector-firmware";
+      src = cleanSrc self;
+      nativeBuildInputs = [ pkgs.esp-idf-full pkgs.cmake pkgs.ninja ];
+      dontConfigure = true;
+      postUnpack = ''
+        cp -r ${laundryComponents}/managed_components $sourceRoot/devices/laundry-detector/managed_components
+        chmod -R u+w $sourceRoot/devices/laundry-detector/managed_components
+        cp ${laundryComponents}/dependencies.lock $sourceRoot/devices/laundry-detector/dependencies.lock
+
+        # Patch upstream bug in esp_matter 1.4.2 (same as freezer)
+        CLOSURE_H="$sourceRoot/devices/laundry-detector/managed_components/espressif__esp_matter/connectedhomeip/connectedhomeip/src/app/clusters/closure-control-server/closure-control-cluster-objects.h"
+        sed -i 's|bool operator==(const Structs::OverallCurrentStateStruct::Type \& rhs) const|bool operator==(const GenericOverallCurrentState \& rhs) const { return operator==(static_cast<const Structs::OverallCurrentStateStruct::Type \&>(rhs)); }\n    bool operator==(const Structs::OverallCurrentStateStruct::Type \& rhs) const|' "$CLOSURE_H"
+        sed -i 's|bool operator==(const Structs::OverallTargetStateStruct::Type \& rhs) const|bool operator==(const GenericOverallTargetState \& rhs) const { return operator==(static_cast<const Structs::OverallTargetStateStruct::Type \&>(rhs)); }\n    bool operator==(const Structs::OverallTargetStateStruct::Type \& rhs) const|' "$CLOSURE_H"
+      '';
+      buildPhase = ''
+        export HOME=$TMPDIR
+        CACHE_DIR="$TMPDIR/.cache/Espressif/ComponentManager"
+        mkdir -p "$CACHE_DIR"
+        for src_dir in ${laundryComponents}/managed_components/*/; do
+          name=$(basename "$src_dir")
+          version=$(grep -m1 '^version:' "$src_dir/idf_component.yml" \
+                    | sed 's/.*version: *//; s/"//g; s/[[:space:]]//g')
+          hash=$(cat "$src_dir/.component_hash")
+          cache_name="''${name}_''${version}_''${hash:0:8}"
+          cp -r "$src_dir" "$CACHE_DIR/$cache_name"
+        done
+        echo "Component cache pre-populated ($(ls $CACHE_DIR | wc -l) components)"
+        idf.py -C devices/laundry-detector reconfigure
+        idf.py -C devices/laundry-detector build
+      '';
+      installPhase = ''
+        mkdir -p $out/bootloader $out/partition_table
+        cp devices/laundry-detector/build/laundry_detector.bin $out/
+        cp devices/laundry-detector/build/laundry_detector.elf $out/
+        cp devices/laundry-detector/build/bootloader/bootloader.bin $out/bootloader/
+        cp devices/laundry-detector/build/partition_table/partition-table.bin $out/partition_table/
+        cp devices/laundry-detector/build/flash_args $out/ 2>/dev/null || true
+        cp devices/laundry-detector/build/flasher_args.json $out/ 2>/dev/null || true
+      '';
+    };
+
+    checkLaundry = mkFirmwareCheck {
+      name = "laundry-detector";
+      firmware = laundryFirmware;
+      binName = "laundry_detector";
+      chip = "esp32c6";
+      nmTool = "riscv32-esp-elf-nm";
+      symbols = [
+        "app_main"
+        "lis3dh_init"
+        "max17048_read_soc"
+        "vibration_monitor_feed_sample"
+        "neopixel_init"
+      ];
+    };
+
+    # --------------------------------------------------------------------------
     # Unit tests (native, host gcc)
     # --------------------------------------------------------------------------
 
@@ -355,6 +439,8 @@
       freezer-temp-sensor-components = freezerComponents;
       garage-opener = garageFirmware;
       garage-opener-components = garageComponents;
+      laundry-detector = laundryFirmware;
+      laundry-detector-components = laundryComponents;
       inherit tests;
     };
 
@@ -362,6 +448,7 @@
       unit-tests = tests;
       freezer-temp-sensor = checkFreezer;
       garage-opener = checkGarage;
+      laundry-detector = checkLaundry;
     };
   };
 }

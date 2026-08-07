@@ -18,6 +18,7 @@ extern "C" {
 #include <esp_matter_endpoint.h>
 #include <esp_openthread_types.h>
 #include <platform/ESP32/OpenthreadLauncher.h>
+#include <platform/ThreadStackManager.h>
 #include <setup_payload/OnboardingCodesUtil.h>
 #include <app/server/Dnssd.h>
 
@@ -179,6 +180,73 @@ static void temp_report_task(void *arg)
 }
 
 /* -------------------------------------------------------------------------- */
+/* Thread credential provisioning from NVS                                    */
+/* -------------------------------------------------------------------------- */
+
+static bool s_thread_provisioned = false;
+
+/**
+ * Read pre-provisioned Thread dataset TLV from NVS (written by flash.py --thread)
+ * and provision the Thread stack so the device joins the network.
+ *
+ * Must be called AFTER esp_matter::start() (which initializes OpenThread).
+ */
+static void provision_thread_from_nvs(void)
+{
+    nvs_handle_t nvs;
+    esp_err_t err = nvs_open("thread", NVS_READONLY, &nvs);
+    if (err != ESP_OK) {
+        ESP_LOGI(TAG, "No thread NVS namespace — skipping Thread provisioning");
+        return;
+    }
+
+    size_t len = 0;
+    err = nvs_get_blob(nvs, "dataset_tlv", NULL, &len);
+    if (err != ESP_OK || len == 0) {
+        ESP_LOGI(TAG, "No dataset_tlv in NVS — skipping Thread provisioning");
+        nvs_close(nvs);
+        return;
+    }
+
+    uint8_t *tlv = (uint8_t *)malloc(len);
+    if (!tlv) {
+        ESP_LOGE(TAG, "Failed to allocate %u bytes for Thread dataset", (unsigned)len);
+        nvs_close(nvs);
+        return;
+    }
+
+    err = nvs_get_blob(nvs, "dataset_tlv", tlv, &len);
+    nvs_close(nvs);
+
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read dataset_tlv from NVS: %d", err);
+        free(tlv);
+        return;
+    }
+
+    ESP_LOGI(TAG, "Found Thread dataset in NVS (%u bytes), provisioning...", (unsigned)len);
+
+    CHIP_ERROR chipErr = chip::DeviceLayer::ThreadStackMgr().SetThreadProvision(
+        chip::ByteSpan(tlv, len));
+    if (chipErr != CHIP_NO_ERROR) {
+        ESP_LOGE(TAG, "SetThreadProvision failed: %" CHIP_ERROR_FORMAT, chipErr.Format());
+        free(tlv);
+        return;
+    }
+
+    chipErr = chip::DeviceLayer::ThreadStackMgr().SetThreadEnabled(true);
+    free(tlv);
+
+    if (chipErr != CHIP_NO_ERROR) {
+        ESP_LOGE(TAG, "SetThreadEnabled failed: %" CHIP_ERROR_FORMAT, chipErr.Format());
+        return;
+    }
+
+    s_thread_provisioned = true;
+    ESP_LOGI(TAG, "Thread provisioned from NVS — device will join network");
+}
+
+/* -------------------------------------------------------------------------- */
 /* app_main                                                                   */
 /* -------------------------------------------------------------------------- */
 
@@ -247,7 +315,12 @@ extern "C" void app_main(void)
         return;
     }
     ESP_LOGI(TAG, "Matter stack started");
-    PrintOnboardingCodes(chip::RendezvousInformationFlags(chip::RendezvousInformationFlag::kOnNetwork));
+
+    /* 5a. Provision Thread from NVS if flash.py --thread was used */
+    provision_thread_from_nvs();
+
+    PrintOnboardingCodes(chip::RendezvousInformationFlags(
+        chip::RendezvousInformationFlag::kOnNetwork));
 
     set_debug_led(LED_DIM, LED_DIM / 2, 0); /* amber: waiting for commissioning */
 

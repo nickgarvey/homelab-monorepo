@@ -23,6 +23,7 @@ FLAKE = REPO_ROOT / "flake.nix"
 DEVICES = {
     "freezer-temp-sensor": "# freezer-components",
     "garage-opener": "# garage-components",
+    "laundry-detector": "# laundry-components",
 }
 
 

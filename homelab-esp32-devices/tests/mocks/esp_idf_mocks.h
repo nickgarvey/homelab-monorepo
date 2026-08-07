@@ -161,6 +161,66 @@ static inline esp_err_t esp_sleep_enable_timer_wakeup(uint64_t time_us)
 extern int g_deep_sleep_count;
 void esp_deep_sleep(uint64_t time_us);
 
+/* ---- I2C master stubs --------------------------------------------------- */
+typedef struct I2cMasterBus *i2c_master_bus_handle_t;
+typedef struct I2cMasterDev *i2c_master_dev_handle_t;
+
+typedef enum { I2C_CLK_SRC_DEFAULT = 0 } i2c_clock_source_t;
+
+typedef struct {
+    int i2c_port;
+    int sda_io_num;
+    int scl_io_num;
+    i2c_clock_source_t clk_source;
+    int glitch_ignore_cnt;
+    int intr_priority;
+    struct { bool enable_internal_pullup; } flags;
+} i2c_master_bus_config_t;
+
+typedef struct {
+    uint16_t device_address;
+    int dev_addr_length;
+    uint32_t scl_speed_hz;
+} i2c_device_config_t;
+
+#define I2C_ADDR_BIT_LEN_7 0
+
+esp_err_t i2c_new_master_bus(const i2c_master_bus_config_t *config,
+                              i2c_master_bus_handle_t *ret_handle);
+esp_err_t i2c_master_bus_add_device(i2c_master_bus_handle_t bus,
+                                     const i2c_device_config_t *config,
+                                     i2c_master_dev_handle_t *ret_handle);
+esp_err_t i2c_master_transmit_receive(i2c_master_dev_handle_t dev,
+                                       const uint8_t *write_buffer,
+                                       size_t write_size,
+                                       uint8_t *read_buffer,
+                                       size_t read_size,
+                                       int xfer_timeout_ms);
+esp_err_t i2c_master_transmit(i2c_master_dev_handle_t dev,
+                               const uint8_t *write_buffer,
+                               size_t write_size,
+                               int xfer_timeout_ms);
+esp_err_t i2c_master_receive(i2c_master_dev_handle_t dev,
+                              uint8_t *read_buffer,
+                              size_t read_size,
+                              int xfer_timeout_ms);
+
+/* ---- Deep sleep wakeup cause -------------------------------------------- */
+typedef enum {
+    ESP_SLEEP_WAKEUP_UNDEFINED = 0,
+    ESP_SLEEP_WAKEUP_TIMER     = 2,
+    ESP_SLEEP_WAKEUP_GPIO      = 7,
+} esp_sleep_source_t;
+
+typedef int esp_deepsleep_gpio_wake_up_mode_t;
+#define ESP_GPIO_WAKEUP_GPIO_HIGH 1
+
+extern esp_sleep_source_t g_mock_wakeup_cause;
+esp_sleep_source_t esp_sleep_get_wakeup_cause(void);
+esp_err_t esp_deep_sleep_enable_gpio_wakeup(uint64_t gpio_pin_mask,
+                                             esp_deepsleep_gpio_wake_up_mode_t mode);
+void esp_deep_sleep_start(void);
+
 /* ---- GPIO / LED strip stubs (neopixel) ---------------------------------- */
 typedef uint64_t gpio_mode_t;
 #define GPIO_MODE_OUTPUT 2
