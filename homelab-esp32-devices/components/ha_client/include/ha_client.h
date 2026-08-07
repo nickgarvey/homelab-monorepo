@@ -7,11 +7,10 @@
  *
  * Must be called once before ha_post / ha_get.
  *
- * @param base_url  e.g. "https://homeassistant.home.arpa:8123"
+ * @param base_url  e.g. "https://homeassistant.home.garvey.sh:8123"
  * @param api_key   Long-lived access token
- * @param ca_pem    PEM-encoded CA bundle for TLS verification (NULL-terminated string)
  */
-void ha_client_init(const char *base_url, const char *api_key, const char *ca_pem);
+void ha_client_init(const char *base_url, const char *api_key);
 
 /**
  * POST a JSON body to a HA API path.

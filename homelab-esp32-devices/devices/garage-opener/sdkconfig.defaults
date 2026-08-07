@@ -1,3 +1,10 @@
 CONFIG_IDF_TARGET="esp32s2"
 CONFIG_ESP_CONSOLE_USB_CDC=y
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+# Trust roots come from ESP-IDF's Mozilla CA bundle rather than a pinned PEM, so
+# Let's Encrypt hierarchy rotations don't silently break TLS on a device that
+# needs a physical reflash to recover. CMN (43 CAs) is the smaller subset and
+# already contains ISRG Root X1 and X2, which is what HA's chain terminates at.
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_CMN=y

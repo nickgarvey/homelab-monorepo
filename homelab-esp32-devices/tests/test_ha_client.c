@@ -6,12 +6,11 @@
 
 static const char *TEST_BASE_URL = "https://ha.example.com:8123";
 static const char *TEST_API_KEY  = "test-api-key-abc123";
-static const char *TEST_CA_PEM   = "-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----";
 
 static void setup(void)
 {
     http_mock_reset();
-    ha_client_init(TEST_BASE_URL, TEST_API_KEY, TEST_CA_PEM);
+    ha_client_init(TEST_BASE_URL, TEST_API_KEY);
 }
 
 void test_ha_post_builds_correct_url(void)

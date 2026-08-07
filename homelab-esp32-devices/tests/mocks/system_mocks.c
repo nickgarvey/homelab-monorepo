@@ -17,14 +17,6 @@ void esp_deep_sleep(uint64_t time_us)
     g_deep_sleep_count++;
 }
 
-/* ---- Linker symbols for embedded CA cert (EMBED_TXTFILES in IDF) ------- */
-/*
- * main.c declares:
- *   extern const char ca_bundle_pem_start[] asm("_binary_ca_bundle_pem_start");
- * The linker must find that symbol; provide an empty stub here.
- */
-const char _binary_ca_bundle_pem_start[] = "";
-const char _binary_ca_bundle_pem_end[]   = "";
 
 /* ---- Deep sleep wakeup cause ------------------------------------------- */
 
@@ -56,4 +48,17 @@ void system_mock_reset(void)
     g_vTaskDelay_count = 0;
     g_vTaskDelay_max   = 0;
     g_mock_wakeup_cause = ESP_SLEEP_WAKEUP_UNDEFINED;
+}
+
+/* ---- Certificate bundle ------------------------------------------------- */
+/*
+ * ha_client passes esp_crt_bundle_attach to esp_http_client so mbedTLS verifies
+ * against ESP-IDF's Mozilla root bundle. On the host there is no TLS stack to
+ * attach to -- the tests only assert on URLs and headers -- so this just has to
+ * exist for the link.
+ */
+esp_err_t esp_crt_bundle_attach(void *conf)
+{
+    (void)conf;
+    return ESP_OK;
 }

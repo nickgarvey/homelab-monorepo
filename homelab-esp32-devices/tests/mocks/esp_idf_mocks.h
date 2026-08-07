@@ -121,7 +121,7 @@ typedef struct {
     http_event_handle_cb  event_handler;
     void                 *user_data;
     int                   transport_type;
-    const char           *cert_pem;
+    esp_err_t           (*crt_bundle_attach)(void *conf);
     int                   timeout_ms;
 } esp_http_client_config_t;
 
@@ -130,6 +130,9 @@ typedef struct EspHttpClient *esp_http_client_handle_t;
 #define HTTP_TRANSPORT_OVER_SSL 2
 #define HTTP_METHOD_POST        1
 #define HTTP_METHOD_GET         0
+
+/* Provided by esp-tls on target; host tests only need the symbol to link. */
+esp_err_t esp_crt_bundle_attach(void *conf);
 
 esp_http_client_handle_t esp_http_client_init(const esp_http_client_config_t *config);
 esp_err_t esp_http_client_set_method(esp_http_client_handle_t client, int method);

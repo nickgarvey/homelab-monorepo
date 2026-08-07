@@ -12,8 +12,6 @@
 #include "neopixel.h"
 #include "nvs.h"
 
-extern const char ca_bundle_pem_start[] asm("_binary_ca_bundle_pem_start");
-extern const char ca_bundle_pem_end[]   asm("_binary_ca_bundle_pem_end");
 
 static const char *TAG = "garage";
 
@@ -71,6 +69,34 @@ static bool load_secrets(void)
 #define DEBOUNCE_MS            50
 
 #define LED_BRIGHTNESS 128
+
+// Button presses are latched by a GPIO interrupt rather than sampled in the main
+// loop. poll_garage_status() blocks for over a second on the HTTPS round trip,
+// and the loop cannot read the pin while it does -- so any press that began and
+// ended inside that window was missed entirely. In practice the button only
+// worked if you held it for several seconds, long enough to still be down when
+// the poll returned. The ISR captures the edge whenever it happens.
+static volatile bool    s_button_latched = false;
+static volatile int64_t s_last_press_us  = 0;
+
+// Registered with gpio_install_isr_service(0), i.e. the shared GPIO ISR without
+// ESP_INTR_FLAG_IRAM, so this handler may call flash-resident code.
+static void button_isr_handler(void *arg)
+{
+    (void)arg;
+    int64_t now_us = esp_timer_get_time();
+
+    // Contact bounce: ignore edges arriving inside the debounce window.
+    if (now_us - s_last_press_us < (int64_t)DEBOUNCE_MS * 1000) {
+        return;
+    }
+    s_last_press_us = now_us;
+    s_button_latched = true;
+
+    // Light the button immediately. The main loop may be several seconds from
+    // servicing this, and a physical button with no feedback feels broken.
+    gpio_set_level(BUTTON_LED_PIN, 1);
+}
 
 // Status colors
 #define COLOR_RED_R    LED_BRIGHTNESS
@@ -167,9 +193,11 @@ void app_main(void)
         .mode = GPIO_MODE_INPUT,
         .pull_down_en = GPIO_PULLDOWN_ENABLE,
         .pull_up_en = GPIO_PULLUP_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE,
+        .intr_type = GPIO_INTR_POSEDGE,
     };
     ESP_ERROR_CHECK(gpio_config(&btn_cfg));
+    ESP_ERROR_CHECK(gpio_install_isr_service(0));
+    ESP_ERROR_CHECK(gpio_isr_handler_add(BUTTON_PIN, button_isr_handler, NULL));
 
     if (!load_secrets()) {
         ESP_LOGE(TAG, "Cannot start without secrets — flash the NVS secrets partition");
@@ -179,40 +207,33 @@ void app_main(void)
     ESP_LOGI(TAG, "Secrets loaded from NVS");
 
     wifi_manager_init(s_wifi_ssid, s_wifi_pass, WIFI_MAX_RETRIES);
-    ha_client_init(s_ha_url, s_ha_key, ca_bundle_pem_start);
+    ha_client_init(s_ha_url, s_ha_key);
 
     poll_garage_status();
 
-    int last_button_reading = 0;
-    int button_state = 0;
-    int64_t last_debounce_time = 0;
     int64_t button_led_on_at = 0;
     int64_t last_poll_time = esp_timer_get_time() / 1000;
 
     while (1) {
         int64_t now = esp_timer_get_time() / 1000;
 
-        int reading = gpio_get_level(BUTTON_PIN);
-        if (reading != last_button_reading) {
-            last_debounce_time = now;
-        }
-        if ((now - last_debounce_time) > DEBOUNCE_MS && reading != button_state) {
-            button_state = reading;
-            if (button_state == 1) {
-                ESP_LOGI(TAG, "Button pressed.");
-                gpio_set_level(BUTTON_LED_PIN, 1);
-                button_led_on_at = now;
-                if (wifi_manager_connected()) {
-                    toggle_garage();
-                    vTaskDelay(pdMS_TO_TICKS(100));
-                    poll_garage_status();
-                } else {
-                    ESP_LOGW(TAG, "WiFi not connected");
-                    neopixel_set(COLOR_YELLOW_R, COLOR_YELLOW_G, COLOR_YELLOW_B);
-                }
+        if (s_button_latched) {
+            s_button_latched = false;
+            ESP_LOGI(TAG, "Button pressed.");
+            // The ISR already lit the button LED; just start its timeout here.
+            button_led_on_at = now;
+            if (wifi_manager_connected()) {
+                toggle_garage();
+                vTaskDelay(pdMS_TO_TICKS(100));
+                poll_garage_status();
+                // Count the poll we just did, so the periodic one below does not
+                // immediately fire a second request.
+                last_poll_time = esp_timer_get_time() / 1000;
+            } else {
+                ESP_LOGW(TAG, "WiFi not connected");
+                neopixel_set(COLOR_YELLOW_R, COLOR_YELLOW_G, COLOR_YELLOW_B);
             }
         }
-        last_button_reading = reading;
 
         if (button_led_on_at != 0 && (now - button_led_on_at) >= BUTTON_LED_DURATION_MS) {
             gpio_set_level(BUTTON_LED_PIN, 0);

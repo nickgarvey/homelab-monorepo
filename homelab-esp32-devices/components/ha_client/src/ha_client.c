@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "esp_http_client.h"
+#include "esp_crt_bundle.h"
 #include "esp_log.h"
 
 static const char *TAG = "ha_client";
@@ -13,7 +14,6 @@ static const char *TAG = "ha_client";
 
 static char s_base_url[HA_URL_MAX];
 static char s_api_key[HA_AUTH_MAX];
-static const char *s_ca_pem;
 
 typedef struct {
     char *buf;
@@ -36,13 +36,12 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt)
     return ESP_OK;
 }
 
-void ha_client_init(const char *base_url, const char *api_key, const char *ca_pem)
+void ha_client_init(const char *base_url, const char *api_key)
 {
     strncpy(s_base_url, base_url, sizeof(s_base_url) - 1);
     s_base_url[sizeof(s_base_url) - 1] = '\0';
     strncpy(s_api_key, api_key, sizeof(s_api_key) - 1);
     s_api_key[sizeof(s_api_key) - 1] = '\0';
-    s_ca_pem = ca_pem;
 }
 
 int ha_post(const char *path, const char *json_body)
@@ -61,7 +60,7 @@ int ha_post(const char *path, const char *json_body)
         .event_handler = http_event_handler,
         .user_data = &body,
         .transport_type = HTTP_TRANSPORT_OVER_SSL,
-        .cert_pem = s_ca_pem,
+        .crt_bundle_attach = esp_crt_bundle_attach,
         .timeout_ms = 10000,
     };
     esp_http_client_handle_t client = esp_http_client_init(&config);
@@ -98,7 +97,7 @@ int ha_get(const char *path, char *out_buf, int out_cap)
         .event_handler = http_event_handler,
         .user_data = &body,
         .transport_type = HTTP_TRANSPORT_OVER_SSL,
-        .cert_pem = s_ca_pem,
+        .crt_bundle_attach = esp_crt_bundle_attach,
         .timeout_ms = 10000,
     };
     esp_http_client_handle_t client = esp_http_client_init(&config);
