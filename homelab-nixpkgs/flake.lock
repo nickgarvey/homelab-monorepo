@@ -18,38 +18,6 @@
         "type": "github"
       }
     },
-    "llama-cpp": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "path": "./llama-cpp",
-        "type": "path"
-      },
-      "original": {
-        "path": "./llama-cpp",
-        "type": "path"
-      },
-      "parent": []
-    },
-    "nickgarvey-com": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "path": "./nickgarvey-com",
-        "type": "path"
-      },
-      "original": {
-        "path": "./nickgarvey-com",
-        "type": "path"
-      },
-      "parent": []
-    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1771369470,
@@ -85,8 +53,6 @@
     "root": {
       "inputs": {
         "flake-utils": "flake-utils",
-        "llama-cpp": "llama-cpp",
-        "nickgarvey-com": "nickgarvey-com",
         "nixpkgs": "nixpkgs",
         "playwright-renderer": "playwright-renderer",
         "trmnl-display": "trmnl-display"
