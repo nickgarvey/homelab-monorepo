@@ -8,12 +8,10 @@ func TestParse_full(t *testing.T) {
 	yaml := `
 playwright_url: "http://playwright:3000"
 listen_addr: ":9090"
-poll_interval_minutes: 30
 locations:
   - name: "Sunnyvale"
     lat: 37.3688
     lon: -122.0363
-    show_weekly: true
     show_uv: true
   - name: "San Francisco"
     lat: 37.7749
@@ -25,7 +23,6 @@ homeassistant:
   url: "https://ha.home.arpa:8123"
   token: "abc123"
   garage_entity: "cover.garage_door"
-  ca_cert: "/config/ca.pem"
 news_text: "Today's news here."
 `
 	cfg, err := Parse([]byte(yaml))
@@ -38,18 +35,12 @@ news_text: "Today's news here."
 	if len(cfg.ListenAddrs) != 1 || cfg.ListenAddrs[0] != ":9090" {
 		t.Errorf("ListenAddrs = %q, want [\":9090\"]", cfg.ListenAddrs)
 	}
-	if cfg.PollIntervalMin != 30 {
-		t.Errorf("PollIntervalMin = %d", cfg.PollIntervalMin)
-	}
 	if len(cfg.Locations) != 2 {
 		t.Fatalf("len(Locations) = %d", len(cfg.Locations))
 	}
 	loc := cfg.Locations[0]
 	if loc.Name != "Sunnyvale" {
 		t.Errorf("Locations[0].Name = %q", loc.Name)
-	}
-	if !loc.ShowWeekly {
-		t.Error("Locations[0].ShowWeekly should be true")
 	}
 	if !loc.ShowUV {
 		t.Error("Locations[0].ShowUV should be true")
@@ -72,9 +63,6 @@ func TestParse_defaults(t *testing.T) {
 	}
 	if len(cfg.ListenAddrs) != 1 || cfg.ListenAddrs[0] != ":8080" {
 		t.Errorf("default ListenAddrs = %q, want [\":8080\"]", cfg.ListenAddrs)
-	}
-	if cfg.PollIntervalMin != 15 {
-		t.Errorf("default PollIntervalMin = %d, want 15", cfg.PollIntervalMin)
 	}
 	if cfg.PlaywrightURL != "http://localhost:3000" {
 		t.Errorf("default PlaywrightURL = %q", cfg.PlaywrightURL)

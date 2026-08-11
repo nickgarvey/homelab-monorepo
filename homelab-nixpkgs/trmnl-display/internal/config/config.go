@@ -8,11 +8,10 @@ import (
 )
 
 type Location struct {
-	Name       string  `yaml:"name"`
-	Lat        float64 `yaml:"lat"`
-	Lon        float64 `yaml:"lon"`
-	ShowWeekly bool    `yaml:"show_weekly"`
-	ShowUV     bool    `yaml:"show_uv"`
+	Name   string  `yaml:"name"`
+	Lat    float64 `yaml:"lat"`
+	Lon    float64 `yaml:"lon"`
+	ShowUV bool    `yaml:"show_uv"`
 }
 
 type GoogleCalendar struct {
@@ -24,7 +23,6 @@ type HomeAssistant struct {
 	URL          string `yaml:"url"`
 	Token        string `yaml:"token"`
 	GarageEntity string `yaml:"garage_entity"`
-	CACert       string `yaml:"ca_cert"`
 }
 
 type LLM struct {
@@ -51,7 +49,6 @@ type Config struct {
 	HomeAssistant   HomeAssistant  `yaml:"homeassistant"`
 	LLM             LLM            `yaml:"llm"`
 	NewsText        string         `yaml:"news_text"`
-	PollIntervalMin int            `yaml:"poll_interval_minutes"`
 	APIKey          string         `yaml:"api_key"`
 }
 
@@ -87,9 +84,6 @@ func Parse(data []byte) (*Config, error) {
 	}
 	if len(cfg.ListenAddrs) == 0 {
 		cfg.ListenAddrs = ListenAddrs{":8080"}
-	}
-	if cfg.PollIntervalMin == 0 {
-		cfg.PollIntervalMin = 15
 	}
 	if cfg.PlaywrightURL == "" {
 		cfg.PlaywrightURL = "http://localhost:3000"

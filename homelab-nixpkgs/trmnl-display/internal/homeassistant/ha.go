@@ -1,12 +1,9 @@
 package homeassistant
 
 import (
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"time"
 )
 
@@ -20,33 +17,11 @@ type haStateResponse struct {
 	State string `json:"state"`
 }
 
-// NewClient creates an HTTP client optionally configured with a custom CA cert.
-func NewClient(caCertPath string) (*http.Client, error) {
-	transport := &http.Transport{}
-	if caCertPath != "" {
-		caCert, err := os.ReadFile(caCertPath)
-		if err != nil {
-			return nil, fmt.Errorf("read CA cert %s: %w", caCertPath, err)
-		}
-		pool := x509.NewCertPool()
-		if !pool.AppendCertsFromPEM(caCert) {
-			return nil, fmt.Errorf("failed to parse CA cert from %s", caCertPath)
-		}
-		transport.TLSClientConfig = &tls.Config{RootCAs: pool}
-	}
+// NewClient creates an HTTP client for talking to Home Assistant.
+func NewClient() *http.Client {
 	return &http.Client{
-		Transport: transport,
+		Transport: &http.Transport{},
 		Timeout:   10 * time.Second,
-	}, nil
-}
-
-// NewInsecureClient creates an HTTP client that skips TLS verification (for tests).
-func NewInsecureClient() *http.Client {
-	return &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
-		},
-		Timeout: 10 * time.Second,
 	}
 }
 

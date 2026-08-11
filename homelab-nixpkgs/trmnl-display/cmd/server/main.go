@@ -396,10 +396,7 @@ func main() {
 		log.Fatalf("load config: %v", err)
 	}
 
-	haClient, err := homeassistant.NewClient(cfg.HomeAssistant.CACert)
-	if err != nil {
-		log.Fatalf("create HA HTTP client: %v", err)
-	}
+	haClient := homeassistant.NewClient()
 
 	s := &srv{
 		cfg:      cfg,

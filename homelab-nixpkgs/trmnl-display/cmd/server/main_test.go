@@ -14,7 +14,7 @@ import (
 
 func newTestSrv(pngReady bool) *srv {
 	s := &srv{
-		cfg:   &config.Config{APIKey: "test-key", PollIntervalMin: 15},
+		cfg:   &config.Config{APIKey: "test-key"},
 		cache: &dataCache{},
 	}
 	if pngReady {
