@@ -84,12 +84,65 @@
             platforms = supportedSystems;
           };
         };
+
+      # The model artifact is 17 GiB and host-specific, so it stays out of the
+      # image and is bind-mounted at /models. The CUDA driver is likewise a
+      # host concern: the nvidia-container-toolkit CDI device injects the
+      # driver libraries at the /run/opengl-driver/lib path the binaries
+      # already carry on their runpath.
+      #
+      #   docker run -d --name ninfer --device nvidia.com/gpu=all \
+      #     -v /path/to/qwen3_8_27b.ninfer:/models/model.ninfer:ro \
+      #     -p 8080:8080 ninfer:latest
+      dockerImageFor = system:
+        let
+          pkgs = pkgsFor system;
+        in
+        pkgs.dockerTools.buildLayeredImage {
+          name = "ninfer";
+          tag = "latest";
+
+          contents = pkgs.buildEnv {
+            name = "image-root";
+            paths = [
+              (ninferFor system)
+              pkgs.cacert
+              pkgs.busybox
+            ];
+            pathsToLink = [ "/bin" "/etc" "/share" ];
+          };
+
+          fakeRootCommands = ''
+            mkdir -p /models /tmp
+            chmod 1777 /tmp
+          '';
+          enableFakechroot = true;
+
+          config = {
+            Cmd = [
+              "/bin/ninfer-serve"
+              "/models/model.ninfer"
+              "--host"
+              "0.0.0.0"
+              "--port"
+              "8080"
+            ];
+            ExposedPorts = { "8080/tcp" = { }; };
+            Volumes = { "/models" = { }; };
+            Env = [
+              "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+            ];
+          };
+        };
     in
     {
       packages = forAllSystems (system: rec {
         ninfer = ninferFor system;
         default = ninfer;
+        docker = dockerImageFor system;
       });
+
+      dockerImage = forAllSystems dockerImageFor;
 
       devShells = forAllSystems (system:
         let

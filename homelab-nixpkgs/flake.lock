@@ -18,13 +18,29 @@
         "type": "github"
       }
     },
+    "ninfer": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "path": "./ninfer",
+        "type": "path"
+      },
+      "original": {
+        "path": "./ninfer",
+        "type": "path"
+      },
+      "parent": []
+    },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1771369470,
-        "narHash": "sha256-0NBlEBKkN3lufyvFegY4TYv5mCNHbi5OmBDrzihbBMQ=",
+        "lastModified": 1787736819,
+        "narHash": "sha256-cV5xEJJK3BvhU8rEd4mC9UsmDi5qscv/kzGPhBRC5WA=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "0182a361324364ae3f436a63005877674cf45efb",
+        "rev": "9fbb54b33e91ee4ca368e35a78e0613c720600b3",
         "type": "github"
       },
       "original": {
@@ -53,6 +69,7 @@
     "root": {
       "inputs": {
         "flake-utils": "flake-utils",
+        "ninfer": "ninfer",
         "nixpkgs": "nixpkgs",
         "playwright-renderer": "playwright-renderer",
         "trmnl-display": "trmnl-display"
