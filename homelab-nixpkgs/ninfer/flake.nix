@@ -28,13 +28,13 @@
         in
         cuda.backendStdenv.mkDerivation {
           pname = "ninfer";
-          version = "0-unstable-2026-08-16";
+          version = "0-unstable-2026-08-28";
 
           src = pkgs.fetchFromGitHub {
             owner = "Neroued";
             repo = "ninfer";
-            rev = "0c94153b79d84a23634f544018eba0f0d304eb26";
-            hash = "sha256-j+eqkllOBwnHs3gIWkFOKuR7kZnEMp7EvWYGVgXOIuM=";
+            rev = "3a61ef3f8ad58a6ad22d75912e4d0156f59caf2f";
+            hash = "sha256-xpNyxYM8QMuylU9sv4LUdD8/iVxbDiArughk/vvME2s=";
           };
 
           nativeBuildInputs = [
