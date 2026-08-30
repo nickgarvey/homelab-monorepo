@@ -94,6 +94,13 @@
       #   docker run -d --name ninfer --device nvidia.com/gpu=all \
       #     -v /path/to/qwen3_8_27b.ninfer:/models/model.ninfer:ro \
       #     -p 8080:8080 ninfer:latest
+      #
+      # --max-context is 8192 by default, which is too small to hold pi's tool
+      # schemas — the agent gets a 400 context_length_exceeded before it says
+      # anything. 128k costs 8.46 GiB of KV cache and leaves ~5 GiB of the
+      # 5090's VRAM free; ~192k is the wall for bf16 KV. Cold prefill runs at
+      # ~2650 tok/s, so a full 128k prompt is ~50 s to first token.
+      # --kv-capacity auto keeps 1 GiB of sizing headroom.
       dockerImageFor = system:
         let
           pkgs = pkgsFor system;
@@ -126,6 +133,10 @@
               "0.0.0.0"
               "--port"
               "8080"
+              "--max-context"
+              "131072"
+              "--kv-capacity"
+              "auto"
             ];
             ExposedPorts = { "8080/tcp" = { }; };
             Volumes = { "/models" = { }; };
