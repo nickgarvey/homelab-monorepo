@@ -12,18 +12,23 @@
       url = "path:./ninfer";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    thinkrail = {
+      url = "path:./thinkrail";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     trmnl-display = {
       url = "path:./trmnl-display";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, playwright-renderer, trmnl-display, ninfer }:
+  outputs = { self, nixpkgs, flake-utils, playwright-renderer, trmnl-display, ninfer, thinkrail }:
     flake-utils.lib.eachDefaultSystem (system: {
       packages = {
         playwright-renderer = playwright-renderer.dockerImage.${system};
         trmnl-display = trmnl-display.dockerImage.${system};
         ninfer = ninfer.dockerImage.${system};
+        thinkrail = thinkrail.packages.${system}.default;
       };
       devShells.default =
         let pkgs = nixpkgs.legacyPackages.${system}; in
