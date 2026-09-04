@@ -14,13 +14,13 @@
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
       pkgsFor = system: nixpkgs.legacyPackages.${system};
 
-      version = "0-unstable-2026-08-29";
+      version = "0-unstable-2026-09-04";
 
       srcFor = system: (pkgsFor system).fetchFromGitHub {
         owner = "JetBrains";
         repo = "thinkrail";
-        rev = "4879618c66c9d92fd12709ee7ed722afa9272e09";
-        hash = "sha256-6YA6NHR4sV0GlCV05HOYmKbT/5ssCeMp90XqUxTZnqE=";
+        rev = "73ee056747168fc0fc699a842d90f16fa38caba5";
+        hash = "sha256-bc5jKWgPjnO2EdWci/0kpnKXJkQAqHVzqrM39gDr9sM=";
       };
 
       # `bun install` for the whole workspace, as a fixed-output derivation so
@@ -29,7 +29,7 @@
       # workspace member, so the install is captured as those directories at
       # their original paths and laid back over the source tree at build time.
       nodeModulesHashes = {
-        x86_64-linux = "sha256-sreTVnLMOWXgZKB/FF6YIN+pzcYUWYb+xQYFzcdHoVg=";
+        x86_64-linux = "sha256-+FcaslYQYJx71AE0RbQ+bNp7O/cmvU3L8UFLiPPwUMI=";
       };
 
       nodeModulesFor = system:
