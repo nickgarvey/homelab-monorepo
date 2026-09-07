@@ -20,15 +20,20 @@
       url = "path:./trmnl-display";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    lan-table = {
+      url = "path:./lan-table";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, flake-utils, playwright-renderer, trmnl-display, ninfer, thinkrail }:
+  outputs = { self, nixpkgs, flake-utils, playwright-renderer, trmnl-display, ninfer, thinkrail, lan-table }:
     flake-utils.lib.eachDefaultSystem (system: {
       packages = {
         playwright-renderer = playwright-renderer.dockerImage.${system};
         trmnl-display = trmnl-display.dockerImage.${system};
         ninfer = ninfer.dockerImage.${system};
         thinkrail = thinkrail.packages.${system}.default;
+        lan-table = lan-table.packages.${system}.default;
       };
       devShells.default =
         let pkgs = nixpkgs.legacyPackages.${system}; in

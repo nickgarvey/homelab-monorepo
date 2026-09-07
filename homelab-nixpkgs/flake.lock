@@ -18,6 +18,22 @@
         "type": "github"
       }
     },
+    "lan-table": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "path": "./lan-table",
+        "type": "path"
+      },
+      "original": {
+        "path": "./lan-table",
+        "type": "path"
+      },
+      "parent": []
+    },
     "ninfer": {
       "inputs": {
         "nixpkgs": [
@@ -69,6 +85,7 @@
     "root": {
       "inputs": {
         "flake-utils": "flake-utils",
+        "lan-table": "lan-table",
         "ninfer": "ninfer",
         "nixpkgs": "nixpkgs",
         "playwright-renderer": "playwright-renderer",

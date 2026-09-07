@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="60">
+<title>LAN devices</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 2rem 1rem; }
+  h1 { font-size: 1.2rem; margin: 0 0 .25rem; }
+  p.meta { color: #777; margin: 0 0 1.25rem; }
+  p.meta button { font: inherit; color: inherit; background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; }
+  th, td { text-align: left; padding: .35rem .75rem; border-bottom: 1px solid #8883; vertical-align: top; }
+  th { font-weight: 600; white-space: nowrap; cursor: pointer; user-select: none; }
+  th:hover { background: #8881; }
+  th[data-dir="asc"]::after { content: " \25B2"; font-size: .7em; }
+  th[data-dir="desc"]::after { content: " \25BC"; font-size: .7em; }
+  td.mono, td.mono div { font-family: ui-monospace, monospace; white-space: nowrap; }
+  td.empty, .empty { color: #999; }
+  .tag { font-size: .8rem; padding: .1rem .45rem; border-radius: .5rem; background: #8882; }
+  tr.new td { background: rgba(255, 196, 0, .16); }
+  .badge { font-size: .7rem; font-weight: 700; letter-spacing: .04em; margin-left: .4rem;
+           padding: .05rem .3rem; border-radius: .25rem; background: #e0a200; color: #000; }
+</style>
+</head>
+<body>
+<h1>LAN devices</h1>
+<p class="meta">{{ len .Rows }} devices on {{ .Interface }} &middot; generated {{ .Generated }}
+  &middot; <span id="newcount"></span> <button id="reset" type="button" hidden>reset</button></p>
+<div class="scroll">
+<table>
+  <thead>
+    <tr>
+      <th>Hostname</th><th>IPv4</th><th>IPv6</th><th>Source</th><th>MAC</th>
+      <th title="How long ago this client last got an address from the DHCP server. Sort ascending to put a just-connected device at the top.">Leased</th>
+    </tr>
+  </thead>
+  <tbody>
+  {{- range .Rows }}
+    <tr data-mac="{{ .MAC }}">
+      <td data-sort="{{ textKey .Hostname }}">{{ if .Hostname }}{{ .Hostname }}{{ else }}<span class="empty">&mdash;</span>{{ end }}</td>
+      <td class="mono" data-sort="{{ addrKey .IPv4 }}">{{ if .IPv4 }}{{ .IPv4 }}{{ else }}<span class="empty">&mdash;</span>{{ end }}</td>
+      <td class="mono" data-sort="{{ addrKey (first .IPv6) }}">{{ if .IPv6 }}{{ range .IPv6 }}<div>{{ . }}</div>{{ end }}{{ else }}<span class="empty">&mdash;</span>{{ end }}</td>
+      <td data-sort="{{ textKey (printf "%s" .Source) }}"><span class="tag">{{ .Source }}</span></td>
+      <td class="mono" data-sort="{{ textKey .MAC }}">{{ .MAC }}</td>
+      {{- if .HasLease }}
+      <td data-sort="{{ ageKey .LeaseAge }}" title="{{ at $.GeneratedAt .LeaseAge }}">{{ age .LeaseAge }}</td>
+      {{- else }}
+      <td data-sort="~"><span class="empty">&mdash;</span></td>
+      {{- end }}
+    </tr>
+  {{- end }}
+  </tbody>
+</table>
+</div>
+<script>
+const table = document.querySelector('table');
+const headers = [...table.tHead.rows[0].cells];
+const body = table.tBodies[0];
+
+// sessionStorage is unavailable in some privacy modes; the page must still work.
+const store = {
+  get(k) { try { return sessionStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { sessionStorage.setItem(k, v); } catch { /* ignore */ } },
+};
+
+// Cells carry a data-sort key built server-side (see render.go), so comparing
+// them as strings sorts addresses and durations numerically. The chosen column
+// survives the page's 60s auto-refresh.
+function sortBy(idx, dir) {
+  headers.forEach(h => delete h.dataset.dir);
+  headers[idx].dataset.dir = dir;
+  [...body.rows]
+    .sort((a, b) => {
+      const x = a.cells[idx].dataset.sort, y = b.cells[idx].dataset.sort;
+      return (x < y ? -1 : x > y ? 1 : 0) * (dir === 'asc' ? 1 : -1);
+    })
+    .forEach(row => body.appendChild(row));
+  store.set('sort', idx + ',' + dir);
+}
+
+headers.forEach((th, idx) => th.addEventListener('click', () =>
+  sortBy(idx, th.dataset.dir === 'asc' ? 'desc' : 'asc')));
+
+const saved = (store.get('sort') || '').split(',');
+if (saved.length === 2 && headers[saved[0]]) sortBy(+saved[0], saved[1]);
+
+// Highlight anything that has turned up since this tab was opened: plug a
+// device in, wait for the auto-refresh, and its row is the marked one. The
+// baseline is deliberately never widened, so a new device stays marked across
+// later refreshes instead of going quiet after 60 seconds.
+const rows = [...body.rows];
+const macs = rows.map(r => r.dataset.mac);
+let baseline = null;
+try { baseline = JSON.parse(store.get('baseline')); } catch { /* ignore */ }
+
+function setBaseline(to) {
+  baseline = to;
+  store.set('baseline', JSON.stringify(to));
+}
+if (!Array.isArray(baseline)) setBaseline(macs);
+
+function mark() {
+  const known = new Set(baseline);
+  let n = 0;
+  for (const row of rows) {
+    const isNew = !known.has(row.dataset.mac);
+    row.classList.toggle('new', isNew);
+    row.cells[0].querySelector('.badge')?.remove();
+    if (isNew) {
+      n++;
+      row.cells[0].insertAdjacentHTML('beforeend', '<span class="badge">NEW</span>');
+    }
+  }
+  const label = document.getElementById('newcount');
+  label.textContent = n ? n + ' new since you opened this page' : 'no new devices';
+  document.getElementById('reset').hidden = n === 0;
+}
+document.getElementById('reset').addEventListener('click', () => { setBaseline(macs); mark(); });
+mark();
+</script>
+</body>
+</html>
