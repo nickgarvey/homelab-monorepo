@@ -2,39 +2,27 @@
 
 ## Destructive Actions
 
-**CRITICAL: ALWAYS ask the user before performing any destructive action.**
+Deleting things is allowed when it is part of the task. What still needs the
+user's explicit OK is destroying **data that cannot be recreated**.
 
-### What Counts as Destructive
+### Allowed without asking
 
-**ANY file deletion**, including but not limited to:
-- Files in the workspace (even if they appear temporary or test-related)
-- Files in `/tmp` or other temporary directories
-- Files created by the agent during the current session
-- Backup files, log files, or any other files
-- **When in doubt, ASK - never assume cleanup is safe**
+- Deleting files: repo files (git has the history), and temporary files,
+  including ones the agent created.
+- Deleting or recreating stateless Kubernetes resources as part of a change
+  the user asked for: pods, Deployments, StatefulSets (the objects, not their
+  volumes), Services, ConfigMaps and the like.
 
-**Kubernetes resource deletion:**
-- Deleting PVCs, PVs, or any persistent data
-- Deleting deployments, pods, services, or any Kubernetes resources
-- Cluster resets or etcd operations
-- Rebooting nodes
+### Ask first
 
-### Rules
+- Persistent data: PVCs, PVs, Longhorn/Ceph volumes, and namespaces that
+  hold them.
+- Backups and object storage: Longhorn backups, Kopia snapshots, S3 buckets
+  or their objects.
+- Secrets whose value exists nowhere else (not already in sops).
+- Cluster resets, etcd operations, and rebooting nodes.
 
-1. **Never delete files without explicit user permission** - even if you created them, even if they're in `/tmp`, even if they appear to be temporary
-2. **Never delete Kubernetes resources without explicit user permission**
-3. **When in doubt, ask first** - it's better to ask than to delete something important
-4. **The user decides what is safe to delete** - not the agent
-
-### Examples
-
-❌ **DON'T:** `rm -f /tmp/secret-temp.yaml` (even if you created it)  
-✅ **DO:** Ask: "Should I clean up the temporary files I created in /tmp?"
-
-❌ **DON'T:** Delete a pod because it appears to be in an error state  
-✅ **DO:** Ask: "I see pod X is in an error state. Would you like me to delete and recreate it?"
-
-This applies regardless of whether data appears to be "test data", "fresh", "temporary", or "unimportant". The user decides what is safe to delete.
+When unsure whether something holds unrecoverable data, ask.
 
 ---
 
