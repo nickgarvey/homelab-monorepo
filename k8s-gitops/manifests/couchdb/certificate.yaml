@@ -1,0 +1,14 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: couchdb-tls
+  namespace: couchdb
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  secretName: couchdb-tls
+  dnsNames:
+    - obsidian-livesync.home.garvey.sh
+  issuerRef:
+    name: letsencrypt-acmedns-prod
+    kind: ClusterIssuer

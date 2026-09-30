@@ -23,6 +23,32 @@ spec:
         runAsUser: 5984
         runAsGroup: 5984
       containers:
+        # TLS terminator for obsidian-livesync.home.garvey.sh, following the anki/jellyfin sidecar
+        # pattern (manifests/acme-dns/ONBOARDING.md). Caddy loads the cert only
+        # at startup, so a `kubectl rollout restart` is needed after each
+        # ~60-day cert-manager renewal, same as anki, zot and jellyfin.
+        - name: caddy
+          image: caddy:2-alpine
+          command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile"]
+          ports:
+            - containerPort: 80
+              name: http-redirect
+            - containerPort: 443
+              name: https
+          volumeMounts:
+            - name: caddy-config
+              mountPath: /etc/caddy
+            - name: caddy-data
+              mountPath: /data
+            - name: certs
+              mountPath: /certs
+              readOnly: true
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
         - name: couchdb
           image: couchdb:3.4
           ports:
@@ -57,6 +83,14 @@ spec:
             initialDelaySeconds: 60
             periodSeconds: 30
       volumes:
+        - name: caddy-config
+          configMap:
+            name: couchdb-caddy
+        - name: caddy-data
+          emptyDir: {}
+        - name: certs
+          secret:
+            secretName: couchdb-tls
         - name: data
           persistentVolumeClaim:
             claimName: couchdb-data

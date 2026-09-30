@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: couchdb-caddy
+  namespace: couchdb
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+data:
+  Caddyfile: |
+    {
+      auto_https off
+      admin off
+    }
+    :80 {
+      redir https://{host}{uri} permanent
+    }
+    :443 {
+      tls /certs/tls.crt /certs/tls.key
+      # [::1]: the app listens on [::] only (no IPv4 socket), like anki.
+      reverse_proxy http://[::1]:5984
+    }
