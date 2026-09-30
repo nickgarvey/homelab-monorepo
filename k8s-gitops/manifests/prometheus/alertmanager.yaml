@@ -10,6 +10,15 @@ spec:
   version: v0.31.1
   externalUrl: http://alertmanager.prometheus.k8s.home.garvey.sh:9093
 
+  # Runs on the k3s servers (fus/ro/dah) so alerting keeps working when the
+  # storage nodes and Ceph are down.
+  nodeSelector:
+    node-role.kubernetes.io/control-plane: "true"
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+
   # Security context
   securityContext:
     runAsNonRoot: true

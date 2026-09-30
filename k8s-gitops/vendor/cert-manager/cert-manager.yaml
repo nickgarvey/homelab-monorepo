@@ -13330,6 +13330,10 @@ spec:
         prometheus.io/scrape: 'true'
         prometheus.io/port: '9402'
     spec:
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
       serviceAccountName: cert-manager-cainjector
       enableServiceLinks: false
       securityContext:
@@ -13359,6 +13363,7 @@ spec:
               - ALL
             readOnlyRootFilesystem: true
       nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
         kubernetes.io/os: "linux"
 ---
 # Source: cert-manager/templates/deployment.yaml
@@ -13393,6 +13398,10 @@ spec:
         prometheus.io/scrape: 'true'
         prometheus.io/port: '9402'
     spec:
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
       serviceAccountName: cert-manager
       enableServiceLinks: false
       securityContext:
@@ -13441,6 +13450,7 @@ spec:
             successThreshold: 1
             failureThreshold: 8
       nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
         kubernetes.io/os: "linux"
 ---
 # Source: cert-manager/templates/webhook-deployment.yaml
@@ -13475,6 +13485,10 @@ spec:
         prometheus.io/scrape: 'true'
         prometheus.io/port: '9402'
     spec:
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
       serviceAccountName: cert-manager-webhook
       enableServiceLinks: false
       securityContext:
@@ -13535,6 +13549,7 @@ spec:
               fieldRef:
                 fieldPath: metadata.namespace
       nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
         kubernetes.io/os: "linux"
 ---
 # Source: cert-manager/templates/webhook-mutating-webhook.yaml

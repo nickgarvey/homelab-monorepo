@@ -1,0 +1,26 @@
+# Patch for k3s's packaged CoreDNS (kube-system/coredns), which k3s owns and
+# re-applies from its own manifest on every server start. Not applied with
+# `kubectl apply`; apply with:
+#
+#   kubectl -n kube-system patch deployment coredns --patch-file manifests/coredns/deployment-patch.yaml
+#
+# Why: cluster DNS must keep working when the storage nodes (joor/zah/frul,
+# Ceph) are down, so CoreDNS runs three replicas pinned to the k3s servers
+# (fus/ro/dah), one per node via k3s's own topology spread. k3s's manifest
+# leaves `replicas` unset on purpose so scaling persists (k3s issue #1606) and
+# sets no affinity, so its re-apply leaves both of these alone (verified by
+# restarting k3s on a server, 2026-09-27). If a k3s upgrade ever adds its own
+# affinity or replicas to that manifest, re-check this; the fallback is
+# --disable=coredns and running our own CoreDNS here.
+spec:
+  replicas: 3
+  template:
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: In
+                    values: ["true"]

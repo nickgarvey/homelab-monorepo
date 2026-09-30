@@ -1796,6 +1796,7 @@ spec:
                 io.cilium/app: operator
             topologyKey: kubernetes.io/hostname
       nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
         kubernetes.io/os: linux
       tolerations:
         - key: node-role.kubernetes.io/control-plane
@@ -1843,6 +1844,10 @@ spec:
         app.kubernetes.io/name: hubble-relay
         app.kubernetes.io/part-of: cilium
     spec:
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
       securityContext:
         fsGroup: 65532
         seccompProfile:
@@ -1922,6 +1927,7 @@ spec:
                 k8s-app: cilium
             topologyKey: kubernetes.io/hostname
       nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
         kubernetes.io/os: linux
       volumes:
       - name: config

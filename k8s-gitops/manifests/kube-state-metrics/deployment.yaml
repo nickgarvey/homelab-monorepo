@@ -16,6 +16,10 @@ spec:
       labels:
         app.kubernetes.io/name: kube-state-metrics
     spec:
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
       serviceAccountName: kube-state-metrics
       containers:
         - name: kube-state-metrics
@@ -58,4 +62,5 @@ spec:
             seccompProfile:
               type: RuntimeDefault
       nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
         kubernetes.io/os: linux

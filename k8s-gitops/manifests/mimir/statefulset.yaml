@@ -17,6 +17,12 @@ spec:
       labels:
         app.kubernetes.io/name: mimir
     spec:
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
       securityContext:
         runAsNonRoot: true
         runAsUser: 65534
@@ -84,7 +90,7 @@ spec:
     - metadata:
         name: data
       spec:
-        storageClassName: ceph-rbd
+        storageClassName: longhorn-wffc
         accessModes:
           - ReadWriteOnce
         resources:

@@ -9,7 +9,7 @@ allowVolumeExpansion: true
 reclaimPolicy: Delete
 volumeBindingMode: WaitForFirstConsumer
 parameters:
-  numberOfReplicas: "2"
+  numberOfReplicas: "3"
   staleReplicaTimeout: "30"
   fsType: "ext4"
   # Automatically applies the "all-volumes" recurring job group to all PVCs using this StorageClass

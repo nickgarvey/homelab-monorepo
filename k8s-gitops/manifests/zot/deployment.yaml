@@ -18,6 +18,12 @@ spec:
         app: zot
         app.kubernetes.io/managed-by: ngarvey-homelab
     spec:
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
       containers:
         - name: zot
           image: ghcr.io/project-zot/zot-linux-amd64:v2.1.13

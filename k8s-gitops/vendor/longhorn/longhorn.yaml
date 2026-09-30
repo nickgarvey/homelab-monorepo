@@ -4319,6 +4319,14 @@ spec:
         app.kubernetes.io/version: v1.11.1
         app: longhorn-manager
     spec:
+      # Local edit (helm values longhornManager/longhornDriver/longhornUI
+      # .nodeSelector/.tolerations): Longhorn runs only on fus/ro/dah.
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
       containers:
       - name: longhorn-manager
         image: docker.io/longhornio/longhorn-manager:v1.11.1
@@ -4444,6 +4452,14 @@ spec:
         app.kubernetes.io/version: v1.11.1
         app: longhorn-driver-deployer
     spec:
+      # Local edit (helm values longhornManager/longhornDriver/longhornUI
+      # .nodeSelector/.tolerations): Longhorn runs only on fus/ro/dah.
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
       initContainers:
         - name: wait-longhorn-manager
           image: docker.io/longhornio/longhorn-manager:v1.11.1
@@ -4515,6 +4531,14 @@ spec:
         app.kubernetes.io/version: v1.11.1
         app: longhorn-ui
     spec:
+      # Local edit (helm values longhornManager/longhornDriver/longhornUI
+      # .nodeSelector/.tolerations): Longhorn runs only on fus/ro/dah.
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
       serviceAccountName: longhorn-ui-service-account
       affinity:
         podAntiAffinity:

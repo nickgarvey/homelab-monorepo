@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# migrate-pvc-to-ceph.sh <namespace> <pvc> <owner, e.g. deploy/acme-dns or sts/couchdb>
-# Moves one Longhorn PVC onto ceph-rbd under the same name. Leaves the owner
-# scaled to 0; the caller switches the manifest to ceph-rbd and scales up.
-# The old volume stays as <pvc>-longhorn-old (PV reclaimPolicy Retain).
+# migrate-pvc.sh [--copy-only] <namespace> <pvc> <owner, e.g. deploy/acme-dns or sts/couchdb> <target StorageClass>
+# Moves one PVC to another StorageClass under the same name. Leaves the owner
+# scaled to 0; the caller switches the manifest to the new class and scales up.
+# The old volume stays as <pvc>-<old class prefix>-old, e.g. -ceph-old or
+# -longhorn-old (PV reclaimPolicy Retain).
 #   --copy-only: resume at step 5 (the claims are already swapped).
 # Run as root on a k3s server node (fus/ro/dah): it uses `k3s kubectl`.
 set -euo pipefail
 copy_only=0
 [ "${1:-}" = --copy-only ] && { copy_only=1; shift; }
-ns=$1; pvc=$2; owner=$3
+ns=$1; pvc=$2; owner=$3; target=$4
 k() { k3s kubectl "$@"; }
 log() { echo "[$(date +%T)] $*"; }
 
@@ -16,12 +17,13 @@ if [ $copy_only = 0 ]; then
 
 pv=$(k -n "$ns" get pvc "$pvc" -o jsonpath='{.spec.volumeName}')
 size=$(k -n "$ns" get pvc "$pvc" -o jsonpath='{.spec.resources.requests.storage}')
-oldsc=$(k -n "$ns" get pvc "$pvc" -o jsonpath='{.spec.storageClassName}')
-[ "$oldsc" != ceph-rbd ] || { echo "$ns/$pvc is already on ceph-rbd" >&2; exit 1; }
-log "$ns/$pvc: PV $pv, $size, class $oldsc, owner $owner"
+oldsc=$(k -n "$ns" get pvc "$pvc" -o jsonpath='{.spec.storageClassName}' 2>/dev/null || true)
+[ "$oldsc" != "$target" ] || { echo "$ns/$pvc is already on $target" >&2; exit 1; }
+log "$ns/$pvc: PV $pv, $size, class $oldsc -> $target, owner $owner"
 
 # 1. Fresh Longhorn backup while the app still runs (Longhorn cannot back up a
-#    detached volume).
+#    detached volume). Only for a Longhorn source; the old volume is kept either way.
+if [ "$(k get sc "$oldsc" -o jsonpath='{.provisioner}')" = driver.longhorn.io ]; then
 tag="mig-$(date +%Y%m%d%H%M%S)"
 cat <<EOF | k apply -f - >/dev/null
 apiVersion: longhorn.io/v1beta2
@@ -42,8 +44,10 @@ for _ in $(seq 180); do
 done
 [ "$st" = Completed ] || { echo "Longhorn backup did not complete (state: $st)" >&2; exit 1; }
 log "Longhorn backup $tag-$pv Completed"
+fi
 
 # 2. Stop the app.
+oldtag=${oldsc%%-*}
 replicas=$(k -n "$ns" get "$owner" -o jsonpath='{.spec.replicas}')
 log "scaling $owner from $replicas to 0"
 k -n "$ns" scale "$owner" --replicas=0 >/dev/null
@@ -61,7 +65,7 @@ k patch pv "$pv" --type=json -p '[{"op":"remove","path":"/spec/claimRef"}]' >/de
 cat <<EOF | k apply -f - >/dev/null
 apiVersion: v1
 kind: PersistentVolumeClaim
-metadata: {name: $pvc-longhorn-old, namespace: $ns, labels: {migration: longhorn-old}}
+metadata: {name: $pvc-$oldtag-old, namespace: $ns, labels: {migration: $oldtag-old}}
 spec:
   accessModes: [ReadWriteOnce]
   storageClassName: $oldsc
@@ -75,14 +79,24 @@ kind: PersistentVolumeClaim
 metadata: {name: $pvc, namespace: $ns, labels: {app.kubernetes.io/managed-by: ngarvey-homelab}}
 spec:
   accessModes: [ReadWriteOnce]
-  storageClassName: ceph-rbd
+  storageClassName: $target
   resources: {requests: {storage: $size}}
 EOF
-k -n "$ns" wait "pvc/$pvc-longhorn-old" --for=jsonpath='{.status.phase}'=Bound --timeout=120s >/dev/null
-k -n "$ns" wait "pvc/$pvc" --for=jsonpath='{.status.phase}'=Bound --timeout=120s >/dev/null
-log "old volume kept as $pvc-longhorn-old; new $pvc bound on ceph-rbd"
+k -n "$ns" wait "pvc/$pvc-$oldtag-old" --for=jsonpath='{.status.phase}'=Bound --timeout=120s >/dev/null
+# A WaitForFirstConsumer class binds when the copy job's pod is scheduled.
+log "old volume kept as $pvc-$oldtag-old; new $pvc created on $target"
 fi
 replicas=${replicas:-"(see earlier run)"}
+oldclaim=${oldtag:+$pvc-$oldtag-old}
+# --copy-only: the newest <pvc>-*-old claim is the one this move created.
+[ -n "$oldclaim" ] || oldclaim=$(k -n "$ns" get pvc --sort-by=.metadata.creationTimestamp -o name | sed 's#.*/##' | grep -x "$pvc-[a-z0-9]*-old" | tail -1)
+[ -n "$oldclaim" ] || { echo "no $pvc-*-old claim in $ns" >&2; exit 1; }
+# Longhorn volumes only attach on fus/ro/dah (the tainted k3s servers).
+pin=""
+if [ "$(k get sc "$target" -o jsonpath='{.provisioner}')" = driver.longhorn.io ]; then
+  pin='      nodeSelector: {node-role.kubernetes.io/control-plane: "true"}
+      tolerations: [{key: node-role.kubernetes.io/control-plane, operator: Exists, effect: NoSchedule}]'
+fi
 
 # 5. Copy, then a checksum pass that must find nothing to change.
 job="migrate-$pvc"
@@ -97,6 +111,7 @@ spec:
   template:
     spec:
       restartPolicy: Never
+$pin
       containers:
         - name: rsync
           image: nixery.dev/shell/rsync/gnugrep
@@ -113,7 +128,7 @@ spec:
             - {name: old, mountPath: /old, readOnly: true}
             - {name: new, mountPath: /new}
       volumes:
-        - {name: old, persistentVolumeClaim: {claimName: $pvc-longhorn-old, readOnly: true}}
+        - {name: old, persistentVolumeClaim: {claimName: $oldclaim, readOnly: true}}
         - {name: new, persistentVolumeClaim: {claimName: $pvc}}
 EOF
 for _ in $(seq 720); do
@@ -124,5 +139,5 @@ for _ in $(seq 720); do
 done
 k -n "$ns" logs "job/$job" | tail -5
 k -n "$ns" delete job "$job" --wait=true >/dev/null
-[ "$ok" = 1 ] || { echo "copy/verify FAILED; app left at 0, old volume intact as $pvc-longhorn-old" >&2; exit 1; }
-log "copied and verified. Owner $owner left at 0 (was $replicas): switch its manifest to ceph-rbd, then scale up."
+[ "$ok" = 1 ] || { echo "copy/verify FAILED; app left at 0, old volume intact as $oldclaim" >&2; exit 1; }
+log "copied and verified. Owner $owner left at 0 (was $replicas): switch its manifest to $target, then scale up."

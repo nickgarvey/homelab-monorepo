@@ -18,6 +18,12 @@ spec:
         app: acme-dns
         app.kubernetes.io/managed-by: ngarvey-homelab
     spec:
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
       containers:
         - name: acme-dns
           # Public registry + tag + IfNotPresent (repo convention). acme-dns is

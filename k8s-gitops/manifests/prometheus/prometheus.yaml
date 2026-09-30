@@ -49,12 +49,21 @@ spec:
   storage:
     volumeClaimTemplate:
       spec:
-        storageClassName: ceph-rbd
+        storageClassName: longhorn-wffc
         accessModes:
           - ReadWriteOnce
         resources:
           requests:
             storage: 40Gi
+
+  # Runs on the k3s servers (fus/ro/dah), on Longhorn there, so monitoring
+  # keeps working when the storage nodes and Ceph are down.
+  nodeSelector:
+    node-role.kubernetes.io/control-plane: "true"
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
 
   # Security context for storage permissions
   securityContext:

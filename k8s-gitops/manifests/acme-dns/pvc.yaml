@@ -8,7 +8,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: ceph-rbd
+  storageClassName: longhorn-wffc
   resources:
     requests:
       storage: 1Gi

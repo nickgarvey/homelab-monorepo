@@ -133,6 +133,12 @@ spec:
         app: sops-secrets-operator
         app.kubernetes.io/managed-by: ngarvey-homelab
     spec:
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
       serviceAccountName: sops-secrets-operator
       containers:
         - name: operator

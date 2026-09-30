@@ -108,6 +108,12 @@ spec:
       labels:
         app.kubernetes.io/name: k8s-gateway
     spec:
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
       serviceAccountName: k8s-gateway
       dnsPolicy: ClusterFirst
       containers:

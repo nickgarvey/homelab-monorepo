@@ -14,7 +14,7 @@ metadata:
   namespace: longhorn-system
   labels:
     app.kubernetes.io/managed-by: ngarvey-homelab
-value: "2"
+value: "3"
 ---
 # Reserve 10% of each default disk; the remaining ~90% is schedulable for Longhorn
 # replicas. Applies only to newly-created default disks.
@@ -48,3 +48,41 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: ngarvey-homelab
 value: "172800"
+---
+# Only nodes labelled node.longhorn.io/create-default-disk=true get a default
+# disk. fus/ro/dah already have theirs; joor/zah/frul are Ceph storage nodes
+# (nix-configs modules/services/ceph.nix) and must not become Longhorn
+# replica targets, since Longhorn is being replaced by Ceph.
+apiVersion: longhorn.io/v1beta2
+kind: Setting
+metadata:
+  name: create-default-disk-labeled-nodes
+  namespace: longhorn-system
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+value: "true"
+---
+# Longhorn runs only on fus/ro/dah (the k3s servers), which hold the
+# monitoring volumes and are independent of Ceph on joor/zah/frul. This pins
+# its system-managed components (instance managers, engine images, CSI);
+# the manager, driver deployer and UI get the same nodeSelector in
+# vendor/longhorn/longhorn.yaml. Changing it requires every volume detached.
+apiVersion: longhorn.io/v1beta2
+kind: Setting
+metadata:
+  name: system-managed-components-node-selector
+  namespace: longhorn-system
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+value: "node-role.kubernetes.io/control-plane:true"
+---
+# fus/ro/dah carry the control-plane NoSchedule taint; Longhorn's components
+# must tolerate it.
+apiVersion: longhorn.io/v1beta2
+kind: Setting
+metadata:
+  name: taint-toleration
+  namespace: longhorn-system
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+value: "node-role.kubernetes.io/control-plane:NoSchedule"
