@@ -57,31 +57,69 @@ spec:
             limits:
               memory: 128Mi
         - name: grafana
-          image: grafana/grafana:latest
-          imagePullPolicy: Always
-          ports:
-            - containerPort: 3000
+          image: grafana/grafana:13.2.2
+          imagePullPolicy: IfNotPresent
           env:
-            # IPv6-only cluster: bind v6 explicitly (see Jellyfin/open-webui lesson).
+            # Loopback only: the Caddy sidecar is the only way in. Pod IPs are
+            # reachable from the LAN, so binding [::] would expose plaintext HTTP.
             - name: GF_SERVER_HTTP_ADDR
-              value: "::"
-            # Tailscale is the auth boundary: no login screen, anonymous Admin.
-            - name: GF_AUTH_ANONYMOUS_ENABLED
+              value: "::1"
+            - name: GF_SERVER_ROOT_URL
+              value: https://grafana.home.garvey.sh/
+            # Login through Authelia (manifests/authelia). No anonymous access
+            # (the default). The login form stays for the break-glass local
+            # admin; basic auth is off, so the API takes only sessions and
+            # service-account tokens.
+            - name: GF_AUTH_BASIC_ENABLED
+              value: "false"
+            # Used only when Grafana creates a fresh database; see secret.yaml.
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-auth
+                  key: admin-password
+            - name: GF_AUTH_GENERIC_OAUTH_ENABLED
               value: "true"
-            - name: GF_AUTH_ANONYMOUS_ORG_ROLE
-              value: "Admin"
-            - name: GF_AUTH_DISABLE_LOGIN_FORM
+            - name: GF_AUTH_GENERIC_OAUTH_NAME
+              value: Authelia
+            - name: GF_AUTH_GENERIC_OAUTH_CLIENT_ID
+              value: grafana
+            - name: GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-auth
+                  key: oauth-client-secret
+            - name: GF_AUTH_GENERIC_OAUTH_SCOPES
+              value: openid profile email groups
+            - name: GF_AUTH_GENERIC_OAUTH_AUTH_URL
+              value: https://auth.home.garvey.sh/api/oidc/authorization
+            - name: GF_AUTH_GENERIC_OAUTH_TOKEN_URL
+              value: https://auth.home.garvey.sh/api/oidc/token
+            - name: GF_AUTH_GENERIC_OAUTH_API_URL
+              value: https://auth.home.garvey.sh/api/oidc/userinfo
+            # Matches the client's token_endpoint_auth_method: client_secret_basic.
+            - name: GF_AUTH_GENERIC_OAUTH_AUTH_STYLE
+              value: InHeader
+            - name: GF_AUTH_GENERIC_OAUTH_USE_PKCE
               value: "true"
+            - name: GF_AUTH_GENERIC_OAUTH_LOGIN_ATTRIBUTE_PATH
+              value: preferred_username
+            - name: GF_AUTH_GENERIC_OAUTH_NAME_ATTRIBUTE_PATH
+              value: name
+            - name: GF_AUTH_GENERIC_OAUTH_GROUPS_ATTRIBUTE_PATH
+              value: groups
+            - name: GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH
+              value: contains(groups[*], 'admins') && 'Admin' || 'Viewer'
+          # exec, not httpGet: the kubelet probes the pod IP, and Grafana listens
+          # on loopback only.
           readinessProbe:
-            httpGet:
-              path: /api/health
-              port: 3000
+            exec:
+              command: ["wget", "-qO", "/dev/null", "http://[::1]:3000/api/health"]
             initialDelaySeconds: 10
             periodSeconds: 10
           livenessProbe:
-            httpGet:
-              path: /api/health
-              port: 3000
+            exec:
+              command: ["wget", "-qO", "/dev/null", "http://[::1]:3000/api/health"]
             initialDelaySeconds: 30
             periodSeconds: 30
           volumeMounts:

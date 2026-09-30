@@ -1,0 +1,14 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: authelia-tls
+  namespace: authelia
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  secretName: authelia-tls
+  dnsNames:
+    - auth.home.garvey.sh
+  issuerRef:
+    name: letsencrypt-acmedns-prod
+    kind: ClusterIssuer

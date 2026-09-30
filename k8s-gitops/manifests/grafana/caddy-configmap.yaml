@@ -16,6 +16,6 @@ data:
     }
     :443 {
       tls /certs/tls.crt /certs/tls.key
-      # [::1]: the app listens on [::] only (no IPv4 socket), like anki.
+      # Grafana listens on [::1] only; this sidecar is its only way in.
       reverse_proxy http://[::1]:3000
     }

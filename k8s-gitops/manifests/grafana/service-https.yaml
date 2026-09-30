@@ -8,7 +8,7 @@ metadata:
   annotations:
     # A free address from the pool, matched by the grafana AAAA record in
     # nix-configs' modules/networking/dns.nix. Only the Caddy sidecar's ports
-    # are exposed here; the app's own plaintext port stays cluster-internal.
+    # are exposed; Grafana itself listens on loopback.
     io.cilium/lb-ipam-ips: "2001:470:482f:2::5006"
 spec:
   type: LoadBalancer
