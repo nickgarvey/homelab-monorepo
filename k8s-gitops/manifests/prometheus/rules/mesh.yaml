@@ -1,0 +1,65 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: mesh-alerts
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+    prometheus: prometheus
+spec:
+  groups:
+    - name: thunderbolt.mesh
+      rules:
+        # Each storage node has two Thunderbolt cables, one to each of the others
+        # (nix-configs modules/networking/thunderbolt-mesh.nix pushes the count).
+        # One cable down still works, since OpenFabric routes through the third
+        # node, but that node then carries both paths and a second failure
+        # partitions the Ceph cluster network. A pulled cable shows on both ends.
+        - alert: MeshLinkDown
+          expr: homelab_mesh_links_up < 2
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.hostname }} has {{ $value }} of 2 Thunderbolt mesh links up"
+            description: "A Thunderbolt cable on {{ $labels.hostname }} is unplugged or has lost its link. Mesh traffic is being routed through the third node. Check the cables, then `ip link show | grep thunderbolt` and `vtysh -c 'show openfabric neighbor'` on the node."
+
+        # A link with carrier whose receive counter has stopped: up but dead.
+        # OpenFabric hellos arrive every second on a healthy link, so five
+        # minutes without a single packet means the data path is broken (seen
+        # 2026-09-27/28: thunderbolt-net DMA path setup failed at boot, and a
+        # link stopped receiving after a relink). MeshLinkDown does not fire,
+        # because carrier is up. Fix: rebind thunderbolt-net on both ends (see
+        # nix-configs nix-XLbb5.6 notes) or reboot the node.
+        - alert: MeshLinkNoTraffic
+          expr: delta(homelab_mesh_link_rx_packets[5m]) <= 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.hostname }} {{ $labels.interface }} has carrier but has received nothing for 5m"
+            description: "The Thunderbolt link on {{ $labels.hostname }} {{ $labels.interface }} is up but not receiving. Check `dmesg | grep -i thunderbolt` for 'failed to enable DMA paths'; rebind thunderbolt-net for that link's service on both nodes, or reboot the node."
+
+        # Lane bonding failed, so the link runs on one lane. Seen when the
+        # thunderbolt driver's config-write race hit bonding at boot.
+        - alert: MeshLinkSingleLane
+          expr: homelab_mesh_link_lanes < 2
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.hostname }}'s Thunderbolt link to {{ $labels.peer }} runs on {{ $value }} lane"
+            description: "Lane bonding did not complete on the {{ $labels.hostname }} <-> {{ $labels.peer }} link. Reload the thunderbolt stack on one end (noout; modprobe -r thunderbolt_net thunderbolt; modprobe thunderbolt; systemctl start thunderbolt-net-load) or reboot it."
+
+        # No Thunderbolt path at all to a peer, direct or through the third
+        # node, so its mesh address is reached over the LAN fallback route
+        # (FRR floating static). Ceph keeps working at LAN speed; this is the
+        # alert that says the mesh is partitioned for that pair.
+        - alert: MeshPeerOverLAN
+          expr: homelab_mesh_peer_via_thunderbolt == 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.hostname }} reaches {{ $labels.peer }}'s mesh address over the LAN, not Thunderbolt"
+            description: "{{ $labels.hostname }} has no Thunderbolt path to {{ $labels.peer }}; Ceph cluster traffic between them is on the 2.5G LAN fallback. Check MeshLinkDown / MeshLinkNoTraffic for the cause."
