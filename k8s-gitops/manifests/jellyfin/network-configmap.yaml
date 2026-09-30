@@ -10,7 +10,7 @@ data:
   # seed-network-config initContainer. The cluster pod network is IPv6-only, so
   # EnableIPv6 must be true or Jellyfin binds IPv4-only and the Service/ingress/
   # probes (which target the pod's IPv6 address) can't reach it.
-  # Schema matches Jellyfin 10.11 NetworkConfiguration (all fields, defaults except EnableIPv6).
+  # Schema matches Jellyfin 12.0 NetworkConfiguration (all fields, defaults except EnableIPv6).
   network.xml: |
     <?xml version="1.0" encoding="utf-8"?>
     <NetworkConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
@@ -24,7 +24,6 @@ data:
       <PublicHttpPort>8096</PublicHttpPort>
       <PublicHttpsPort>8920</PublicHttpsPort>
       <AutoDiscovery>true</AutoDiscovery>
-      <EnableUPnP>false</EnableUPnP>
       <EnableIPv4>true</EnableIPv4>
       <EnableIPv6>true</EnableIPv6>
       <EnableRemoteAccess>true</EnableRemoteAccess>

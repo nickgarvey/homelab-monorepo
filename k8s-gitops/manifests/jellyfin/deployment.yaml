@@ -25,14 +25,15 @@ spec:
         #                  UI network changes are preserved afterward.
         #   encoding.xml - Intel iGPU transcoding: seed the whole file if absent,
         #                  otherwise force <HardwareAccelerationType>,
-        #                  <HardwareDecodingCodecs>, and <AllowHevcEncoding> on
-        #                  every boot, matched to what `vainfo` reports this node's
-        #                  iGPU actually supports (h264/hevc/mpeg2video/vp8/vp9
-        #                  decode + h264/hevc encode; no vc1, no av1). Other
+        #                  <HardwareDecodingCodecs>, <AllowHevcEncoding> and
+        #                  <AllowAv1Encoding> on every boot, matched to what
+        #                  `vainfo` reports the storage nodes' Wildcat Lake iGPU
+        #                  supports (h264/hevc/mpeg2video/vp8/vp9/av1 decode +
+        #                  h264/hevc/av1 encode; no vc1). Other
         #                  encoding fields stay UI-editable; these are owned by
         #                  gitops and revert on restart.
         - name: seed-config
-          image: jellyfin/jellyfin:latest
+          image: jellyfin/jellyfin:12.0.20260908-012347
           command:
             - /bin/sh
             - -c
@@ -50,6 +51,7 @@ spec:
               else
                 sed -i 's#<HardwareAccelerationType>[^<]*</HardwareAccelerationType>#<HardwareAccelerationType>vaapi</HardwareAccelerationType>#' /config/config/encoding.xml
                 sed -i 's#<AllowHevcEncoding>[^<]*</AllowHevcEncoding>#<AllowHevcEncoding>true</AllowHevcEncoding>#' /config/config/encoding.xml
+                sed -i 's#<AllowAv1Encoding>[^<]*</AllowAv1Encoding>#<AllowAv1Encoding>true</AllowAv1Encoding>#' /config/config/encoding.xml
                 # Rewrite <HardwareDecodingCodecs> with awk, not a sed range. A sed
                 # `/open/,/close/c\` range whose replacement puts both tags on one
                 # line is not idempotent: on the next boot sed matches the opening
@@ -62,7 +64,7 @@ spec:
                   /<HardwareDecodingCodecs/ && !done {
                     match($0, /^[ \t]*/); ind = substr($0, 1, RLENGTH)
                     print ind "<HardwareDecodingCodecs>"
-                    n = split("h264 hevc mpeg2video vp8 vp9", c, " ")
+                    n = split("h264 hevc mpeg2video vp8 vp9 av1", c, " ")
                     for (i = 1; i <= n; i++) print ind "  <string>" c[i] "</string>"
                     print ind "</HardwareDecodingCodecs>"
                     done = 1
@@ -78,7 +80,7 @@ spec:
                   echo "encoding.xml is malformed after enforcement; re-seeding from ConfigMap"
                   cp /seed-encoding/encoding.xml /config/config/encoding.xml
                 fi
-                echo "enforced HardwareAccelerationType=vaapi, AllowHevcEncoding=true, and HardwareDecodingCodecs in existing encoding.xml"
+                echo "enforced HardwareAccelerationType=vaapi, AllowHevcEncoding=true, AllowAv1Encoding=true, and HardwareDecodingCodecs in existing encoding.xml"
               fi
           volumeMounts:
             - name: config
@@ -112,7 +114,7 @@ spec:
               cpu: 200m
               memory: 128Mi
         - name: jellyfin
-          image: jellyfin/jellyfin:latest
+          image: jellyfin/jellyfin:12.0.20260908-012347
           ports:
             - containerPort: 8096
               name: http
@@ -130,11 +132,13 @@ spec:
               port: 8096
             periodSeconds: 60
             failureThreshold: 3
-          # Requires Intel GPU Device Plugin:
+          # The storage nodes (joor/zah/frul) run the xe kernel driver, so their
+          # iGPU is advertised as gpu.intel.com/xe; fus/ro/dah (i915) are for
+          # the control plane and monitoring. Requires Intel GPU Device Plugin:
           # kubectl apply -k 'https://github.com/intel/intel-device-plugins-for-kubernetes/deployments/gpu_plugin?ref=v0.31.0'
           resources:
             limits:
-              gpu.intel.com/i915: 1
+              gpu.intel.com/xe: 1
           env:
             - name: TZ
               value: "America/Los_Angeles"

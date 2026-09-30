@@ -93,10 +93,9 @@ Both cert-bearing schemes are covered by `manifests/acme-dns/ONBOARDING.md`, whi
 forks per zone at step 2.
 
 An app that cannot terminate TLS itself gets a Caddy sidecar rather than a Tailscale
-Ingress — see `manifests/jellyfin/` and `manifests/anki/`. Note the two schemes are
-not exclusive: jellyfin currently serves both a LoadBalancer and a Tailscale Ingress,
-which is why its Service carries an extra plaintext `8096` port to keep the proxy out
-of the `:80` redirect loop.
+Ingress — see `manifests/jellyfin/` and `manifests/anki/`. The two schemes are not
+exclusive; a Service can carry both, but then it needs an extra plaintext port to keep
+the Tailscale proxy out of the `:80` redirect loop.
 
 ## ⚠️ LoadBalancer Services are publicly enumerable
 
