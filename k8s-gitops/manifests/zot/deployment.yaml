@@ -60,6 +60,10 @@ spec:
             - name: zot-tls
               mountPath: /etc/zot/tls
               readOnly: true
+            # htpasswd for http.auth (push/delete account).
+            - name: zot-auth
+              mountPath: /etc/zot/auth
+              readOnly: true
           livenessProbe:
             httpGet:
               path: /v2/
@@ -83,3 +87,6 @@ spec:
         - name: zot-tls
           secret:
             secretName: zot-tls
+        - name: zot-auth
+          secret:
+            secretName: zot-auth

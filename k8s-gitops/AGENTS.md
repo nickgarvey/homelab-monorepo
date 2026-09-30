@@ -102,6 +102,12 @@ router — but do not treat an address as secret because it is "internal".
 
 Registry: `oci.garvey.sh` (TLS, Let's Encrypt prod cert)
 
+Pulls are anonymous. Push and delete need the `ngarvey` account: zot holds its
+bcrypt hash (`manifests/zot/secret.yaml`), and the workstations (talos,
+dovahkiin) get the credential as `~/.config/containers/auth.json` from
+nix-configs `modules/desktop/zot-push.nix`, so skopeo and podman push there
+with no login step. docker and crane don't read that file.
+
 ## Quick Commands
 
 List all repositories:
@@ -119,9 +125,8 @@ Pull with podman:
 podman pull oci.garvey.sh/<repo>:<tag>
 ```
 
-Push with podman:
+Push a nix-built image (from a workstation):
 ```bash
-podman tag <image>:<tag> oci.garvey.sh/<repo>:<tag>
-podman push oci.garvey.sh/<repo>:<tag>
+skopeo copy docker-archive:result docker://oci.garvey.sh/<repo>:<tag>
 ```
 

@@ -6,6 +6,8 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: ngarvey-homelab
 data:
+  # Pulls are anonymous (k3s and pods pull without credentials); push and
+  # delete need the `ngarvey` account from the zot-auth htpasswd.
   config.json: |
     {
       "distSpecVersion": "1.1.0",
@@ -31,6 +33,25 @@ data:
         "tls": {
           "cert": "/etc/zot/tls/tls.crt",
           "key": "/etc/zot/tls/tls.key"
+        },
+        "auth": {
+          "htpasswd": {
+            "path": "/etc/zot/auth/htpasswd"
+          }
+        },
+        "accessControl": {
+          "repositories": {
+            "**": {
+              "anonymousPolicy": ["read"],
+              "policies": [
+                {
+                  "users": ["ngarvey"],
+                  "actions": ["read", "create", "update", "delete"]
+                }
+              ],
+              "defaultPolicy": ["read"]
+            }
+          }
         }
       },
       "log": {
