@@ -77,7 +77,6 @@ spec:
         name: data
         labels:
           app.kubernetes.io/managed-by: ngarvey-homelab
-          recurring-job-group.longhorn.io/default: enabled
       spec:
         accessModes:
           - ReadWriteOnce
@@ -85,4 +84,4 @@ spec:
           requests:
             # Temporal's history/execution tables grow faster than authentik's.
             storage: 20Gi
-        storageClassName: longhorn-wffc
+        storageClassName: ceph-rbd

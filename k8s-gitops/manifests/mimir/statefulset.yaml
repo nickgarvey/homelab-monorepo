@@ -84,7 +84,7 @@ spec:
     - metadata:
         name: data
       spec:
-        storageClassName: longhorn-wffc
+        storageClassName: ceph-rbd
         accessModes:
           - ReadWriteOnce
         resources:
