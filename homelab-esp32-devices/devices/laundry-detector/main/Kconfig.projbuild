@@ -1,0 +1,41 @@
+menu "Laundry Detector"
+
+    config DEVICE_PRODUCT_NAME
+        string "Matter product name"
+        default "Laundry Detector"
+
+    config DEVICE_VENDOR_NAME
+        string "Matter vendor name"
+        default "Homelab"
+
+    config VIBRATION_THRESHOLD_MG
+        int "Vibration threshold in mg"
+        default 90
+        help
+            Acceleration magnitude (minus gravity) above which a sample
+            counts as vibrating.
+
+    config BUCKET_THRESHOLD
+        int "1-second buckets with vibration needed for Running"
+        default 15
+        help
+            Number of 1-second buckets (out of 120 in the rolling window)
+            that must contain a vibration event for the device to report
+            Running.  15 out of 120 means ~12.5% of the past 2 minutes.
+
+    config QUIET_TIMEOUT_SEC
+        int "Seconds without vibration before sleeping"
+        default 300
+        help
+            After this many seconds with no vibration above threshold,
+            the device enters deep sleep.
+
+    config REPORT_INTERVAL_SEC
+        int "Seconds between duty cycle reports"
+        default 60
+
+    config SLEEP_TIMER_MIN
+        int "Minutes between timer wakeups"
+        default 30
+
+endmenu
