@@ -57,7 +57,7 @@ All tests written red-green style against `fake_temp_sensor.c` / `.h`.
 
 ```bash
 # Enter dev shell
-nix develop
+nix develop .#esp32
 
 # Enable fake sensor in sdkconfig.defaults (already done):
 #   CONFIG_USE_FAKE_TEMP_SENSOR=y

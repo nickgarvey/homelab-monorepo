@@ -1,6 +1,6 @@
 # Nix Build System
 
-Firmware is built via Nix derivations defined in `flake.nix`. Builds run on a remote builder and are cached.
+Firmware is built via Nix derivations defined in `outputs.nix`. Builds run on a remote builder and are cached.
 
 ---
 
@@ -15,7 +15,7 @@ Firmware is built via Nix derivations defined in `flake.nix`. Builds run on a re
 
 ## Source Filtering (`cleanSrc`)
 
-The `cleanSrc` function in `flake.nix` controls which files are included in the firmware derivation's source hash. Changes to excluded files do **not** trigger rebuilds.
+The `cleanSrc` function in `outputs.nix` controls which files are included in the firmware derivation's source hash. Changes to excluded files do **not** trigger rebuilds.
 
 **Excluded:**
 - `scripts/`, `tests/`, `docs/` — development tooling, not firmware source
@@ -28,7 +28,7 @@ The `cleanSrc` function in `flake.nix` controls which files are included in the 
 ## Adding a New Device
 
 1. Create `devices/<name>/` with `main/`, `CMakeLists.txt`, `sdkconfig.defaults`
-2. Add a derivation in `flake.nix` (follow the `makeFreezerFirmware` pattern if variants are needed)
+2. Add a derivation in `outputs.nix` (follow the `makeFreezerFirmware` pattern if variants are needed)
 3. Add the package to `packages` in the flake outputs
 4. Add a build test in `tests/test_build_<name>.sh`
 
@@ -67,4 +67,4 @@ nix build .#freezer-temp-sensor -L
 Common issues:
 - **"Cannot find source file"** — new file not `git add`-ed (see Source Filtering above)
 - **"no free tx channels"** at runtime — hardware resource leak; see ds18b20_reader.c for the init-once pattern
-- **30-minute rebuild after editing flash.py** — file is inside `cleanSrc` exclusion? Check the filter in `flake.nix`
+- **30-minute rebuild after editing flash.py** — file is inside `cleanSrc` exclusion? Check the filter in `outputs.nix`

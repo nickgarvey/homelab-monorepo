@@ -26,10 +26,10 @@ After adding the module and rebuilding, the device is accessible without sudo.
 
 ### Dev shell
 
-All commands below should be run inside `nix develop`:
+All commands below should be run inside `nix develop .#esp32`:
 
 ```bash
-nix develop
+nix develop .#esp32
 ```
 
 ---
@@ -139,5 +139,5 @@ The `$OPENOCD_SCRIPTS` environment variable is set by the dev shell but may have
 Or hardcode it from the output of:
 
 ```bash
-nix develop --command sh -c 'echo $OPENOCD_SCRIPTS'
+nix develop .#esp32 --command sh -c 'echo $OPENOCD_SCRIPTS'
 ```

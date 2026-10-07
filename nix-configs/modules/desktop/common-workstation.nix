@@ -6,7 +6,7 @@ let
   };
   claude-code = inputs.claude-code-nix.packages.${pkgs.stdenv.hostPlatform.system}.default;
   codex = inputs.codex-cli-nix.packages.${pkgs.stdenv.hostPlatform.system}.default;
-  thinkrail = inputs.thinkrail.packages.${pkgs.stdenv.hostPlatform.system}.thinkrail;
+  thinkrail = inputs.self.packages.${pkgs.stdenv.hostPlatform.system}.thinkrail;
   agent-issue-tracker = pkgs.callPackage ../../pkgs/agent-issue-tracker { };
 
   # Waybar kanata button (configs/waybar/config.jsonc, custom/kanata). The

@@ -9,7 +9,7 @@
 #   4. Contains expected ELF symbols
 #
 # Usage (from repo root):
-#   nix develop --command bash tests/test_build_freezer.sh
+#   nix develop .#esp32 --command bash tests/test_build_freezer.sh
 
 set -euo pipefail
 

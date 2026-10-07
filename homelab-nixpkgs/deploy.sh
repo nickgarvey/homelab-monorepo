@@ -14,14 +14,14 @@ ensure_policy() {
 
 list_packages() {
     cd "$SCRIPT_DIR"
-    nix flake show --json 2>/dev/null | jq -r '.packages["x86_64-linux"] | keys[]'
+    nix eval --json .#legacyPackages.x86_64-linux.images --apply builtins.attrNames 2>/dev/null | jq -r '.[]'
 }
 
 do_build() {
     local pkg="$1"
     cd "$SCRIPT_DIR"
     echo "==> Building ${pkg}..."
-    nix build ".#${pkg}"
+    nix build ".#legacyPackages.x86_64-linux.images.${pkg}"
     echo "==> Built ${pkg} -> ./result"
 }
 

@@ -3,7 +3,7 @@
 # Run all tests: host unit tests + firmware build verification.
 #
 # Usage (from repo root, inside the Nix devShell):
-#   nix develop --command bash tests/run_all.sh
+#   nix develop .#esp32 --command bash tests/run_all.sh
 
 set -euo pipefail
 
@@ -11,11 +11,11 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 UNIT_BUILD="$REPO_ROOT/tests/build"
 
 # tests/CMakeLists.txt builds Unity from ${UNITY_SOURCE_DIR}. The devShell exports
-# it (see flake.nix); outside the devShell cmake would otherwise expand it to the
+# it (see outputs.nix); outside the devShell cmake would otherwise expand it to the
 # empty string and fail with the unhelpful "Cannot find source file: /src/unity.c".
 if [ -z "${UNITY_SOURCE_DIR:-}" ]; then
   echo "error: UNITY_SOURCE_DIR is not set — run this inside the devShell:" >&2
-  echo "  nix develop --command bash tests/run_all.sh" >&2
+  echo "  nix develop .#esp32 --command bash tests/run_all.sh" >&2
   exit 1
 fi
 

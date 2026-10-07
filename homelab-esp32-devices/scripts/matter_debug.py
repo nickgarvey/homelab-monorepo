@@ -4,7 +4,7 @@
 Queries the HA REST + WebSocket APIs to show raw cluster attribute data
 for a device, useful for debugging without serial access.
 
-Usage (from repo root, inside nix develop):
+Usage (from repo root, inside nix develop .#esp32):
   python3 scripts/matter_debug.py laundry-detector
   python3 scripts/matter_debug.py --watch laundry-detector
 """

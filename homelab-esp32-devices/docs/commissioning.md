@@ -39,13 +39,13 @@ On boot the firmware:
   [Getting the Thread dataset](#getting-the-thread-dataset) below.
 - **Matter Server addon** on HA with `enable_test_net_dcl: true` (our devices use
   the esp-matter test VID `0xFFF1`).
-- **sops** and **age** available (provided by `nix develop`).
+- **sops** and **age** available (provided by `nix develop .#esp32`).
 
 ## Flashing with Thread credentials
 
 ```bash
 # Enter the Nix dev shell (provides sops, esptool, python3, etc.)
-nix develop
+nix develop .#esp32
 
 # Flash with --thread to embed Thread credentials, --erase for a clean start
 python3 scripts/flash.py --erase --thread devices/laundry-detector
@@ -110,7 +110,7 @@ curl -s http://core-openthread-border-router:8081/node/dataset/active | python3 
 ### Updating the SOPS secret
 
 ```bash
-# Inside nix develop:
+# Inside nix develop .#esp32:
 echo "THREAD_DATASET_TLV: <hex-tlv>" > /tmp/thread-plain.yaml
 sops --encrypt --age "$(grep recipient secrets/thread.sops.yaml | head -1 | awk '{print $NF}'),$(grep recipient secrets/thread.sops.yaml | tail -1 | awk '{print $NF}')" \
     /tmp/thread-plain.yaml > secrets/thread.sops.yaml

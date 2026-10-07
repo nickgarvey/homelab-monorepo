@@ -112,7 +112,7 @@ For this board, `idf.py monitor` is more reliable than raw `cat /dev/ttyACM0`, e
 
 ```bash
 cd devices/led-blinker
-nix develop ../../ --command idf.py -p /dev/ttyACM0 monitor
+nix develop .#esp32 --command idf.py -p /dev/ttyACM0 monitor
 ```
 
 This avoids a few cases where attaching with `cat` too late makes it look like the device is silent, when it is really just not emitting logs at that exact moment.
@@ -217,7 +217,7 @@ On this board, the correct module size is 4 MB, so this warning should not appea
 ## Recommended flashing flow (after the udev rule is in place)
 
 1. Ensure `/dev/ttyACM0` is free (check with `fuser /dev/ttyACM0` or the scan above; close the Cursor fd if needed).
-2. Use `idf.py -p /dev/ttyACM0 flash` from inside `nix develop`. This uses esptool.py's serial download protocol, which works reliably.
+2. Use `idf.py -p /dev/ttyACM0 flash` from inside `nix develop .#esp32`. This uses esptool.py's serial download protocol, which works reliably.
 3. Use `idf.py -p /dev/ttyACM0 monitor` to watch output.
 
 OpenOCD is only needed for debugging (breakpoints, register inspection). For day-to-day flashing, stick to the serial path.

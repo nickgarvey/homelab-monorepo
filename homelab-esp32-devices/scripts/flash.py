@@ -9,14 +9,14 @@ Build behaviour:
   on first build and uses the binary cache thereafter.  The firmware is flashed
   directly from the Nix store output using esptool.py (no idf.py at flash time).
 
-Usage (from repo root, inside nix develop):
-  nix develop --command python3 scripts/flash.py devices/freezer-temp-sensor
-  nix develop --command python3 scripts/flash.py --fake-sensor devices/freezer-temp-sensor
-  nix develop --command python3 scripts/flash.py --method esp-prog devices/freezer-temp-sensor
-  nix develop --command python3 scripts/flash.py --method esp-prog-2 devices/laundry-detector
-  nix develop --command python3 scripts/flash.py --erase devices/freezer-temp-sensor
-  nix develop --command python3 scripts/flash.py devices/garage-opener
-  nix develop --command python3 scripts/flash.py --no-monitor devices/garage-opener
+Usage (from repo root, inside nix develop .#esp32):
+  nix develop .#esp32 --command python3 scripts/flash.py devices/freezer-temp-sensor
+  nix develop .#esp32 --command python3 scripts/flash.py --fake-sensor devices/freezer-temp-sensor
+  nix develop .#esp32 --command python3 scripts/flash.py --method esp-prog devices/freezer-temp-sensor
+  nix develop .#esp32 --command python3 scripts/flash.py --method esp-prog-2 devices/laundry-detector
+  nix develop .#esp32 --command python3 scripts/flash.py --erase devices/freezer-temp-sensor
+  nix develop .#esp32 --command python3 scripts/flash.py devices/garage-opener
+  nix develop .#esp32 --command python3 scripts/flash.py --no-monitor devices/garage-opener
 """
 
 import argparse

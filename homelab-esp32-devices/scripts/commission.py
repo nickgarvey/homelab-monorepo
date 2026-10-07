@@ -4,7 +4,7 @@
 Reads the pairing code from the device's matter-pairing.json and the HA
 long-lived access token from secrets/ha.sops.yaml (decrypted via sops).
 
-Usage (from repo root, inside nix develop):
+Usage (from repo root, inside nix develop .#esp32):
   python3 scripts/commission.py devices/laundry-detector
   python3 scripts/commission.py devices/freezer-temp-sensor
   python3 scripts/commission.py --code "MT:Y.K9042C00KA0648G00"

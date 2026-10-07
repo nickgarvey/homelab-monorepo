@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Re-pin a components FOD hash in flake.nix.
+"""Re-pin a components FOD hash in outputs.nix.
 
 Run this after changing idf_component.yml or updating dependencies.lock
 (e.g. after `idf.py update-dependencies`).  The script triggers a Nix
 build of the components-only derivation with a fake hash, extracts the
-correct hash from the error output, and patches flake.nix in place.
+correct hash from the error output, and patches outputs.nix in place.
 
 Usage:
     ./scripts/update-components-hash.py freezer-temp-sensor
@@ -17,9 +17,9 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-FLAKE = REPO_ROOT / "flake.nix"
+FLAKE = REPO_ROOT / "outputs.nix"
 
-# Map package name → marker comment in flake.nix
+# Map package name → marker comment in outputs.nix
 DEVICES = {
     "freezer-temp-sensor": "# freezer-components",
     "garage-opener": "# garage-components",
@@ -42,7 +42,7 @@ def main() -> None:
 
     pattern = r'(outputHash\s*=\s*)"[^"]*"(\s*;[^\n]*' + re.escape(marker) + r')'
     if not re.search(pattern, text):
-        print(f"error: could not find outputHash line with marker '{marker}' in flake.nix",
+        print(f"error: could not find outputHash line with marker '{marker}' in outputs.nix",
               file=sys.stderr)
         sys.exit(1)
 
@@ -80,7 +80,7 @@ def main() -> None:
     )
     FLAKE.write_text(updated)
     print(f"Updated outputHash to {new_hash}")
-    print("Commit flake.nix and dependencies.lock together.")
+    print("Commit outputs.nix and dependencies.lock together.")
 
 
 if __name__ == "__main__":

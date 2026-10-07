@@ -6,14 +6,29 @@ of each old repo.
 
 | Directory | What it holds | Its own conventions |
 |---|---|---|
-| `nix-configs/` | NixOS hosts, shared modules, the `deploy` tool. Flake lives here; run `nix run .#deploy` from this dir. | `nix-configs/AGENTS.md` |
+| `nix-configs/` | NixOS hosts, shared modules, the `deploy` tool (`nix run .#deploy`). | `nix-configs/AGENTS.md` |
 | `k8s-gitops/` | Kubernetes manifests for the k3s cluster, applied by hand (no in-cluster GitOps controller). | `k8s-gitops/AGENTS.md` |
-| `homelab-nixpkgs/` | Homelab packages and container images (lan-table, thinkrail, …). `nix-configs` consumes some as `path:../homelab-nixpkgs/<pkg>` inputs. | — |
+| `homelab-nixpkgs/` | Homelab packages and container images (lan-table, thinkrail, …). Hosts use them as `inputs.self.packages.<system>.<pkg>`. | — |
 | `homelab-esp32-devices/` | ESP32 device firmware (ESP-IDF) and its dev shell. | — |
 
-Each directory keeps its own flake; there is no root flake. Cross-references
-between directories ("k8s-gitops manifests/zot/secret.yaml", "nix-configs
-modules/networking/dns.nix") are paths relative to the repo root.
+## The flake
+
+There is one flake, at the repo root, with one `flake.lock`. Each directory
+defines its outputs in its own `outputs.nix`, and `flake.nix` merges them,
+failing evaluation if two directories define the same output name. Nix finds
+the root flake from any subdirectory, so `nix run .#deploy` and
+`nix build .#<pkg>` work from anywhere in the repo.
+
+- `nix develop` gives the default shell: deploy, go, python, kubectl, skopeo, jq.
+  Other shells are named: `.#esp32` (ESP-IDF; needed for anything in
+  `homelab-esp32-devices/`), `.#makernexus`, and one per homelab-nixpkgs package.
+- Container images that `homelab-nixpkgs/deploy.sh` pushes live under
+  `legacyPackages.x86_64-linux.images`.
+- `nixpkgs` is shared by hosts and homelab-nixpkgs. `nixpkgs-stable` (Ceph)
+  and `nixpkgs-esp32` (firmware) are deliberate separate pins.
+
+Cross-references between directories ("k8s-gitops manifests/zot/secret.yaml",
+"nix-configs modules/networking/dns.nix") are paths relative to the repo root.
 
 SOPS rules for every directory are in the root `.sops.yaml`.
 

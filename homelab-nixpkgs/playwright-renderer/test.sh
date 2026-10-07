@@ -17,8 +17,7 @@ trap cleanup EXIT
 # ── 1. Build ─────────────────────────────────────────────────────────────────
 echo "==> Building docker image..."
 cd "$SCRIPT_DIR"
-SYSTEM=$(nix eval --raw --impure --expr 'builtins.currentSystem')
-nix build ".#dockerImage.${SYSTEM}" --out-link /tmp/pw-renderer-result
+nix build ".#legacyPackages.x86_64-linux.images.playwright-renderer" --out-link /tmp/pw-renderer-result
 echo "==> Loading image into docker..."
 docker load < /tmp/pw-renderer-result
 

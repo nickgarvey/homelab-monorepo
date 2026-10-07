@@ -5,7 +5,7 @@
 
 let
   cfg = config.routerConfig;
-  lan-table = inputs.lan-table.packages.${pkgs.stdenv.hostPlatform.system}.default;
+  lan-table = inputs.self.packages.${pkgs.stdenv.hostPlatform.system}.lan-table;
   port = 8080;
 
   # networkctl reports when a lease expires but not how long it was granted
