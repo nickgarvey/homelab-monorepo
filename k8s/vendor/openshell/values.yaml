@@ -1,0 +1,77 @@
+agentSandbox:
+  preflight:
+    # The preflight check looks up the Sandbox CRD in the live cluster and
+    # fails the render when it is absent, which it always is offline.
+    enabled: false
+
+# The chart's certgen hook never runs (hooks are not rendered), and
+# cert-manager is already in the cluster. The JWT-only half of that hook is
+# manifests/openshell/jwt-keys-job.yaml.
+certManager:
+  enabled: true
+  # The chart's defaults plus the LAN LoadBalancer's k8s_gateway name
+  # (manifests/openshell/service-lb.yaml). Setting the list replaces the
+  # defaults, so they are repeated; re-check them on a chart bump.
+  serverDnsNames:
+    - openshell
+    - openshell.openshell.svc
+    - openshell.openshell.svc.cluster.local
+    - localhost
+    - openshell.localhost
+    - "*.openshell.localhost"
+    - host.docker.internal
+    - gateway.openshell.k8s.home.garvey.sh
+pkiInitJob:
+  enabled: false
+
+workload:
+  # A Deployment, not the chart's StatefulSet: the state is in postgres, so the
+  # pod needs no volume of its own.
+  kind: deployment
+
+server:
+  # The shared postgres (manifests/postgres/) instead of the chart's SQLite
+  # file. The chart reads OPENSHELL_DB_URL from this Secret's `uri` key. The URL
+  # holds no password: the gateway logs in with a client certificate mounted by
+  # kustomization.yaml. The Secret is manifests/openshell/db-secret.yaml.
+  externalDbSecret: openshell-db
+  credentialStorage:
+    # Without this the chart renders the key-encryption key from `lookup` and
+    # `randBytes`, so every offline render (and every apply) gets a new key.
+    # The Secret comes from manifests/openshell/secret.yaml (sops).
+    existingSecret: openshell-kek
+  # CLI users log in through Authelia (manifests/authelia, client
+  # openshell-cli). On Kubernetes the chart's mTLS is transport only, so this is
+  # what authenticates people. With an issuer set, the gateway makes client
+  # certificates optional but still verifies any it is given.
+  oidc:
+    issuer: https://auth.home.garvey.sh
+    # Roles are Authelia groups, which the openshell-cli claims policy puts in
+    # the access token. Leaving the roles empty does not give the auth-only
+    # mode the chart docs describe: the chart then omits them and the gateway
+    # falls back to openshell-admin/openshell-user, which Authelia never
+    # issues. admins is the group Grafana also makes Admin; the admin role
+    # passes user checks too. Put a user in openshell for non-admin access.
+    rolesClaim: groups
+    adminRole: admins
+    userRole: openshell
+
+# The gateway and supervisor run the images NVIDIA's CI built for the head of
+# NVIDIA/OpenShell#3702 (9ab8076a, "0.1.2 + IPv6 policy DNS egress"). 0.1.2's
+# policy DNS answers every AAAA query with NODATA and resolves only A records
+# upstream, so in this IPv6-only cluster no sandbox can resolve any name. The
+# sandbox runtime image is unchanged by the PR and stays at the chart's 0.1.2.
+# Drop both pins (and the deadline check in agents/outputs.nix) once a release
+# includes #3702, and bump VERSION in chart.env.
+gateway:
+  image:
+    digest: sha256:676297600ffa01aa52500e95c7fbb2bdaa11e4a08d35f731f6ad0a90f73a0a8d
+supervisor:
+  image:
+    digest: sha256:621a015cf8d70727e81377754c89ff0e1f5572f476fad0940beb5849f908dd4d
+# The PR gateway derives the sandbox runtime tag from its own version
+# (0.1.2-dev.11-g9ab8076a9), which ghcr does not have, so pin the PR head's
+# runtime too.
+sandboxRuntime:
+  image:
+    digest: sha256:21440e180367e3905d69ddbdc8400c26200cf6bbdd0e230ed0e10a4dee256ba7

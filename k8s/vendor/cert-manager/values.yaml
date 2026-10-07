@@ -43,3 +43,11 @@ cainjector:
 extraArgs:
   - --dns01-recursive-nameservers-only
   - --dns01-recursive-nameservers=[fd43::a]:53
+
+# The built-in approver approves every issuer except the SPIFFE CA, whose
+# requests approver-policy decides (vendor/cert-manager-approver-policy/). Listing
+# the ClusterIssuers by name keeps ACME renewals working without a policy.
+approveSignerNames:
+  - issuers.cert-manager.io/*
+  - clusterissuers.cert-manager.io/letsencrypt-acmedns-prod
+  - clusterissuers.cert-manager.io/letsencrypt-acmedns-staging

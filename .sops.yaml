@@ -52,6 +52,15 @@ creation_rules:
       - *joor
       - *zah
       - *frul
+  # rgw-sts: rgw_sts_key, which encrypts RGW's STS session tokens; the same on
+  # every RGW (modules/services/ceph.nix).
+  - path_regex: secrets/rgw-sts.yaml
+    key_groups:
+    - age:
+      - *ngarvey
+      - *joor
+      - *zah
+      - *frul
   # llm-models: dedicated garage S3 key for the LLM model store.
   #   - dovahkiin + wabbajack present their own host keys; dovahkiin runs the
   #     hf-to-garage upload tool. wabbajack has no consumer of this secret.

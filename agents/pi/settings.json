@@ -1,0 +1,6 @@
+{
+  "defaultProvider": "litellm",
+  "defaultModel": "qwen3.8-flash-next",
+  "defaultThinkingLevel": "medium",
+  "theme": "dark"
+}

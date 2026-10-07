@@ -17,3 +17,30 @@ kubectl apply -f manifests/cert-manager/
   the only issuers; every Certificate uses `letsencrypt-acmedns-prod`.
 - The acme-dns account secret lives at `manifests/acme-dns/secret.yaml` (also namespaced to
   `cert-manager`). Onboarding a new name: `manifests/acme-dns/ONBOARDING.md`.
+
+## SPIFFE trust domain
+
+`spiffe-ca-issuer.yaml` is the ClusterIssuer `spiffe-ca`, the one CA for the trust domain
+`spiffe://home.garvey.sh`. Its key is in `secret.yaml` (SOPS); the certificate carries a
+name constraint, so it can only certify URIs under `home.garvey.sh`, and path length 1, so
+it can sign exactly one level of CA below it: SPIRE's (`manifests/spire/`). Services trust
+this single root and decide which identities they accept (postgres: `manifests/postgres/`).
+
+Identities come from one of two registries, both chaining to this root:
+
+- **Here, approver-policy**, when the consumer needs a Kubernetes Secret (a `Certificate`
+  in the workload's namespace), e.g. CloudNativePG's server and replication certificates.
+- **SPIRE**, when the workload fetches its identity through the Workload API, and for
+  every JWT-SVID. Every pod outside the system namespaces already has one; see
+  `manifests/spire/README.md`.
+
+Requests to it are approved by approver-policy, not cert-manager: `values.yaml` lists the
+signers cert-manager still approves itself (every other issuer), and
+`spiffe-policies.yaml` holds one `CertificateRequestPolicy` per identity, plus one for
+SPIRE's intermediate CA. A request that no policy matches stays unapproved. Add an
+identity by adding a policy (and its name to the ClusterRole there).
+
+Apply order: `vendor/cert-manager/cert-manager.yaml`, then
+`kubectl apply -f vendor/cert-manager-approver-policy/cert-manager-approver-policy.yaml`,
+then `kubectl apply -f manifests/cert-manager/` (the CA secret needs the
+sops-secrets-operator).

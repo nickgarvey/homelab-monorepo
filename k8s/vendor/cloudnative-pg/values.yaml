@@ -1,0 +1,13 @@
+# Values for the cloudnative-pg chart (version in chart.env), rendered by
+# scripts/render-chart.sh; see vendor/README.md.
+#
+# The shared Postgres cluster it manages is manifests/postgres/.
+
+# The cluster services run on fus/ro/dah.
+nodeSelector:
+  kubernetes.io/os: linux
+  node-role.kubernetes.io/control-plane: "true"
+tolerations:
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule

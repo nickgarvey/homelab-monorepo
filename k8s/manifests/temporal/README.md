@@ -1,6 +1,6 @@
 # temporal
 
-Temporal workflow engine at `https://temporal.garvey.sh`, backed by its own
+Temporal workflow engine at `https://temporal.garvey.sh`, backed by the shared
 single-replica Postgres. `temporalio/auto-setup` runs frontend, history,
 matching and worker in one process and creates + migrates the schema on start,
 so there is no separate schema Job.
@@ -35,8 +35,8 @@ its manifests were removed (see "Status: not deployed" in that doc).
 kubectl apply -f manifests/temporal/namespace.yaml
 kubectl apply -f manifests/temporal/secret.yaml
 kubectl apply -f manifests/temporal/certificate.yaml
-kubectl apply -f manifests/temporal/postgres.yaml
-kubectl -n temporal rollout status statefulset/temporal-postgres
+kubectl apply -f manifests/temporal/service-account.yaml
+kubectl apply -f manifests/temporal/postgres-client-certificate.yaml
 kubectl apply -f manifests/temporal/deployment.yaml
 kubectl apply -f manifests/temporal/service.yaml
 kubectl apply -f manifests/temporal/frontend-lb-service.yaml
@@ -46,7 +46,8 @@ kubectl apply -f manifests/temporal/ui-service.yaml
 kubectl apply -f manifests/temporal/service-monitor.yaml
 ```
 
-Postgres must be up before the server (auto-setup retries, but logs noisily),
+The shared postgres (and its role and databases) must exist before the server, and
+the client certificate Secret before its pod starts,
 and `temporal-tls` must exist before the UI pod starts or Caddy crashloops on
 the missing `/certs`.
 
@@ -54,16 +55,23 @@ Split-horizon DNS is `"temporal.garvey.sh" = "2001:470:482f:2::5002";` in
 `garveyShOverrides` in `modules/networking/dns.nix`; deploy the router with the
 deploy tool after changing it.
 
-## The POSTGRES_DB gotcha
+## The database
 
-`POSTGRES_DB` in `secret.yaml` must equal `DBNAME` in `deployment.yaml` (both
-`temporal`). `auto-setup.sh` guards its own `CREATE DATABASE` with
-`DBNAME != POSTGRES_USER` and, when they match, assumes the Postgres container
-already created the database via `POSTGRES_DB`. Point `POSTGRES_DB` anywhere
-else and the server crashloops on `database "temporal" does not exist`.
+Temporal uses the `temporal` and `temporal_visibility` databases on the shared
+postgres, as the `temporal` role. There is no password: the pod presents the client
+certificate in `postgres-client-certificate.yaml` (CN `temporal`, URI SAN
+`spiffe://home.garvey.sh/ns/temporal/sa/temporal`, from the SPIFFE CA, 24h), and
+`manifests/postgres/cluster.yaml` accepts only that for the role. The server certificate
+is verified against the same CA. `temporal-db`'s `POSTGRES_PWD` is therefore unused, but
+`POSTGRES_USER` is not.
 
-`temporal_visibility` differs from the user name, so auto-setup creates that one
-itself on every fresh deploy.
+auto-setup reads two sets of TLS variables, `SQL_*` for the server and `POSTGRES_TLS_*` for
+its schema tool, and the second inverts host verification; `deployment.yaml` sets both.
+`SKIP_DB_CREATE` is set because the operator creates the databases and the role cannot
+connect to the `postgres` database that `CREATE DATABASE` needs.
+
+The pod must be able to read the key as uid 1000: the Secret volume is mode 0440 with
+`fsGroup: 1000`, and lib/pq refuses anything looser.
 
 ## The IPv6 gotcha
 

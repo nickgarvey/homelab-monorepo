@@ -1,0 +1,77 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: postgres
+  namespace: postgres
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  # Clients connect to postgres-rw.postgres.svc:5432 (primary). The operator
+  # also makes postgres-ro (replicas) and postgres-r (any instance).
+  instances: 2
+  # Pinned minor, so an image bump is a reviewed change rather than a pull.
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.11-standard-trixie
+  storage:
+    storageClass: ceph-rbd
+    size: 20Gi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 2Gi
+  affinity:
+    # Two instances on one node would lose both to one failure.
+    enablePodAntiAffinity: true
+    podAntiAffinityType: required
+    topologyKey: kubernetes.io/hostname
+  certificates:
+    # Client certificates are validated against the SPIFFE CA shared by the
+    # whole trust domain (cert-manager/spiffe-ca-issuer.yaml). The cluster cannot
+    # sign with it, so the streaming_replica certificate comes from there too
+    # (replication-certificate.yaml). A role logs in with a certificate through a
+    # 'hostssl <dbs> <role> all cert clientname=DN map=spiffe' rule in
+    # postgresql.pg_hba and a line in the spiffe map in postgresql.pg_ident; the
+    # operator puts those before its catch-all password rule.
+    clientCASecret: postgres-client-ca
+    replicationTLSSecret: postgres-replication-spiffe
+    # The server certificate comes from the same CA (server-certificate.yaml).
+    serverCASecret: postgres-client-ca
+    serverTLSSecret: postgres-server-spiffe
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: postgres-backups
+  managed:
+    roles:
+      # One role per app. A new app adds a role here, a password Secret in
+      # secret.yaml and a Database in databases.yaml.
+      - name: temporal
+        ensure: present
+        login: true
+        passwordSecret:
+          name: postgres-temporal
+      # Logs in with a client certificate only (see pg_hba below), so no password.
+      - name: openshell
+        ensure: present
+        login: true
+  postgresql:
+    # A role gets the databases named here and no others. First match wins and
+    # the operator puts these before its 'host all all all scram-sha-256', so
+    # the reject keeps the role out of every database not listed. A new app adds
+    # its own pair of lines (and the grants in README.md "Adding an app").
+    pg_hba:
+      - hostssl temporal,temporal_visibility temporal all cert clientname=DN map=spiffe
+      - host all temporal all reject
+      - hostssl openshell openshell all cert clientname=DN map=spiffe
+      - host all openshell all reject
+    # A certificate login matches the client certificate's whole subject DN,
+    # not just its CN. The client CA signs for the whole trust domain, so only
+    # these exact DNs, which come from the policies in
+    # cert-manager/spiffe-policies.yaml, map to a role. SPIRE's SVIDs chain to
+    # it too and put an entry's DNS name in the CN, but their subjects always
+    # carry O=SPIRE and C=US, so they never equal these DNs.
+    pg_ident:
+      - spiffe "CN=temporal" temporal
+      - spiffe "CN=openshell" openshell

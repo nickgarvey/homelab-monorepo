@@ -1,0 +1,17 @@
+# The OIDC discovery provider's HTTPS certificate (vendor/spire/values.yaml,
+# spiffe-oidc-discovery-provider.tls.externalSecret). Publicly trusted, because
+# its readers are outside the cluster: Ceph RGW fetches the JWKS from here.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: spiffe-oidc-tls
+  namespace: spire
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  secretName: spiffe-oidc-tls
+  dnsNames:
+    - spiffe-oidc.home.garvey.sh
+  issuerRef:
+    name: letsencrypt-acmedns-prod
+    kind: ClusterIssuer

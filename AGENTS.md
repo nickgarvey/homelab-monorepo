@@ -16,16 +16,18 @@ homelab-esp32-devices).
 | `packages/` | Software we build: packages, container images, the `deploy` tool. | — |
 | `k8s/` | Kubernetes manifests for the k3s cluster, applied by hand (no in-cluster GitOps controller). | `k8s/AGENTS.md` |
 | `firmware/` | ESP32 device firmware (ESP-IDF) and its dev shell. | — |
+| `agents/` | Agents run in OpenShell sandboxes on k3s: per-agent image, sandbox policy, provider profile and instructions. | `agents/README.md` |
 
 ## The flake
 
 There is one flake, at the repo root, with one `flake.lock`. `hosts/`,
-`devshells/`, `packages/` and `firmware/` each define their outputs in their
-own `outputs.nix`, and `flake.nix` merges them, failing evaluation if two
+`devshells/`, `packages/`, `firmware/` and `agents/` each define their outputs in
+their own `outputs.nix`, and `flake.nix` merges them, failing evaluation if two
 define the same output name. Nix finds the root flake from any subdirectory,
 so `nix run .#deploy` and `nix build .#<pkg>` work from anywhere in the repo.
 
-- `nix develop` gives the default shell: deploy, go, python, kubectl, helm, skopeo, jq.
+- `nix develop` gives the default shell: deploy, openshell, go, python, kubectl, helm,
+  skopeo, jq.
   The only other shells are `.#esp32` (ESP-IDF; needed for anything in
   `firmware/`) and `.#makernexus`.
 - There is one `nixpkgs`. Two inputs keep their own locked nixpkgs on purpose:

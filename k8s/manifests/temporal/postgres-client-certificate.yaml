@@ -1,0 +1,31 @@
+# Temporal's login to the shared postgres (postgres namespace): the CN is the
+# postgres role, the URI SAN its SPIFFE ID. Issued by the SPIFFE CA only because
+# manifests/cert-manager/spiffe-policies.yaml allows exactly this name here.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: temporal-postgres-client
+  namespace: temporal
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  secretName: temporal-postgres-client
+  commonName: temporal
+  uris:
+    - spiffe://home.garvey.sh/ns/temporal/sa/temporal
+  usages:
+    - client auth
+    - digital signature
+    - key encipherment
+  # Short lived: Temporal reopens its connections hourly and so picks up the
+  # renewed files from the mounted Secret.
+  duration: 24h
+  renewBefore: 8h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: spiffe-ca

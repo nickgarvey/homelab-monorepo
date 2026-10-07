@@ -1,0 +1,78 @@
+# Creates Secret openshell-jwt-keys (the gateway's sandbox JWT signing key),
+# as the chart's certgen hook does in cert-manager mode; hooks are not rendered
+# here. generate-certs --jwt-only leaves an existing Secret alone, so the Job is
+# safe to re-run. Losing the key only invalidates short-lived sandbox tokens.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: openshell-jwt-keys
+  namespace: openshell
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: openshell-jwt-keys
+  namespace: openshell
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: openshell-jwt-keys
+  namespace: openshell
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: openshell-jwt-keys
+subjects:
+  - kind: ServiceAccount
+    name: openshell-jwt-keys
+    namespace: openshell
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: openshell-jwt-keys
+  namespace: openshell
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/managed-by: ngarvey-homelab
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: openshell-jwt-keys
+      containers:
+        - name: generate
+          # Keep in step with the chart version in vendor/openshell/chart.env.
+          image: ghcr.io/nvidia/openshell/gateway:0.1.2
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            runAsUser: 1000
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          command: ["/usr/local/bin/openshell-gateway"]
+          args:
+            - generate-certs
+            - --jwt-only
+            - --jwt-secret-name=openshell-jwt-keys

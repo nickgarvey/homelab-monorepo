@@ -1,0 +1,31 @@
+# OpenShell provider profile: lets the pi sandbox's node make model calls to
+# litellm, and nothing else. The proxy allows only listing models and chat
+# completions, so litellm's admin and other APIs stay out of reach (litellm
+# runs without a key, so there are no credentials to inject). It cannot pin
+# the model, which is in the request body; litellm serves one model anyway.
+# category and inference_capable are informational and restrict nothing.
+# agents/outputs.nix fills in `binaries` with the real path of the node pi runs
+# under (a store path; the sandbox matches the resolved exe).
+id: litellm
+display_name: litellm
+description: In-cluster litellm proxy (k8s/manifests/litellm), model calls only
+category: inference
+inference_capable: true
+
+credentials: []
+
+endpoints:
+  - host: litellm.litellm.svc.cluster.local
+    port: 4000
+    protocol: rest
+    enforcement: enforce
+    rules:
+      - allow:
+          method: GET
+          path: /v1/models
+      - allow:
+          method: POST
+          path: /v1/chat/completions
+
+binaries:
+  - @node@

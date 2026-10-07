@@ -1,0 +1,40 @@
+# Temporal needs two databases, both owned by the temporal role.
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: temporal
+  namespace: postgres
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  name: temporal
+  owner: temporal
+  cluster:
+    name: postgres
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: temporal-visibility
+  namespace: postgres
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  name: temporal_visibility
+  owner: temporal
+  cluster:
+    name: postgres
+---
+# The OpenShell gateway's state (sandboxes, providers, profiles).
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: openshell
+  namespace: postgres
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  name: openshell
+  owner: openshell
+  cluster:
+    name: postgres

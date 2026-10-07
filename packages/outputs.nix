@@ -10,6 +10,7 @@ let
   ninfer = import ./ninfer/outputs.nix { inherit nixpkgs system; };
   thinkrail = import ./thinkrail/outputs.nix { inherit nixpkgs system; };
   lan-table = import ./lan-table/outputs.nix { inherit nixpkgs system; };
+  openshell = import ./openshell/outputs.nix { inherit nixpkgs system; };
 
   # The deploy binary, built from ./deploy. buildGoModule runs `go test`
   # as part of the build, so this derivation is also the test check.
@@ -29,6 +30,7 @@ in
     thinkrail = thinkrail.thinkrail;
     thinkrail-node-modules = thinkrail.node-modules;
     inherit lan-table;
+    inherit openshell;
     inherit deploy;
   };
 

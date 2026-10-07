@@ -86,5 +86,6 @@
       (import ./devshells/outputs.nix inputs)
       (import ./packages/outputs.nix inputs)
       (import ./firmware/outputs.nix inputs)
+      (import ./agents/outputs.nix inputs)
     ];
 }

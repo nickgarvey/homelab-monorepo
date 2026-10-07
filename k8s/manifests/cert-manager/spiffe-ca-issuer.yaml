@@ -1,0 +1,13 @@
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: spiffe-ca
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  # The one CA of the SPIFFE trust domain spiffe://home.garvey.sh. Every
+  # workload certificate comes from here and each service decides which
+  # identities it accepts. Requests are approved by approver-policy, not by
+  # cert-manager (see spiffe-policies.yaml and vendor/cert-manager/values.yaml).
+  ca:
+    secretName: spiffe-ca

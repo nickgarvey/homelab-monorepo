@@ -1,0 +1,84 @@
+# Values for the spire chart (version in chart.env), rendered by
+# scripts/render-chart.sh; see vendor/README.md.
+#
+# SPIRE for the SPIFFE trust domain spiffe://home.garvey.sh. Its CA is an
+# intermediate under the cert-manager ClusterIssuer spiffe-ca; the policy that
+# lets it request one is in manifests/cert-manager/spiffe-policies.yaml. See
+# manifests/spire/README.md.
+
+global:
+  spire:
+    trustDomain: home.garvey.sh
+    clusterName: homelab
+    # The iss of every JWT-SVID, served by the OIDC discovery provider below.
+    jwtIssuer: https://spiffe-oidc.home.garvey.sh
+
+spire-server:
+  # SPIRE's CA is signed by spiffe-ca, so SVIDs chain to the one root of the
+  # trust domain. The chart's CA key type (rsa-2048) also signs JWT-SVIDs; keep
+  # it RSA: Ceph RGW validates bare JWKS keys only for RSA.
+  upstreamAuthority:
+    certManager:
+      enabled: true
+      issuerName: spiffe-ca
+      issuerKind: ClusterIssuer
+  caSubject:
+    country: US
+    organization: SPIFFE
+    commonName: home.garvey.sh SPIRE CA
+
+  # One server, sqlite on Longhorn: the control plane keeps no volumes on Ceph,
+  # so SPIRE keeps working with joor/zah/frul down. Agents keep serving cached
+  # SVIDs while the server fails over.
+  persistence:
+    storageClass: longhorn
+
+  # Every pod outside kube-system, kube-public, local-path-storage (the
+  # controller-manager's ignoreNamespaces) and spire (the default
+  # ClusterSPIFFEID's namespaceSelector) gets
+  # spiffe://home.garvey.sh/ns/<namespace>/sa/<service account> (the chart's
+  # default ClusterSPIFFEID). The OIDC provider, in the spire namespace, gets
+  # its identity from the chart's oidc-discovery-provider ClusterSPIFFEID; the
+  # test-keys one serves the chart's tests, which do not run here.
+  controllerManager:
+    identities:
+      clusterSPIFFEIDs:
+        test-keys:
+          enabled: false
+
+  # The cluster services run on fus/ro/dah.
+  nodeSelector: &controlPlaneSelector
+    kubernetes.io/os: linux
+    node-role.kubernetes.io/control-plane: "true"
+  tolerations: &controlPlaneTolerations
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+
+# Agents run on every node, including the control plane, so any pod outside the
+# ignored namespaces can get its SVID.
+spire-agent:
+  tolerations: *controlPlaneTolerations
+spiffe-csi-driver:
+  tolerations: *controlPlaneTolerations
+
+# Publishes the trust domain's JWT signing keys (/.well-known/openid-configuration
+# and the JWKS) so services outside the cluster, such as Ceph RGW STS, can
+# validate JWT-SVIDs. It serves HTTPS itself on the LoadBalancer's 443 with a
+# Let's Encrypt certificate (manifests/spire/certificate.yaml), and re-reads the
+# files when cert-manager renews them. RGW pins the last certificate of the
+# chain it serves, so a change in the chain Let's Encrypt hands out needs the thumbprint
+# re-registered (manifests/spire/README.md).
+spiffe-oidc-discovery-provider:
+  tls:
+    spire:
+      enabled: false
+    externalSecret:
+      enabled: true
+      secretName: spiffe-oidc-tls
+  service:
+    type: LoadBalancer
+    annotations:
+      io.cilium/lb-ipam-ips: "2001:470:482f:2::5007"
+  nodeSelector: *controlPlaneSelector
+  tolerations: *controlPlaneTolerations

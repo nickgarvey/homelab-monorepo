@@ -1,0 +1,62 @@
+# The openshell render (scripts/render-chart.sh, never edited) with the
+# gateway listening on IPv6.
+# Apply with: kubectl apply -k vendor/openshell
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# The chart leaves metadata.namespace off most of its namespaced objects.
+namespace: openshell
+resources:
+  - openshell.yaml
+patches:
+  # The chart's gateway.toml hardcodes 0.0.0.0 for the gRPC, health and
+  # metrics listeners, which accepts nothing in this IPv6-only cluster. The
+  # gateway's OPENSHELL_* env vars take precedence over the file: the bind
+  # address moves the gRPC listener, and setting a health/metrics port puts
+  # that listener on the bind address too. The ports repeat the chart's
+  # service.healthPort and service.metricsPort; check them on a chart bump.
+  - target:
+      kind: Deployment
+      name: openshell
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: openshell
+      spec:
+        template:
+          spec:
+            containers:
+              - name: openshell-gateway
+                env:
+                  - name: OPENSHELL_BIND_ADDRESS
+                    value: "::"
+                  - name: OPENSHELL_HEALTH_PORT
+                    value: "8081"
+                  - name: OPENSHELL_METRICS_PORT
+                    value: "9090"
+  # The gateway's client certificate for the shared postgres
+  # (manifests/openshell/postgres-client-certificate.yaml), which the chart has
+  # no value for. The pod's fsGroup (1000) makes the 0440 key readable to the
+  # gateway's user. The paths are the ones in manifests/openshell/db-secret.yaml.
+  - target:
+      kind: Deployment
+      name: openshell
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: openshell
+      spec:
+        template:
+          spec:
+            containers:
+              - name: openshell-gateway
+                volumeMounts:
+                  - name: postgres-client
+                    mountPath: /etc/openshell-pg
+                    readOnly: true
+            volumes:
+              - name: postgres-client
+                secret:
+                  secretName: openshell-postgres-client
+                  defaultMode: 0440

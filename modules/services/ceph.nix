@@ -77,10 +77,31 @@ in
       enable = true;
       # HTTPS on 443 with this node's certificate for the shared name (below);
       # plain HTTP stays on 7480.
-      extraConfig."client.rgw.${hostname}"."rgw frontends" =
-        "beast endpoint=[::]:7480 ssl_endpoint=[::]:443"
-        + " ssl_certificate=${rgwCertDir}/fullchain.pem ssl_private_key=${rgwCertDir}/key.pem";
+      extraConfig."client.rgw.${hostname}" = {
+        "rgw frontends" =
+          "beast endpoint=[::]:7480 ssl_endpoint=[::]:443"
+          + " ssl_certificate=${rgwCertDir}/fullchain.pem ssl_private_key=${rgwCertDir}/key.pem";
+        # STS, for AssumeRoleWithWebIdentity with SPIRE's JWT-SVIDs
+        # (k8s/manifests/spire/README.md). rgw_sts_key comes from sops (below).
+        # rgw_enable_jwks_url_verification stays at its default, off: its
+        # thumbprint check connects over IPv4 only, and the JWKS is fetched
+        # over HTTPS with the system CAs either way.
+        "rgw s3 auth use sts" = "true";
+      };
     };
+  };
+
+  # rgw_sts_key encrypts the session tokens STS hands out, so every RGW needs
+  # the same one. It reaches radosgw through CEPH_ARGS rather than ceph.conf,
+  # which is in the Nix store. Changing it only invalidates outstanding
+  # temporary credentials.
+  sops.secrets.rgw-sts-key = {
+    sopsFile = ../../secrets/rgw-sts.yaml;
+    key = "sts_key";
+  };
+  sops.templates."rgw-sts.env" = {
+    content = "CEPH_ARGS=--rgw_sts_key=${config.sops.placeholder.rgw-sts-key}";
+    restartUnits = [ "ceph-rgw-rgw.${hostname}.service" ];
   };
 
   # Every node issues its own certificate for rgw.home.garvey.sh (the
@@ -124,6 +145,7 @@ in
     wants = [ "acme-${rgwDomain}.service" ];
     after = [ "acme-${rgwDomain}.service" ];
     serviceConfig.AmbientCapabilities = [ "CAP_NET_BIND_SERVICE" ];
+    serviceConfig.EnvironmentFile = config.sops.templates."rgw-sts.env".path;
   };
 
   environment.systemPackages = [ ceph ];

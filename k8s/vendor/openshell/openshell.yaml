@@ -1,0 +1,784 @@
+---
+# Builtin: "helm template" does not emit a Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openshell
+---
+# Source: helm-chart/templates/networkpolicy.yaml
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+# NetworkPolicy restricting SSH ingress on sandbox pods to the gateway pod.
+# Sandbox pods are dynamically created by the server and labelled with
+# openshell.ai/managed-by=openshell. This policy ensures only the gateway
+# (openshell server) pod can reach the sandbox SSH port (2222), blocking
+# lateral movement from other in-cluster workloads.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: openshell-sandbox-ssh
+  namespace: openshell
+  labels:
+    helm.sh/chart: helm-chart-0.1.2
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/instance: openshell
+    app.kubernetes.io/version: "0.1.2"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  podSelector:
+    matchLabels:
+      openshell.ai/managed-by: openshell
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshell
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: openshell
+              app.kubernetes.io/instance: openshell
+      ports:
+        - protocol: TCP
+          port: 2222
+
+---
+# Source: helm-chart/templates/serviceaccount.yaml
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: openshell
+  labels:
+    helm.sh/chart: helm-chart-0.1.2
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/instance: openshell
+    app.kubernetes.io/version: "0.1.2"
+    app.kubernetes.io/managed-by: Helm
+
+---
+# Source: helm-chart/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: openshell-sandbox
+  namespace: openshell
+  labels:
+    helm.sh/chart: helm-chart-0.1.2
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/instance: openshell
+    app.kubernetes.io/version: "0.1.2"
+    app.kubernetes.io/managed-by: Helm
+
+---
+# Source: helm-chart/templates/gateway-config.yaml
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openshell-config
+  labels:
+    helm.sh/chart: helm-chart-0.1.2
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/instance: openshell
+    app.kubernetes.io/version: "0.1.2"
+    app.kubernetes.io/managed-by: Helm
+data:
+  gateway.toml: |
+    [openshell]
+    version = 2
+
+    [openshell.gateway]
+    name                  = "openshell"
+    bind_address          = "0.0.0.0:8080"
+    health_bind_address   = "0.0.0.0:8081"
+    metrics_bind_address  = "0.0.0.0:9090"
+    log_level             = "info"
+    compute_driver        = "kubernetes"
+    policy_validation_failure_mode = "fail_closed"
+    enable_loopback_service_http = true
+    enable_websocket_tunnel = false
+    server_sans = ["openshell", "openshell.openshell.svc", "openshell.openshell.svc.cluster.local", "localhost", "openshell.localhost", "*.openshell.localhost", "host.docker.internal", "gateway.openshell.k8s.home.garvey.sh"]
+
+    [openshell.gateway.tls]
+    cert_path             = "/etc/openshell-tls/server/tls.crt"
+    key_path              = "/etc/openshell-tls/server/tls.key"
+    client_ca_path        = "/etc/openshell-tls/client-ca/ca.crt"
+
+    [openshell.gateway.gateway_jwt]
+    signing_key_path = "/etc/openshell-jwt/signing.pem"
+    public_key_path  = "/etc/openshell-jwt/public.pem"
+    kid_path         = "/etc/openshell-jwt/kid"
+    gateway_id       = "openshell"
+    ttl_secs         = 3600
+
+    [openshell.gateway.oidc]
+    issuer                           = "https://auth.home.garvey.sh"
+    dangerously_allow_insecure_http = false
+    jwks_allowed_origins             = []
+    audience                         = "openshell-cli"
+    jwks_ttl_secs                    = 3600
+    roles_claim   = "groups"
+    admin_role    = "admins"
+    user_role     = "openshell"
+
+    [openshell.drivers.kubernetes]
+    allow_driver_config          = false
+    namespace                    = "openshell"
+    default_image                = "nvcr.io/nvidia/base/ubuntu:24.04"
+    sandbox_runtime_image        = "ghcr.io/nvidia/openshell/sandbox@sha256:21440e180367e3905d69ddbdc8400c26200cf6bbdd0e230ed0e10a4dee256ba7"
+    supervisor_image             = "ghcr.io/nvidia/openshell/supervisor@sha256:621a015cf8d70727e81377754c89ff0e1f5572f476fad0940beb5849f908dd4d"
+    client_tls_secret_name       = "openshell-client-tls"
+    workspace_mode               = "shared"
+    gateway_id                   = "openshell"
+    grpc_endpoint                = "https://openshell.openshell.svc.cluster.local:8080"
+    service_account_name         = "openshell-sandbox"
+    sa_token_ttl_secs            = 3600
+    supervisor_image_pull_policy = "if_not_present"
+    sandbox_runtime_image_pull_policy = "if_not_present"
+
+    [openshell.drivers.kubernetes.resource_admission]
+    enabled = true
+
+    [openshell.drivers.kubernetes.managed_ssh_ingress]
+    enabled                       = true
+    gateway_namespace             = "openshell"
+    gateway_pod_selector          = { "app.kubernetes.io/name" = "openshell", "app.kubernetes.io/instance" = "openshell" }
+
+    [openshell.drivers.kubernetes.sandbox_runtime]
+    boundary_port                = 5500
+
+    [openshell.gateway.credential_storage]
+    key_encryption_key_env = "OPENSHELL_GATEWAY_CREDENTIAL_KEY_ENCRYPTION_KEY"
+
+---
+# Source: helm-chart/templates/clusterrole.yaml
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: openshell-node-reader-openshell
+  labels:
+    helm.sh/chart: helm-chart-0.1.2
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/instance: openshell
+    app.kubernetes.io/version: "0.1.2"
+    app.kubernetes.io/managed-by: Helm
+rules:
+  - apiGroups: ["node.k8s.io"]
+    resources: ["runtimeclasses"]
+    verbs: ["get"]
+  - apiGroups: ["scheduling.k8s.io"]
+    resources: ["priorityclasses"]
+    verbs: ["get"]
+  # Validate projected ServiceAccount tokens during sandbox bootstrap and
+  # internal gateway peer authentication.
+  - apiGroups:
+      - authentication.k8s.io
+    resources:
+      - tokenreviews
+    verbs:
+      - create
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+    verbs:
+      - get
+      - list
+      - watch
+  # Read namespace annotations for OpenShift SCC UID/GID range resolution.
+  # Managed/operator modes additionally need list+watch for cluster-wide
+  # namespace discovery. Managed mode needs create+delete for namespace
+  # lifecycle.
+  - apiGroups:
+      - ""
+    resources:
+      - namespaces
+    verbs:
+      - get
+
+---
+# Source: helm-chart/templates/clusterrolebinding.yaml
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: openshell-node-reader-openshell
+  labels:
+    helm.sh/chart: helm-chart-0.1.2
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/instance: openshell
+    app.kubernetes.io/version: "0.1.2"
+    app.kubernetes.io/managed-by: Helm
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: openshell-node-reader-openshell
+subjects:
+  - kind: ServiceAccount
+    name: openshell
+    namespace: openshell
+
+---
+# Source: helm-chart/templates/peer-role.yaml
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: openshell-peer
+  namespace: openshell
+  labels:
+    helm.sh/chart: helm-chart-0.1.2
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/instance: openshell
+    app.kubernetes.io/version: "0.1.2"
+    app.kubernetes.io/managed-by: Helm
+rules:
+  # Gateway peer identity: TokenReview authenticates the projected token, then
+  # the receiver resolves the returned pod name and UID to the live gateway pod
+  # in the release namespace.
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - get
+
+---
+# Source: helm-chart/templates/role.yaml
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: openshell-sandbox
+  namespace: openshell
+  labels:
+    helm.sh/chart: helm-chart-0.1.2
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/instance: openshell
+    app.kubernetes.io/version: "0.1.2"
+    app.kubernetes.io/managed-by: Helm
+rules:
+  - apiGroups:
+      - agents.x-k8s.io
+    resources:
+      - sandboxes
+      - sandboxes/status
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - get
+      - list
+      - watch
+  # Per-sandbox identity: TokenReview authenticates the projected token from
+  # the configured sandbox service account, then the gateway resolves the
+  # returned pod name and UID to its immutable sandbox labels. The driver also
+  # creates and deletes the directly managed supervisor Pod. PATCH removes the
+  # driver-owned bootstrap scheduling gate after immutable bootstrap material
+  # has been created.
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - watch
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["create", "get"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    # Bootstrap Secrets are generation-scoped. Recovery deletes them by exact
+    # name.
+    verbs: ["create", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["create", "get"]
+
+---
+# Source: helm-chart/templates/peer-role.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: openshell-peer
+  namespace: openshell
+  labels:
+    helm.sh/chart: helm-chart-0.1.2
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/instance: openshell
+    app.kubernetes.io/version: "0.1.2"
+    app.kubernetes.io/managed-by: Helm
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: openshell-peer
+subjects:
+  - kind: ServiceAccount
+    name: openshell
+    namespace: openshell
+
+---
+# Source: helm-chart/templates/rolebinding.yaml
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: openshell-sandbox
+  namespace: openshell
+  labels:
+    helm.sh/chart: helm-chart-0.1.2
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/instance: openshell
+    app.kubernetes.io/version: "0.1.2"
+    app.kubernetes.io/managed-by: Helm
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: openshell-sandbox
+subjects:
+  - kind: ServiceAccount
+    name: openshell
+    namespace: openshell
+
+---
+# Source: helm-chart/templates/peer-service.yaml
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: v1
+kind: Service
+metadata:
+  name: openshell-peer
+  labels:
+    helm.sh/chart: helm-chart-0.1.2
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/instance: openshell
+    app.kubernetes.io/version: "0.1.2"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  ports:
+    - port: 8080
+      targetPort: grpc
+      protocol: TCP
+      name: grpc
+      appProtocol: grpc
+  selector:
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/instance: openshell
+
+---
+# Source: helm-chart/templates/service.yaml
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: openshell
+  labels:
+    helm.sh/chart: helm-chart-0.1.2
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/instance: openshell
+    app.kubernetes.io/version: "0.1.2"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: grpc
+      protocol: TCP
+      name: grpc
+      appProtocol: grpc
+    - port: 9090
+      targetPort: metrics
+      protocol: TCP
+      name: metrics
+  selector:
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/instance: openshell
+
+---
+# Source: helm-chart/templates/deployment.yaml
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openshell
+  labels:
+    helm.sh/chart: helm-chart-0.1.2
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/instance: openshell
+    app.kubernetes.io/version: "0.1.2"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: openshell
+      app.kubernetes.io/instance: openshell
+  template:
+    metadata:
+      annotations:
+        # Roll the gateway workload when the rendered gateway TOML changes - the
+        # gateway only reads /etc/openshell/gateway.toml at startup, so without
+        # this annotation a `helm upgrade` that only mutates the ConfigMap would
+        # leave pods running with stale config.
+        checksum/gateway-config: 248d78f1301b4e4614e670f074fe8cc1606eadb415e214dcff5d71866956e9c3
+      labels:
+        helm.sh/chart: helm-chart-0.1.2
+        app.kubernetes.io/name: openshell
+        app.kubernetes.io/instance: openshell
+        app.kubernetes.io/version: "0.1.2"
+        app.kubernetes.io/managed-by: Helm
+    spec:
+      terminationGracePeriodSeconds: 5
+      serviceAccountName: openshell
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: openshell-gateway
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            runAsNonRoot: true
+            runAsUser: 1000
+          image: "ghcr.io/nvidia/openshell/gateway@sha256:676297600ffa01aa52500e95c7fbb2bdaa11e4a08d35f731f6ad0a90f73a0a8d"
+          imagePullPolicy: IfNotPresent
+          args:
+            - --config
+            - /etc/openshell/gateway.toml
+          env:
+            - name: OPENSHELL_REPLICA_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: OPENSHELL_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: OPENSHELL_POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: OPENSHELL_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: OPENSHELL_PEER_ENDPOINT
+              value: "https://$(OPENSHELL_POD_IP):8080"
+            - name: OPENSHELL_SERVICE_ACCOUNT_NAME
+              value: "openshell"
+            - name: OPENSHELL_PEER_SERVICE_NAME
+              value: "openshell-peer"
+            - name: OPENSHELL_PEER_TOKEN_AUDIENCE
+              value: "openshell-gateway-peer"
+            - name: OPENSHELL_PEER_SERVICE_ACCOUNT_TOKEN_FILE
+              value: /var/run/secrets/openshell-peer/token
+            - name: OPENSHELL_PEER_POD_LABELS
+              value: "app.kubernetes.io/name=openshell,app.kubernetes.io/instance=openshell"
+            - name: OPENSHELL_PEER_TLS_SERVER_NAME
+              value: "openshell.openshell.svc.cluster.local"
+            - name: OPENSHELL_PEER_TLS_CA_FILE
+              value: /etc/openshell-tls/server/ca.crt
+            - name: OPENSHELL_PEER_TLS_CERT_FILE
+              value: /etc/openshell-tls/peer-client/tls.crt
+            - name: OPENSHELL_PEER_TLS_KEY_FILE
+              value: /etc/openshell-tls/peer-client/tls.key
+            - name: OPENSHELL_GATEWAY_CREDENTIAL_KEY_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openshell-kek
+                  key: key-encryption-key
+            - name: OPENSHELL_DB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: openshell-db
+                  key: uri
+            # Most gateway settings live in the ConfigMap-backed TOML file
+            # mounted at /etc/openshell/gateway.toml. Secret-bearing settings use
+            # env vars that the TOML references by name. Some process-level
+            # settings consumed by libraries outside gateway code also remain here.
+            - name: OPENSHELL_TELEMETRY_ENABLED
+              value: "true"
+          volumeMounts:
+            # ConfigMap directory mounts expose keys through atomic-writer symlinks,
+            # while the gateway intentionally rejects symlinked configuration.
+            # The checksum annotation above rolls pods when this subPath changes.
+            - name: gateway-config
+              mountPath: /etc/openshell/gateway.toml
+              subPath: gateway.toml
+              readOnly: true
+            - name: sandbox-jwt
+              mountPath: /etc/openshell-jwt
+              readOnly: true
+            - name: gateway-peer-token
+              mountPath: /var/run/secrets/openshell-peer
+              readOnly: true
+            - name: tls-cert
+              mountPath: /etc/openshell-tls/server
+              readOnly: true
+            - name: peer-client-tls
+              mountPath: /etc/openshell-tls/peer-client
+              readOnly: true
+            - name: tls-client-ca
+              mountPath: /etc/openshell-tls/client-ca
+              readOnly: true
+          ports:
+            - name: grpc
+              containerPort: 8080
+              protocol: TCP
+            - name: health
+              containerPort: 8081
+              protocol: TCP
+            - name: metrics
+              containerPort: 9090
+              protocol: TCP
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            periodSeconds: 2
+            timeoutSeconds: 1
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            timeoutSeconds: 1
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            initialDelaySeconds: 1
+            periodSeconds: 2
+            timeoutSeconds: 1
+            failureThreshold: 3
+          resources:
+            {}
+      volumes:
+        - name: gateway-config
+          configMap:
+            name: openshell-config
+        - name: sandbox-jwt
+          secret:
+            secretName: openshell-jwt-keys
+            defaultMode: 256
+        - name: gateway-peer-token
+          projected:
+            defaultMode: 0400
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  audience: openshell-gateway-peer
+                  expirationSeconds: 3600
+        - name: tls-cert
+          secret:
+            secretName: openshell-server-tls
+        - name: peer-client-tls
+          secret:
+            secretName: openshell-client-tls
+        - name: tls-client-ca
+          secret:
+            secretName: openshell-server-tls
+            items:
+              - key: ca.crt
+                path: ca.crt
+
+---
+# Source: helm-chart/templates/backend-tls-policy.yaml
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+---
+# Source: helm-chart/templates/credential-secrets-namespace.yaml
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+---
+# Source: helm-chart/templates/credential-storage-key-encryption-key-secret.yaml
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+---
+# Source: helm-chart/templates/route.yaml
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+---
+# Source: helm-chart/templates/statefulset.yaml
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+---
+# Source: helm-chart/templates/cert-manager-pki.yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: openshell-ca
+  namespace: openshell
+  labels:
+    helm.sh/chart: helm-chart-0.1.2
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/instance: openshell
+    app.kubernetes.io/version: "0.1.2"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  isCA: true
+  commonName: openshell-ca
+  secretName: "openshell-ca-tls"
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: openshell-selfsigned
+    kind: Issuer
+    group: cert-manager.io
+
+---
+# Source: helm-chart/templates/cert-manager-pki.yaml
+# Internal server certificate — always issued by the chart’s own CA with
+# internal SANs.  Supervisors connect via internal hostnames and verify
+# this cert against the chart CA they already trust.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: openshell-server
+  namespace: openshell
+  labels:
+    helm.sh/chart: helm-chart-0.1.2
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/instance: openshell
+    app.kubernetes.io/version: "0.1.2"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  secretName: "openshell-server-tls"
+  duration: "8760h"
+  renewBefore: "720h"
+  commonName: openshell
+  dnsNames:
+    - "openshell"
+    - "openshell.openshell.svc"
+    - "openshell.openshell.svc.cluster.local"
+    - "localhost"
+    - "openshell.localhost"
+    - "*.openshell.localhost"
+    - "host.docker.internal"
+    - "host.containers.internal"
+    - "openshell"
+    - "openshell.openshell.svc"
+    - "openshell.openshell.svc.cluster.local"
+    - "localhost"
+    - "openshell.localhost"
+    - "*.openshell.localhost"
+    - "host.docker.internal"
+    - "gateway.openshell.k8s.home.garvey.sh"
+  ipAddresses:
+    - 127.0.0.1
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  usages:
+    - server auth
+    - digital signature
+    - key encipherment
+  issuerRef:
+    name: openshell-ca-issuer
+    kind: Issuer
+    group: cert-manager.io
+
+---
+# Source: helm-chart/templates/cert-manager-pki.yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: openshell-client
+  namespace: openshell
+  labels:
+    helm.sh/chart: helm-chart-0.1.2
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/instance: openshell
+    app.kubernetes.io/version: "0.1.2"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  secretName: "openshell-client-tls"
+  duration: "8760h"
+  renewBefore: "720h"
+  commonName: openshell-client
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  usages:
+    - client auth
+    - digital signature
+    - key encipherment
+  issuerRef:
+    name: openshell-ca-issuer
+    kind: Issuer
+    group: cert-manager.io
+
+---
+# Source: helm-chart/templates/cert-manager-pki.yaml
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: openshell-selfsigned
+  namespace: openshell
+  labels:
+    helm.sh/chart: helm-chart-0.1.2
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/instance: openshell
+    app.kubernetes.io/version: "0.1.2"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  selfSigned: {}
+
+---
+# Source: helm-chart/templates/cert-manager-pki.yaml
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: openshell-ca-issuer
+  namespace: openshell
+  labels:
+    helm.sh/chart: helm-chart-0.1.2
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/instance: openshell
+    app.kubernetes.io/version: "0.1.2"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  ca:
+    secretName: "openshell-ca-tls"

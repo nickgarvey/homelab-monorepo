@@ -12851,7 +12851,8 @@ rules:
     verbs: ["approve"]
     resourceNames:
     - "issuers.cert-manager.io/*"
-    - "clusterissuers.cert-manager.io/*"
+    - "clusterissuers.cert-manager.io/letsencrypt-acmedns-prod"
+    - "clusterissuers.cert-manager.io/letsencrypt-acmedns-staging"
 
 
 ---

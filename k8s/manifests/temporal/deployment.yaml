@@ -18,6 +18,10 @@ spec:
         app: temporal
         app.kubernetes.io/managed-by: ngarvey-homelab
     spec:
+      serviceAccountName: temporal
+      securityContext:
+        # Lets the temporal user (1000) read the client key from the Secret volume.
+        fsGroup: 1000
       containers:
         - name: temporal
           # Pin exact version: Temporal schema migrations are ordered, never
@@ -32,15 +36,18 @@ spec:
             - secretRef:
                 name: temporal-db
           env:
+            # The shared postgres (manifests/postgres/). Everything below up to
+            # ENABLE_ES is the connection; there is no password, the role
+            # authenticates with the client certificate mounted at /etc/temporal-pg.
             # auto-setup.sh only accepts mysql8/postgres12/postgres12_pgx/
-            # cassandra. postgres12 is the right driver for PostgreSQL 16.
+            # cassandra. postgres12 is the right driver for PostgreSQL 12+ (the cluster runs 17).
             - name: DB
               value: postgres12
             # Default is 3306 (MySQL), so this must be set explicitly.
             - name: DB_PORT
               value: "5432"
             - name: POSTGRES_SEEDS
-              value: temporal-postgres
+              value: postgres-rw.postgres.svc
             - name: DBNAME
               value: temporal
             - name: VISIBILITY_DBNAME
@@ -68,9 +75,45 @@ spec:
             # Default is 24h.
             - name: DEFAULT_NAMESPACE_RETENTION
               value: 72h
+            # TLS to the database. The server config template reads SQL_* and
+            # the schema tool in auto-setup.sh reads POSTGRES_TLS_*: both sets are
+            # needed, and the second one has host verification inverted.
+            - name: SQL_TLS_ENABLED
+              value: "true"
+            - name: SQL_CA
+              value: /etc/temporal-pg/ca.crt
+            - name: SQL_CERT
+              value: /etc/temporal-pg/tls.crt
+            - name: SQL_CERT_KEY
+              value: /etc/temporal-pg/tls.key
+            - name: SQL_HOST_VERIFICATION
+              value: "true"
+            - name: SQL_HOST_NAME
+              value: postgres-rw.postgres.svc
+            - name: POSTGRES_TLS_ENABLED
+              value: "true"
+            - name: POSTGRES_TLS_DISABLE_HOST_VERIFICATION
+              value: "false"
+            - name: POSTGRES_TLS_CA_FILE
+              value: /etc/temporal-pg/ca.crt
+            - name: POSTGRES_TLS_CERT_FILE
+              value: /etc/temporal-pg/tls.crt
+            - name: POSTGRES_TLS_KEY_FILE
+              value: /etc/temporal-pg/tls.key
+            - name: POSTGRES_TLS_SERVER_NAME
+              value: postgres-rw.postgres.svc
+            # The databases are created by the operator (databases.yaml), and
+            # the temporal role cannot connect to the postgres database that
+            # auto-setup's CREATE DATABASE needs.
+            - name: SKIP_DB_CREATE
+              value: "true"
             # No Elasticsearch in this cluster; visibility lives in Postgres.
             - name: ENABLE_ES
               value: "false"
+          volumeMounts:
+            - name: postgres-client
+              mountPath: /etc/temporal-pg
+              readOnly: true
           ports:
             - containerPort: 7233
               name: grpc
@@ -100,3 +143,9 @@ spec:
             limits:
               cpu: "2"
               memory: 2Gi
+      volumes:
+        - name: postgres-client
+          secret:
+            secretName: temporal-postgres-client
+            # 0440, root:1000. lib/pq refuses a key readable by anyone else.
+            defaultMode: 0440

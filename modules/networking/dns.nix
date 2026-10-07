@@ -43,6 +43,9 @@ in rec {
     # Authelia (OIDC login for Grafana); Caddy sidecar terminates TLS on 443
     # (k8s/manifests/authelia).
     auth          = { v4 = []; v6 = [ "2001:470:482f:2::5005" ]; };
+    # SPIRE's OIDC discovery provider serves the trust domain's JWKS on 443 off
+    # this LB IP (k8s/manifests/spire).
+    spiffe-oidc   = { v4 = []; v6 = [ "2001:470:482f:2::5007" ]; };
   };
 
   # CNAMEs (targets are FQDNs with trailing dot).
@@ -51,6 +54,7 @@ in rec {
     "_acme-challenge.obsidian-livesync" = "7d13302c-3155-4fc2-99e8-c3c053b4236b.acme.garvey.sh.";
     "_acme-challenge.grafana" = "32622e22-227e-41f0-becf-674c8192c9f1.acme.garvey.sh.";
     "_acme-challenge.auth" = "bfeb451a-9409-4da5-a44e-f1b80354a075.acme.garvey.sh.";
+    "_acme-challenge.spiffe-oidc" = "cb6844ff-24e9-46c4-a148-550d1bc2d414.acme.garvey.sh.";
   };
 
   # Split-horizon overrides: public (garvey.sh) names answered internally with

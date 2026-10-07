@@ -1,0 +1,265 @@
+# What the spiffe-ca ClusterIssuer may issue. approver-policy approves a request
+# only if a policy below matches it (issuer, namespace, and every field); anything
+# else stays unapproved and is never signed. One policy per identity: a new
+# workload adds a policy here.
+#
+# For identities issued through a Certificate, the namespace selector is the
+# access control: cert-manager creates the CertificateRequest itself, so the
+# requester is always its ServiceAccount and cannot be matched. Whoever can
+# create a Certificate in the selected namespace can obtain these identities.
+# The exception is spiffe-spire-ca at the end, requested by SPIRE directly.
+#
+# SPIRE's CA, under the same root, signs SVIDs these policies never see, with
+# subjects SPIRE chooses (O=SPIRE, C=US, an entry's DNS name as CN). These policies
+# gate an identity only for a consumer that matches a subject SPIRE cannot
+# produce: postgres maps a certificate's whole DN, not its CN, to a role.
+apiVersion: policy.cert-manager.io/v1alpha1
+kind: CertificateRequestPolicy
+metadata:
+  name: spiffe-temporal
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  # Temporal's client certificate for postgres: CN is the postgres role. No
+  # other subject field is allowed, so the subject is exactly CN=temporal, the
+  # DN postgres maps to the role (pg_ident in postgres/cluster.yaml).
+  allowed:
+    commonName:
+      value: temporal
+    uris:
+      values:
+        - spiffe://home.garvey.sh/ns/temporal/sa/temporal
+    usages:
+      - client auth
+      - digital signature
+      - key encipherment
+    isCA: false
+  constraints:
+    privateKey:
+      algorithm: ECDSA
+      minSize: 256
+      maxSize: 521
+  selector:
+    issuerRef:
+      group: cert-manager.io
+      kind: ClusterIssuer
+      name: spiffe-ca
+    namespace:
+      matchNames:
+        - temporal
+---
+apiVersion: policy.cert-manager.io/v1alpha1
+kind: CertificateRequestPolicy
+metadata:
+  name: spiffe-postgres-replication
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  # The postgres cluster's streaming_replica certificate (see
+  # manifests/postgres/replication-certificate.yaml); it has no URI.
+  allowed:
+    commonName:
+      value: streaming_replica
+    usages:
+      - client auth
+      - digital signature
+      - key encipherment
+    isCA: false
+  constraints:
+    privateKey:
+      algorithm: ECDSA
+      minSize: 256
+      maxSize: 521
+  selector:
+    issuerRef:
+      group: cert-manager.io
+      kind: ClusterIssuer
+      name: spiffe-ca
+    namespace:
+      matchNames:
+        - postgres
+---
+# cert-manager's ServiceAccount makes the CertificateRequests, so it is the one
+# that needs the right to use the policies.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: spiffe-policy-use
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+rules:
+  - apiGroups: [policy.cert-manager.io]
+    resources: [certificaterequestpolicies]
+    verbs: [use]
+    resourceNames:
+      - spiffe-temporal
+      - spiffe-postgres-replication
+      - spiffe-postgres-server
+      - spiffe-openshell
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: spiffe-policy-use
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: spiffe-policy-use
+subjects:
+  - kind: ServiceAccount
+    name: cert-manager
+    namespace: cert-manager
+---
+apiVersion: policy.cert-manager.io/v1alpha1
+kind: CertificateRequestPolicy
+metadata:
+  name: spiffe-postgres-server
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  # The postgres server certificate (manifests/postgres/server-certificate.yaml),
+  # for the three Services the operator creates.
+  allowed:
+    dnsNames:
+      values:
+        - postgres-rw
+        - postgres-rw.postgres
+        - postgres-rw.postgres.svc
+        - postgres-rw.postgres.svc.cluster.local
+        - postgres-r
+        - postgres-r.postgres
+        - postgres-r.postgres.svc
+        - postgres-r.postgres.svc.cluster.local
+        - postgres-ro
+        - postgres-ro.postgres
+        - postgres-ro.postgres.svc
+        - postgres-ro.postgres.svc.cluster.local
+    usages:
+      - server auth
+      - digital signature
+      - key encipherment
+    isCA: false
+  constraints:
+    privateKey:
+      algorithm: ECDSA
+      minSize: 256
+      maxSize: 521
+  selector:
+    issuerRef:
+      group: cert-manager.io
+      kind: ClusterIssuer
+      name: spiffe-ca
+    namespace:
+      matchNames:
+        - postgres
+---
+apiVersion: policy.cert-manager.io/v1alpha1
+kind: CertificateRequestPolicy
+metadata:
+  name: spiffe-openshell
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  # The OpenShell gateway's client certificate for postgres: CN is the postgres
+  # role and no other subject field is allowed, so the subject is exactly
+  # CN=openshell, the DN postgres maps to the role.
+  allowed:
+    commonName:
+      value: openshell
+    uris:
+      values:
+        - spiffe://home.garvey.sh/ns/openshell/sa/openshell
+    usages:
+      - client auth
+      - digital signature
+      - key encipherment
+    isCA: false
+  constraints:
+    privateKey:
+      algorithm: ECDSA
+      minSize: 256
+      maxSize: 521
+  selector:
+    issuerRef:
+      group: cert-manager.io
+      kind: ClusterIssuer
+      name: spiffe-ca
+    namespace:
+      matchNames:
+        - openshell
+---
+apiVersion: policy.cert-manager.io/v1alpha1
+kind: CertificateRequestPolicy
+metadata:
+  name: spiffe-spire-ca
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  # SPIRE's intermediate CA (UpstreamAuthority cert_manager, see
+  # manifests/spire/README.md). SPIRE creates the CertificateRequest itself, as
+  # its spire-server ServiceAccount, so unlike the policies above this one is
+  # usable only by that ServiceAccount (spiffe-spire-ca-use below), never by
+  # cert-manager: a Certificate in the spire namespace cannot obtain a CA.
+  allowed:
+    commonName:
+      value: home.garvey.sh SPIRE CA
+    subject:
+      countries:
+        values: [US]
+      organizations:
+        values: [SPIFFE]
+      # SPIRE puts the certificate's serial number here.
+      serialNumber:
+        value: "*"
+    uris:
+      values:
+        - spiffe://home.garvey.sh
+    usages:
+      - cert sign
+      - crl sign
+    isCA: true
+  constraints:
+    # SPIRE asks for its ca_ttl (24h) and rotates at half-life.
+    maxDuration: 24h
+    privateKey:
+      algorithm: RSA
+      minSize: 2048
+      maxSize: 4096
+  selector:
+    issuerRef:
+      group: cert-manager.io
+      kind: ClusterIssuer
+      name: spiffe-ca
+    namespace:
+      matchNames:
+        - spire
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: spiffe-spire-ca-use
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+rules:
+  - apiGroups: [policy.cert-manager.io]
+    resources: [certificaterequestpolicies]
+    verbs: [use]
+    resourceNames:
+      - spiffe-spire-ca
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: spiffe-spire-ca-use
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: spiffe-spire-ca-use
+subjects:
+  - kind: ServiceAccount
+    name: spire-server
+    namespace: spire
