@@ -2,11 +2,11 @@
 # Imported by the root flake.nix. See docs/esp-prog-2.md for ESP-Prog-2 usage and udev setup.
 { nixpkgs-esp32, nixpkgs-esp-dev, ... }: let
   system = "x86_64-linux";
-  pkgs = import nixpkgs-esp32 {
-    inherit system;
-    overlays = [ nixpkgs-esp-dev.overlays.default ];
-    config.permittedInsecurePackages = [ "python3.13-ecdsa-0.19.1" ];
-  };
+  pkgs = import nixpkgs-esp32 { inherit system; };
+
+  # ESP-IDF and its toolchains come from nixpkgs-esp-dev's own packages, built
+  # against the nixpkgs in its lock, so they only move when that input does.
+  esp-idf-full = nixpkgs-esp-dev.packages.${system}.esp-idf-full;
 
   # Source filter for firmware builds: strip build artifacts, downloaded
   # components, and repo-level directories that are not compiled into firmware
@@ -45,7 +45,7 @@
     outputHashMode = "recursive";
     outputHash = "sha256-NtnEXDg0d9tkKMDxEnrNqhxJcutppejjz4WbGvxqr2E="; # freezer-components
 
-    nativeBuildInputs = [ pkgs.esp-idf-full ];
+    nativeBuildInputs = [ esp-idf-full ];
 
     phases = [ "unpackPhase" "buildPhase" ];
 
@@ -82,7 +82,7 @@
     # Full repo needed: CMakeLists.txt references ../../components
     src = cleanSrc ./.;
 
-    nativeBuildInputs = [ pkgs.esp-idf-full pkgs.cmake pkgs.ninja ];
+    nativeBuildInputs = [ esp-idf-full pkgs.cmake pkgs.ninja ];
 
     # Drive idf.py directly instead of stdenv's auto cmake phase
     dontConfigure = true;
@@ -153,7 +153,7 @@
     outputHashAlgo = "sha256";
     outputHashMode = "recursive";
     outputHash = "sha256-laTtLy+4bl5QV84lXNCQ2cgr1xT76hJCi0LKdQwvEgM="; # garage-components
-    nativeBuildInputs = [ pkgs.esp-idf-full ];
+    nativeBuildInputs = [ esp-idf-full ];
     phases = [ "unpackPhase" "buildPhase" ];
     buildPhase = ''
       cd devices/garage-opener
@@ -171,7 +171,7 @@
   garageFirmware = pkgs.stdenv.mkDerivation {
     name = "garage-opener-firmware";
     src = cleanSrc ./.;
-    nativeBuildInputs = [ pkgs.esp-idf-full pkgs.cmake pkgs.ninja ];
+    nativeBuildInputs = [ esp-idf-full pkgs.cmake pkgs.ninja ];
 
     dontConfigure = true;
     postUnpack = ''
@@ -215,7 +215,7 @@
     outputHashAlgo = "sha256";
     outputHashMode = "recursive";
     outputHash = "sha256-l+uYi5vu3Ko2XwCsHYy9EKS6okqZy5o/wpVOQgxVJDE="; # laundry-components
-    nativeBuildInputs = [ pkgs.esp-idf-full ];
+    nativeBuildInputs = [ esp-idf-full ];
     phases = [ "unpackPhase" "buildPhase" ];
     buildPhase = ''
       cd devices/laundry-detector
@@ -235,7 +235,7 @@
   laundryFirmware = pkgs.stdenv.mkDerivation {
     name = "laundry-detector-firmware";
     src = cleanSrc ./.;
-    nativeBuildInputs = [ pkgs.esp-idf-full pkgs.cmake pkgs.ninja ];
+    nativeBuildInputs = [ esp-idf-full pkgs.cmake pkgs.ninja ];
     dontConfigure = true;
     postUnpack = ''
       cp -r ${laundryComponents}/managed_components $sourceRoot/devices/laundry-detector/managed_components
@@ -347,7 +347,7 @@
     name = "check-${name}";
     dontUnpack = true;
     dontConfigure = true;
-    nativeBuildInputs = [ pkgs.esp-idf-full ];
+    nativeBuildInputs = [ esp-idf-full ];
     buildPhase = ''
       PASS=0; FAIL=0
       pass() { echo "[PASS] $1"; PASS=$((PASS+1)); }
@@ -418,7 +418,7 @@
 in {
   devShells.${system}.esp32 = pkgs.mkShell {
     buildInputs = [
-      pkgs.esp-idf-full
+      esp-idf-full
       pkgs.gcc
       pkgs.cmake
       pkgs.ninja
