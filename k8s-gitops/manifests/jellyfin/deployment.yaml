@@ -1,0 +1,174 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jellyfin
+  namespace: jellyfin
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: jellyfin
+  template:
+    metadata:
+      labels:
+        app: jellyfin
+        app.kubernetes.io/managed-by: ngarvey-homelab
+    spec:
+      initContainers:
+        # Seeds/enforces Jellyfin config files before the server starts:
+        #   network.xml  - IPv6-only pod network: seed EnableIPv6=true so Jellyfin
+        #                  binds the pod's IPv6 interface. Seed only if absent, so
+        #                  UI network changes are preserved afterward.
+        #   encoding.xml - Intel iGPU transcoding: seed the whole file if absent,
+        #                  otherwise force <HardwareAccelerationType>,
+        #                  <HardwareDecodingCodecs>, <AllowHevcEncoding> and
+        #                  <AllowAv1Encoding> on every boot, matched to what
+        #                  `vainfo` reports the storage nodes' Wildcat Lake iGPU
+        #                  supports (h264/hevc/mpeg2video/vp8/vp9/av1 decode +
+        #                  h264/hevc/av1 encode; no vc1). Other
+        #                  encoding fields stay UI-editable; these are owned by
+        #                  gitops and revert on restart.
+        - name: seed-config
+          image: jellyfin/jellyfin:12.0.20260908-012347
+          command:
+            - /bin/sh
+            - -c
+            - |
+              mkdir -p /config/config
+              if [ ! -f /config/config/network.xml ]; then
+                cp /seed-network/network.xml /config/config/network.xml
+                echo "seeded network.xml"
+              else
+                echo "network.xml already present; leaving as-is"
+              fi
+              if [ ! -f /config/config/encoding.xml ]; then
+                cp /seed-encoding/encoding.xml /config/config/encoding.xml
+                echo "seeded encoding.xml (vaapi)"
+              else
+                sed -i 's#<HardwareAccelerationType>[^<]*</HardwareAccelerationType>#<HardwareAccelerationType>vaapi</HardwareAccelerationType>#' /config/config/encoding.xml
+                sed -i 's#<AllowHevcEncoding>[^<]*</AllowHevcEncoding>#<AllowHevcEncoding>true</AllowHevcEncoding>#' /config/config/encoding.xml
+                sed -i 's#<AllowAv1Encoding>[^<]*</AllowAv1Encoding>#<AllowAv1Encoding>true</AllowAv1Encoding>#' /config/config/encoding.xml
+                # Rewrite <HardwareDecodingCodecs> with awk, not a sed range. A sed
+                # `/open/,/close/c\` range whose replacement puts both tags on one
+                # line is not idempotent: on the next boot sed matches the opening
+                # tag, then looks for the closing tag starting at the NEXT line,
+                # never finds it, and deletes through EOF -- taking
+                # </EncodingOptions> with it. Jellyfin then fails to parse the file
+                # and silently reverts to software transcoding. This awk handles the
+                # multi-line, one-line, and self-closing forms and is idempotent.
+                awk '
+                  /<HardwareDecodingCodecs/ && !done {
+                    match($0, /^[ \t]*/); ind = substr($0, 1, RLENGTH)
+                    print ind "<HardwareDecodingCodecs>"
+                    n = split("h264 hevc mpeg2video vp8 vp9 av1", c, " ")
+                    for (i = 1; i <= n; i++) print ind "  <string>" c[i] "</string>"
+                    print ind "</HardwareDecodingCodecs>"
+                    done = 1
+                    if ($0 !~ /\/>/ && $0 !~ /<\/HardwareDecodingCodecs>/) skip = 1
+                    next
+                  }
+                  skip { if (/<\/HardwareDecodingCodecs>/) skip = 0; next }
+                  { print }
+                ' /config/config/encoding.xml > /tmp/encoding.xml && mv /tmp/encoding.xml /config/config/encoding.xml
+                # Backstop: if anything above left the file unparseable, Jellyfin
+                # would silently fall back to CPU-only transcoding. Re-seed instead.
+                if ! grep -q '</EncodingOptions>' /config/config/encoding.xml; then
+                  echo "encoding.xml is malformed after enforcement; re-seeding from ConfigMap"
+                  cp /seed-encoding/encoding.xml /config/config/encoding.xml
+                fi
+                echo "enforced HardwareAccelerationType=vaapi, AllowHevcEncoding=true, AllowAv1Encoding=true, and HardwareDecodingCodecs in existing encoding.xml"
+              fi
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: network-seed
+              mountPath: /seed-network
+            - name: encoding-seed
+              mountPath: /seed-encoding
+      containers:
+        - name: caddy
+          image: caddy:2-alpine
+          command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile"]
+          ports:
+            - containerPort: 80
+              name: http-redirect
+            - containerPort: 443
+              name: https
+          volumeMounts:
+            - name: caddy-config
+              mountPath: /etc/caddy
+            - name: caddy-data
+              mountPath: /data
+            - name: certs
+              mountPath: /certs
+              readOnly: true
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+        - name: jellyfin
+          image: jellyfin/jellyfin:12.0.20260908-012347
+          ports:
+            - containerPort: 8096
+              name: http
+              protocol: TCP
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8096
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8096
+            periodSeconds: 60
+            failureThreshold: 3
+          # The storage nodes (joor/zah/frul) run the xe kernel driver, so their
+          # iGPU is advertised as gpu.intel.com/xe; fus/ro/dah (i915) are for
+          # the control plane and monitoring. Requires Intel GPU Device Plugin:
+          # kubectl apply -k 'https://github.com/intel/intel-device-plugins-for-kubernetes/deployments/gpu_plugin?ref=v0.31.0'
+          resources:
+            limits:
+              gpu.intel.com/xe: 1
+          env:
+            - name: TZ
+              value: "America/Los_Angeles"
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: cache
+              mountPath: /cache
+            - name: media
+              mountPath: /media
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: jellyfin-config
+        - name: cache
+          emptyDir: {}
+        - name: media
+          persistentVolumeClaim:
+            claimName: jellyfin-media
+        - name: network-seed
+          configMap:
+            name: jellyfin-network-config
+        - name: encoding-seed
+          configMap:
+            name: jellyfin-encoding-config
+        - name: caddy-config
+          configMap:
+            name: jellyfin-caddy
+        - name: caddy-data
+          emptyDir: {}
+        - name: certs
+          secret:
+            secretName: jellyfin-tls

@@ -1,0 +1,92 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zot
+  namespace: zot
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: zot
+  template:
+    metadata:
+      labels:
+        app: zot
+        app.kubernetes.io/managed-by: ngarvey-homelab
+    spec:
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
+      containers:
+        - name: zot
+          image: ghcr.io/project-zot/zot-linux-amd64:v2.1.13
+          args:
+            - serve
+            - /etc/zot/config.json
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: zot-s3
+                  key: AWS_ACCESS_KEY_ID
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: zot-s3
+                  key: AWS_SECRET_ACCESS_KEY
+          ports:
+            # zot terminates TLS itself and serves directly on 443. The image
+            # runs as root (User=0), so binding the privileged port needs no
+            # extra capability.
+            - containerPort: 443
+              name: https
+          volumeMounts:
+            - name: zot-data
+              mountPath: /var/lib/zot
+            - name: zot-config
+              mountPath: /etc/zot
+              readOnly: true
+            # TLS cert/key from the cert-manager-managed zot-tls Secret.
+            # NOTE: zot loads its cert only at startup and will not hot-reload a
+            # renewed Secret. No Reloader is installed, so after each ~60-day
+            # renewal run: kubectl rollout restart deploy/zot -n zot
+            - name: zot-tls
+              mountPath: /etc/zot/tls
+              readOnly: true
+            # htpasswd for http.auth (push/delete account).
+            - name: zot-auth
+              mountPath: /etc/zot/auth
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /v2/
+              port: 443
+              scheme: HTTPS
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /v2/
+              port: 443
+              scheme: HTTPS
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: zot-data
+          emptyDir: {}
+        - name: zot-config
+          configMap:
+            name: zot-config
+        - name: zot-tls
+          secret:
+            secretName: zot-tls
+        - name: zot-auth
+          secret:
+            secretName: zot-auth

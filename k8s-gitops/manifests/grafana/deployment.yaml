@@ -1,0 +1,144 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: grafana
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+        app.kubernetes.io/managed-by: ngarvey-homelab
+    spec:
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 472
+        runAsGroup: 472
+        fsGroup: 472
+      containers:
+        # TLS terminator for grafana.home.garvey.sh, following the anki/jellyfin sidecar
+        # pattern (manifests/acme-dns/ONBOARDING.md). Caddy loads the cert only
+        # at startup, so a `kubectl rollout restart` is needed after each
+        # ~60-day cert-manager renewal, same as anki, zot and jellyfin.
+        - name: caddy
+          image: caddy:2-alpine
+          command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile"]
+          ports:
+            - containerPort: 80
+              name: http-redirect
+            - containerPort: 443
+              name: https
+          volumeMounts:
+            - name: caddy-config
+              mountPath: /etc/caddy
+            - name: caddy-data
+              mountPath: /data
+            - name: certs
+              mountPath: /certs
+              readOnly: true
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+        - name: grafana
+          image: grafana/grafana:13.2.2
+          imagePullPolicy: IfNotPresent
+          env:
+            # Loopback only: the Caddy sidecar is the only way in. Pod IPs are
+            # reachable from the LAN, so binding [::] would expose plaintext HTTP.
+            - name: GF_SERVER_HTTP_ADDR
+              value: "::1"
+            - name: GF_SERVER_ROOT_URL
+              value: https://grafana.home.garvey.sh/
+            # Login through Authelia (manifests/authelia). No anonymous access
+            # (the default). The login form stays for the break-glass local
+            # admin; basic auth is off, so the API takes only sessions and
+            # service-account tokens.
+            - name: GF_AUTH_BASIC_ENABLED
+              value: "false"
+            # Used only when Grafana creates a fresh database; see secret.yaml.
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-auth
+                  key: admin-password
+            - name: GF_AUTH_GENERIC_OAUTH_ENABLED
+              value: "true"
+            - name: GF_AUTH_GENERIC_OAUTH_NAME
+              value: Authelia
+            - name: GF_AUTH_GENERIC_OAUTH_CLIENT_ID
+              value: grafana
+            - name: GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-auth
+                  key: oauth-client-secret
+            - name: GF_AUTH_GENERIC_OAUTH_SCOPES
+              value: openid profile email groups
+            - name: GF_AUTH_GENERIC_OAUTH_AUTH_URL
+              value: https://auth.home.garvey.sh/api/oidc/authorization
+            - name: GF_AUTH_GENERIC_OAUTH_TOKEN_URL
+              value: https://auth.home.garvey.sh/api/oidc/token
+            - name: GF_AUTH_GENERIC_OAUTH_API_URL
+              value: https://auth.home.garvey.sh/api/oidc/userinfo
+            # Matches the client's token_endpoint_auth_method: client_secret_basic.
+            - name: GF_AUTH_GENERIC_OAUTH_AUTH_STYLE
+              value: InHeader
+            - name: GF_AUTH_GENERIC_OAUTH_USE_PKCE
+              value: "true"
+            - name: GF_AUTH_GENERIC_OAUTH_LOGIN_ATTRIBUTE_PATH
+              value: preferred_username
+            - name: GF_AUTH_GENERIC_OAUTH_NAME_ATTRIBUTE_PATH
+              value: name
+            - name: GF_AUTH_GENERIC_OAUTH_GROUPS_ATTRIBUTE_PATH
+              value: groups
+            - name: GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH
+              value: contains(groups[*], 'admins') && 'Admin' || 'Viewer'
+          # exec, not httpGet: the kubelet probes the pod IP, and Grafana listens
+          # on loopback only.
+          readinessProbe:
+            exec:
+              command: ["wget", "-qO", "/dev/null", "http://[::1]:3000/api/health"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["wget", "-qO", "/dev/null", "http://[::1]:3000/api/health"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/grafana
+            - name: datasources
+              mountPath: /etc/grafana/provisioning/datasources
+      volumes:
+        - name: caddy-config
+          configMap:
+            name: grafana-caddy
+        - name: caddy-data
+          emptyDir: {}
+        - name: certs
+          secret:
+            secretName: grafana-tls
+        - name: data
+          persistentVolumeClaim:
+            claimName: grafana-data
+        - name: datasources
+          configMap:
+            name: grafana-datasources

@@ -1,0 +1,23 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: watchdog
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+    prometheus: prometheus
+spec:
+  groups:
+    - name: watchdog
+      rules:
+        # Dead man's switch. Always firing; Alertmanager routes it only to the
+        # Cronitor heartbeat homelab-alertmanager-watchdog (see secret.yaml),
+        # which pages when the pings stop. That catches what no in-cluster alert
+        # can report: Prometheus, Alertmanager, the cluster or its internet
+        # access being down.
+        - alert: Watchdog
+          expr: vector(1)
+          labels:
+            severity: none
+          annotations:
+            summary: "Always-firing heartbeat for the Cronitor dead man's switch"

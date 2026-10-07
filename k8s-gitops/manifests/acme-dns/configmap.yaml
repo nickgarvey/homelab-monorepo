@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: acme-dns-config
+  namespace: acme-dns
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+data:
+  config.cfg: |
+    [general]
+    listen = "0.0.0.0:53"
+    protocol = "both"
+    domain = "acme.garvey.sh"
+    nsname = "acme.garvey.sh"
+    # admin email, with @ replaced by .
+    nsadmin = "garvey.nick.gmail.com"
+    # The advertised A record is the stable public IPv4. Let's Encrypt reaches
+    # it via the router's IPv4 DNAT -> public-dns-proxy -> this pod's IPv6 LB.
+    records = [
+        "acme.garvey.sh. A 64.186.8.205",
+        "acme.garvey.sh. NS acme.garvey.sh.",
+    ]
+    debug = false
+
+    [database]
+    engine = "sqlite3"
+    connection = "/var/lib/acme-dns/acme-dns.db"
+
+    [api]
+    ip = "0.0.0.0"
+    port = "80"
+    # tls MUST stay "none": the API is ClusterIP-only and must never depend on
+    # a cert-manager cert, or we rebuild the bootstrap deadlock.
+    tls = "none"
+    # Registration is intentionally LEFT OPEN so new hosts can be onboarded
+    # without the flip-restart-register-flip dance.
+    #
+    # SECURITY DEBT — HARDEN LATER. /register is unauthenticated and the API is
+    # only protected by being ClusterIP-only, so right now any in-cluster pod can
+    # register accounts (DB spam / abuse of acme.garvey.sh as TXT hosting). This
+    # does NOT let anyone touch existing accounts (writes need per-account creds +
+    # allowfrom), but it should not stay open indefinitely.
+    # Intended fix: put OIDC auth in front of /register (operator-only), while
+    # leaving /update open to in-cluster solver pods (cert-manager). A
+    # CiliumNetworkPolicy restricting the API to cert-manager is the simpler
+    # interim alternative if OIDC slips. Until then, treat open registration as
+    # temporary.
+    disable_registration = false
+
+    [logconfig]
+    loglevel = "info"
+    logtype = "stdout"
+    logformat = "text"

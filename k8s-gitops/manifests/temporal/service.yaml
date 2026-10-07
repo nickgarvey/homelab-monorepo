@@ -1,0 +1,30 @@
+# In-cluster only, and the only Service service-monitor.yaml scrapes. In-cluster
+# workers reach the frontend at temporal-frontend.temporal.svc:7233.
+#
+# Off-cluster gRPC clients -- the nix-build worker on talos -- go through the
+# LoadBalancer in frontend-lb-service.yaml instead, which is why this one stays
+# ClusterIP.
+apiVersion: v1
+kind: Service
+metadata:
+  name: temporal-frontend
+  namespace: temporal
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+    # Selected by service-monitor.yaml -- the other Services in this namespace
+    # carry the managed-by label too and have no metrics port.
+    app.kubernetes.io/name: temporal
+spec:
+  ipFamilies: [IPv6]
+  ipFamilyPolicy: SingleStack
+  selector:
+    app: temporal
+  ports:
+    - name: grpc
+      port: 7233
+      targetPort: 7233
+      protocol: TCP
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+      protocol: TCP

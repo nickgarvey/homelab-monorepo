@@ -1,0 +1,16 @@
+# SQLite: 2FA registrations, consent and OIDC session state. Users and clients
+# live in secret.yaml/configmap.yaml, so losing this volume costs only those.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: authelia-data
+  namespace: authelia
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn-wffc
+  resources:
+    requests:
+      storage: 1Gi

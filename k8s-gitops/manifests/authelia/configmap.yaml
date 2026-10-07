@@ -1,0 +1,96 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: authelia-config
+  namespace: authelia
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+data:
+  # Secrets come from the authelia-secrets Secret: the *_FILE env vars in
+  # deployment.yaml, plus the JWKS key through the template filter below.
+  configuration.yml: |
+    theme: auto
+    server:
+      # Only the Caddy sidecar reaches this (TLS on the LB address).
+      address: 'tcp://[::1]:9091/'
+    log:
+      level: info
+    authentication_backend:
+      # users_database.yml is mounted read-only from the Secret; add or change
+      # users there (sops) and restart the pod.
+      password_reset:
+        disable: true
+      password_change:
+        disable: true
+      file:
+        path: /secrets/users_database.yml
+        watch: false
+    # Log in with a passkey instead of a password. The user's password hash in
+    # users_database.yml is for a random password nobody knows; registering a
+    # passkey on a new device needs a temporary known hash (sops) for one login.
+    webauthn:
+      enable_passkey_login: true
+      # A passkey that verified the user (PIN or biometric) counts as both
+      # factors, so passkey login alone satisfies two_factor clients.
+      experimental_enable_passkey_uv_two_factors: true
+      selection_criteria:
+        discoverability: required
+        user_verification: required
+    access_control:
+      # Applies only to forward-auth requests, and nothing uses forward-auth yet:
+      # OIDC clients set their own authorization_policy. Authelia rejects 'deny'
+      # without rules; when adding forward-auth rules here, switch this to deny.
+      default_policy: one_factor
+    session:
+      cookies:
+        - domain: home.garvey.sh
+          authelia_url: https://auth.home.garvey.sh
+    storage:
+      local:
+        path: /config/db.sqlite3
+    # No SMTP: one-time codes (e.g. registering a passkey or TOTP) land in this
+    # file; read it with kubectl exec.
+    notifier:
+      filesystem:
+        filename: /config/notification.txt
+    identity_providers:
+      oidc:
+        jwks:
+          - key_id: main
+            algorithm: RS256
+            use: sig
+            key: {{ secret "/secrets/oidc-jwks.pem" | mindent 10 "|" | msquote }}
+        # Authelia 4.39 keeps ID tokens minimal; Grafana reads the role
+        # (role_attribute_path over groups) from the ID token first.
+        claims_policies:
+          grafana:
+            id_token:
+              - groups
+              - email
+              - email_verified
+              - preferred_username
+              - name
+        clients:
+          - client_id: grafana
+            client_name: Grafana
+            claims_policy: grafana
+            # pbkdf2 digest of the plaintext in manifests/grafana/secret.yaml.
+            client_secret: '$pbkdf2-sha512$310000$8kW131B4Xs.aZCwJtHBalw$aquf9/yGNeM0fgryX9kJJDX9LtmixS9QeET9dEVVBgOAris21DFtE.DZ/x0AfHPP977/X5dXVFL6gmxt8V9xZw'
+            public: false
+            authorization_policy: two_factor
+            require_pkce: true
+            pkce_challenge_method: S256
+            redirect_uris:
+              - https://grafana.home.garvey.sh/login/generic_oauth
+            scopes:
+              - openid
+              - profile
+              - email
+              - groups
+            response_types:
+              - code
+            grant_types:
+              - authorization_code
+            access_token_signed_response_alg: none
+            userinfo_signed_response_alg: none
+            token_endpoint_auth_method: client_secret_basic

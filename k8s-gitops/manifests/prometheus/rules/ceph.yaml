@@ -1,0 +1,81 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: ceph-alerts
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+    prometheus: prometheus
+spec:
+  groups:
+    - name: ceph
+      rules:
+        # The Ceph cluster on joor/zah/frul: 3 mons, 3 OSDs (one per node),
+        # pools with 3 copies and min_size 2. One node down keeps I/O going;
+        # a second stalls it.
+        - alert: CephHealthError
+          expr: ceph_health_status == 2
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Ceph is HEALTH_ERR"
+            description: "Run `sudo ceph health detail` on joor/zah/frul. The failing checks are also in ceph_health_detail."
+
+        # Deploys set noout on the host being switched, which is itself a
+        # HEALTH_WARN for as long as the deploy runs; the `for` rides that out.
+        - alert: CephHealthWarning
+          expr: ceph_health_status == 1
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Ceph has been HEALTH_WARN for 30 minutes"
+            description: "Run `sudo ceph health detail`. A leftover noout from a failed deploy shows up here: clear it with `sudo ceph osd unset-group noout <host>` once the OSD is back."
+
+        - alert: CephOSDDown
+          expr: ceph_osd_up == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "{{ $labels.ceph_daemon }} is down"
+            description: "Data is down to 2 copies until it returns, and a second OSD down stalls all I/O. Check `systemctl status ceph-osd-<id>` on its node."
+
+        - alert: CephMonOutOfQuorum
+          expr: ceph_mon_quorum_status == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "{{ $labels.ceph_daemon }} is out of quorum"
+            description: "Two of the three mons are needed for quorum; losing another stops the cluster. Check `systemctl status ceph-mon-<host>`."
+
+        - alert: CephPGsNotActive
+          expr: sum(ceph_pg_total) - sum(ceph_pg_active) > 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "{{ $value }} Ceph placement groups are not active"
+            description: "Inactive PGs block reads and writes to their data. Usually two OSDs are down; see `sudo ceph pg dump_stuck inactive`."
+
+        - alert: CephNearFull
+          expr: ceph_cluster_total_used_bytes / ceph_cluster_total_bytes > 0.75
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Ceph raw capacity is {{ $value | humanizePercentage }} used"
+            description: "Ceph stops writes to an OSD at 95% full and warns at 85%. With 3 copies, usable space is a third of raw."
+
+        # Only the active mgr exports metrics, so no data means no active mgr or
+        # the scrape is broken -- either way every alert above has gone blind.
+        - alert: CephMetricsMissing
+          expr: absent(ceph_health_status)
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "No Ceph metrics for 15 minutes"
+            description: "Either no mgr is active (`sudo ceph -s`) or the prometheus module / scrape of joor/zah/frul:9283 is broken. Until it recovers the Ceph alerts cannot fire."

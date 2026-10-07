@@ -1,0 +1,126 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authelia
+  namespace: authelia
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: authelia
+  template:
+    metadata:
+      labels:
+        app: authelia
+        app.kubernetes.io/managed-by: ngarvey-homelab
+    spec:
+      # On fus/ro/dah with the monitoring stack, so Grafana logins keep working
+      # while joor/zah/frul (and Ceph) are down.
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
+      # Authelia reads every AUTHELIA_* variable as config; the Service links
+      # for authelia-https (AUTHELIA_HTTPS_PORT, ...) would be flagged as unknown.
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+      containers:
+        # TLS terminator for auth.home.garvey.sh, following the anki/jellyfin sidecar
+        # pattern (manifests/acme-dns/ONBOARDING.md). Caddy loads the cert only
+        # at startup, so a `kubectl rollout restart` is needed after each
+        # ~60-day cert-manager renewal, same as anki, zot and jellyfin.
+        - name: caddy
+          image: caddy:2-alpine
+          command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile"]
+          ports:
+            - containerPort: 80
+              name: http-redirect
+            - containerPort: 443
+              name: https
+          volumeMounts:
+            - name: caddy-config
+              mountPath: /etc/caddy
+            - name: caddy-data
+              mountPath: /data
+            - name: certs
+              mountPath: /certs
+              readOnly: true
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+        - name: authelia
+          image: ghcr.io/authelia/authelia:4.39.28
+          imagePullPolicy: IfNotPresent
+          # Skip the image's entrypoint.sh: it only chowns /config and drops
+          # root, and this pod already runs as non-root.
+          command: ["authelia"]
+          env:
+            - name: X_AUTHELIA_CONFIG
+              value: /etc/authelia/configuration.yml
+            # Enables {{ secret "..." }} in configuration.yml (the JWKS key).
+            - name: X_AUTHELIA_CONFIG_FILTERS
+              value: template
+            - name: AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET_FILE
+              value: /secrets/jwt-secret
+            - name: AUTHELIA_SESSION_SECRET_FILE
+              value: /secrets/session-secret
+            - name: AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE
+              value: /secrets/storage-encryption-key
+            - name: AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET_FILE
+              value: /secrets/oidc-hmac-secret
+          readinessProbe:
+            exec:
+              command: ["wget", "-qO", "/dev/null", "http://[::1]:9091/api/health"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["wget", "-qO", "/dev/null", "http://[::1]:9091/api/health"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          volumeMounts:
+            - name: config
+              mountPath: /etc/authelia
+              readOnly: true
+            - name: secrets
+              mountPath: /secrets
+              readOnly: true
+            - name: data
+              mountPath: /config
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+      volumes:
+        - name: caddy-config
+          configMap:
+            name: authelia-caddy
+        - name: caddy-data
+          emptyDir: {}
+        - name: certs
+          secret:
+            secretName: authelia-tls
+        - name: config
+          configMap:
+            name: authelia-config
+        - name: secrets
+          secret:
+            secretName: authelia-secrets
+        - name: data
+          persistentVolumeClaim:
+            claimName: authelia-data

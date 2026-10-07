@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: smb-media-pv-jellyfin
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  capacity:
+    storage: 1000Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  mountOptions:
+    - dir_mode=0777
+    - file_mode=0777
+    - uid=1000
+    - gid=1000
+    - noperm
+    - mfsymlinks
+    - cache=strict
+    - noserverino
+    - seal
+    - ip=2001:470:482f::14
+  csi:
+    driver: smb.csi.k8s.io
+    readOnly: false
+    volumeHandle: smb-media-volume-jellyfin
+    volumeAttributes:
+      source: "//smb.home.garvey.sh/media"
+    nodeStageSecretRef:
+      name: smb-secret
+      namespace: jellyfin
