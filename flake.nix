@@ -5,10 +5,6 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
-    # Stable release for packages whose version should only move deliberately.
-    # Currently Ceph (nix-configs/modules/services/ceph.nix).
-    nixpkgs-stable.url = "github:NixOS/nixpkgs/nixos-26.05";
-
     disko = {
       url = "github:nix-community/disko";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -66,9 +62,8 @@
       flake = false;
     };
 
-    # homelab-esp32-devices firmware. ESP-IDF builds stay on their own
-    # release, separate from the hosts' nixpkgs.
-    nixpkgs-esp32.url = "github:NixOS/nixpkgs/nixos-25.11";
+    # ESP-IDF for homelab-esp32-devices. Its packages are built against the
+    # nixpkgs in its own lock, which pins the firmware toolchain.
     nixpkgs-esp-dev.url = "github:mirrexagon/nixpkgs-esp-dev";
   };
 

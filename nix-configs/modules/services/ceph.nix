@@ -8,14 +8,14 @@
 #
 # Public network (clients, mons, RGW) is the LAN; OSD replication and recovery
 # use the Thunderbolt mesh (modules/networking/thunderbolt-mesh.nix).
-{ config, lib, pkgs, inputs, ... }:
+{ config, lib, pkgs, ... }:
 
 let
-  # From the stable release: Ceph major upgrades need an ordered restart
-  # (mon, mgr, OSD, RGW), so the version must not move with a routine
-  # unstable bump. Unstable's Ceph also does not currently build (its
-  # Python env pulls in a package whose tests fail).
-  ceph = inputs.nixpkgs-stable.legacyPackages.${pkgs.stdenv.hostPlatform.system}.ceph;
+  ceph = pkgs.ceph;
+  # Ceph major upgrades need an ordered restart (mon, mgr, OSD, RGW), so a
+  # nixpkgs bump must not change the major on its own: the assertion below
+  # fails evaluation instead. Raise this deliberately when upgrading.
+  cephMajor = "20";
 
   hostname = config.networking.hostName;
   inherit (import ../networking/lan-hosts.nix) lanHosts;
@@ -36,6 +36,11 @@ let
   knotViaNat64 = "[64:ff9b::a1c:6]:53";
 in
 {
+  assertions = [{
+    assertion = lib.versions.major ceph.version == cephMajor;
+    message = "nixpkgs moved Ceph to ${ceph.version}, but ceph.nix expects major ${cephMajor}. A major upgrade needs an ordered restart (mon, mgr, OSD, RGW); bump cephMajor in nix-configs/modules/services/ceph.nix when doing it.";
+  }];
+
   services.ceph = {
     enable = true;
     global = {

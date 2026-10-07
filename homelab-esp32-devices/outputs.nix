@@ -1,8 +1,8 @@
 # ESP32 firmware, tests, and the esp32 dev shell (ESP-IDF and OpenOCD).
 # Imported by the root flake.nix. See docs/esp-prog-2.md for ESP-Prog-2 usage and udev setup.
-{ nixpkgs-esp32, nixpkgs-esp-dev, ... }: let
+{ nixpkgs, nixpkgs-esp-dev, ... }: let
   system = "x86_64-linux";
-  pkgs = import nixpkgs-esp32 { inherit system; };
+  pkgs = nixpkgs.legacyPackages.${system};
 
   # ESP-IDF and its toolchains come from nixpkgs-esp-dev's own packages, built
   # against the nixpkgs in its lock, so they only move when that input does.

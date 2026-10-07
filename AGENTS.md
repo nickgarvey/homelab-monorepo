@@ -22,8 +22,10 @@ the root flake from any subdirectory, so `nix run .#deploy` and
 - `nix develop` gives the default shell: deploy, go, python, kubectl, skopeo, jq.
   The only other shells are `.#esp32` (ESP-IDF; needed for anything in
   `homelab-esp32-devices/`) and `.#makernexus`.
-- `nixpkgs` is shared by hosts and homelab-nixpkgs. `nixpkgs-stable` (Ceph)
-  and `nixpkgs-esp32` (firmware) are deliberate separate pins.
+- There is one `nixpkgs`. Two inputs keep their own locked nixpkgs on purpose:
+  `nixpkgs-esp-dev` (pins ESP-IDF for the firmware) and `nixos-raspberrypi`
+  (skyforge's vendor kernel must match its userspace). Ceph is held to one major
+  by an assertion in `nix-configs/modules/services/ceph.nix`.
 
 Cross-references between directories ("k8s-gitops manifests/zot/secret.yaml",
 "nix-configs modules/networking/dns.nix") are paths relative to the repo root.
