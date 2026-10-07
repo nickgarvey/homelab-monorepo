@@ -9,7 +9,7 @@ chown ceph:ceph $d/keyring; chmod 600 $d/keyring
 systemctl start ceph-mgr-$H
 
 d=/var/lib/ceph/osd/ceph-$ID; install -d -o ceph -g ceph $d
-UUID=$(cat /proc/sys/kernel/random/uuid); KEY=$(ceph-authtool --gen-print-key)
+UUID=$(cat /proc/sys/kernel/random/uuid); KEY=$(ceph-authtool --gen-print-key --key-type aes256k)
 echo bluestore > $d/type
 ln -sfn "$DISK" $d/block
 ceph-authtool --create-keyring $d/keyring --name osd.$ID --add-key "$KEY" >/dev/null

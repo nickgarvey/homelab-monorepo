@@ -2,10 +2,10 @@
 set -euo pipefail
 FSID=8d324da3-f3ab-40f8-aaa1-71ed33705f75
 B=/root/ceph-bootstrap; install -d -m 700 $B; cd $B
-ceph-authtool --create-keyring ceph.mon.keyring --gen-key -n mon. --cap mon 'allow *'
-ceph-authtool --create-keyring ceph.client.admin.keyring --gen-key -n client.admin \
+ceph-authtool --create-keyring ceph.mon.keyring --gen-key --key-type aes256k -n mon. --cap mon 'allow *'
+ceph-authtool --create-keyring ceph.client.admin.keyring --gen-key --key-type aes256k -n client.admin \
   --cap mon 'allow *' --cap osd 'allow *' --cap mds 'allow *' --cap mgr 'allow *'
-ceph-authtool --create-keyring ceph.bootstrap-osd.keyring --gen-key -n client.bootstrap-osd \
+ceph-authtool --create-keyring ceph.bootstrap-osd.keyring --gen-key --key-type aes256k -n client.bootstrap-osd \
   --cap mon 'profile bootstrap-osd' --cap mgr 'allow r'
 ceph-authtool ceph.mon.keyring --import-keyring ceph.client.admin.keyring
 ceph-authtool ceph.mon.keyring --import-keyring ceph.bootstrap-osd.keyring
