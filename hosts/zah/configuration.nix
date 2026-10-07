@@ -3,10 +3,10 @@
   imports = [
     ./hardware-configuration.nix
     ../../modules/k3s/k3s-common.nix
-    ../../modules/k3s/kata.nix
     ../../modules/core/nixos-common.nix
     ../../modules/networking/thunderbolt-mesh.nix
     ../../modules/services/ceph.nix
+    ../../modules/services/reboot-watchdog.nix
   ];
 
   networking.hostName = "zah";

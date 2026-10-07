@@ -46,16 +46,37 @@ in
       Type = "oneshot";
       RemainAfterExit = true;
     };
+    # Boot-time only: rerunning it on a live node could reload the
+    # thunderbolt stack and drop the mesh links.
+    restartIfChanged = false;
     path = [ pkgs.kmod ];
     script = ''
       # A peer shows up as 0-N (N > 0) only after its lane bonding and
       # property exchange finish. Give up waiting after 60s so a node with a
       # cable out still loads the module (discovery has taken over 30s on 7.2).
-      for _ in $(seq 120); do
-        peers=$(ls -d /sys/bus/thunderbolt/devices/0-[1-9] 2>/dev/null | wc -l)
-        [ "$peers" -ge ${toString (builtins.length nodes - 1)} ] && break
-        sleep 0.5
-      done
+      wait_for_peers() {
+        for _ in $(seq 120); do
+          peers=$(ls -d /sys/bus/thunderbolt/devices/0-[1-9] 2>/dev/null | wc -l)
+          [ "$peers" -ge ${toString (builtins.length nodes - 1)} ] && return 0
+          sleep 0.5
+        done
+        return 1
+      }
+
+      # On 7.2 the XDomain handshake with a peer often fails at boot ("failed
+      # read XDomain properties"), and that peer never enumerates until the
+      # handshake is rerun. Reloading the thunderbolt driver reruns it; do
+      # that once, then go ahead with whatever peers are there.
+      if wait_for_peers; then
+        echo "all peers enumerated"
+      else
+        echo "only $peers peer(s) enumerated; reloading thunderbolt once"
+        if modprobe -r thunderbolt && modprobe thunderbolt; then
+          wait_for_peers || true
+        else
+          echo "reloading thunderbolt failed"
+        fi
+      fi
       echo "loading thunderbolt_net with $peers peer(s) enumerated"
       modprobe thunderbolt_net
     '';

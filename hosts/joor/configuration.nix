@@ -3,10 +3,10 @@
   imports = [
     ./hardware-configuration.nix
     ../../modules/k3s/k3s-common.nix
-    ../../modules/k3s/kata.nix
     ../../modules/core/nixos-common.nix
     ../../modules/networking/thunderbolt-mesh.nix
     ../../modules/services/ceph.nix
+    ../../modules/services/reboot-watchdog.nix
     # Backs up every Ceph RBD volume; one node is enough.
     ../../modules/services/ceph-backup.nix
     # The RGW STS roles for k3s apps; one node reconciles them.
