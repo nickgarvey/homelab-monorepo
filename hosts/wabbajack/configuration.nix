@@ -53,6 +53,10 @@
     peers = [ "1f19395c7b916da44c6acff1a831ddbf7fc294a020b071704f04b6d17a0277dc@[2001:470:482f:200::2]:3901" ];
   };
 
+  # btop built with ROCm SMI so it shows the iGPU; the plain btop in
+  # nixos-common has no AMD GPU support. hiPrio wins the bin/btop collision.
+  environment.systemPackages = [ (lib.hiPrio pkgs.btop-rocm) ];
+
   # --- llama.cpp (Vulkan on the iGPU) ---
   # The amdgpu GTT limit defaults to about half of RAM (~62 GB), too small for
   # the ~90 GB weights plus KV cache. Raise it to ~124 GiB.
