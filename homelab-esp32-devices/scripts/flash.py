@@ -13,7 +13,7 @@ Usage (from repo root, inside nix develop .#esp32):
   nix develop .#esp32 --command python3 scripts/flash.py devices/freezer-temp-sensor
   nix develop .#esp32 --command python3 scripts/flash.py --fake-sensor devices/freezer-temp-sensor
   nix develop .#esp32 --command python3 scripts/flash.py --method esp-prog devices/freezer-temp-sensor
-  nix develop .#esp32 --command python3 scripts/flash.py --method esp-prog-2 devices/laundry-detector
+  nix develop .#esp32 --command python3 scripts/flash.py --method esp-prog-2 devices/freezer-temp-sensor
   nix develop .#esp32 --command python3 scripts/flash.py --erase devices/freezer-temp-sensor
   nix develop .#esp32 --command python3 scripts/flash.py devices/garage-opener
   nix develop .#esp32 --command python3 scripts/flash.py --no-monitor devices/garage-opener

@@ -76,16 +76,6 @@ nix develop .#esp32 --command python3 scripts/flash.py --port /dev/ttyACM1 devic
 
 ---
 
-### Flash laundry-detector (deep sleep device)
-
-```bash
-nix develop .#esp32 --command python3 scripts/flash.py devices/laundry-detector
-```
-
-The script auto-detects deep sleep devices and uses JTAG (via ESP-Prog-2) to
-wake the board before flashing. The port is selected by USB VID/PID so the
-Feather (303a:1001) is used for flash, not the ESP-Prog-2 (303a:1002).
-
 ### Flash via ESP-Prog-2
 
 ```bash
@@ -101,7 +91,6 @@ Uses the ESP-Prog-2 UART interface (303a:1002) for flashing and monitoring.
 | `freezer-temp-sensor` | Real DS18B20 temperature sensor firmware |
 | `freezer-temp-sensor-fake` | Fake sine-wave sensor (no hardware needed) |
 | `garage-opener` | Garage door opener firmware |
-| `laundry-detector` | Laundry vibration detector firmware |
 
 Both freezer variants are produced by `makeFreezerFirmware` in `outputs.nix` with a `useFakeSensor` parameter.
 

@@ -5,7 +5,7 @@ Reads the pairing code from the device's matter-pairing.json and the HA
 long-lived access token from secrets/ha.sops.yaml (decrypted via sops).
 
 Usage (from repo root, inside nix develop .#esp32):
-  python3 scripts/commission.py devices/laundry-detector
+  python3 scripts/commission.py devices/freezer-temp-sensor
   python3 scripts/commission.py devices/freezer-temp-sensor
   python3 scripts/commission.py --code "MT:Y.K9042C00KA0648G00"
 """
@@ -186,7 +186,7 @@ def _ws_recv(sock, buf: bytearray) -> str:
 def main():
     parser = argparse.ArgumentParser(description="Commission a Matter device via HA")
     parser.add_argument("device_dir", nargs="?", type=Path,
-                        help="Device directory (e.g. devices/laundry-detector)")
+                        help="Device directory (e.g. devices/freezer-temp-sensor)")
     parser.add_argument("--code", help="Override pairing code (QR or manual)")
     args = parser.parse_args()
 

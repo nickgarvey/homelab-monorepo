@@ -48,7 +48,6 @@ On boot the firmware:
 nix develop .#esp32
 
 # Flash with --thread to embed Thread credentials, --erase for a clean start
-python3 scripts/flash.py --erase --thread devices/laundry-detector
 python3 scripts/flash.py --erase --thread devices/freezer-temp-sensor
 ```
 
@@ -70,7 +69,6 @@ automatically.  To commission:
 
    | Device            | QR Code                    | Manual Code   |
    |-------------------|----------------------------|---------------|
-   | laundry-detector  | `MT:Y.K90AFN00KA0648G00`   | `34970112332` |
    | freezer-temp-sensor | `MT:Y.K90AFN00KA0648G00` | `34970112332` |
 
 3. HA discovers the device on the Thread network via mDNS and commissions it.
@@ -129,8 +127,8 @@ sops secrets/thread.sops.yaml
 
 Check serial output for:
 ```
-I (xxx) laundry: Found Thread dataset in NVS (N bytes), provisioning...
-I (xxx) laundry: Thread provisioned from NVS — device will join network
+I (xxx) freezer: Found Thread dataset in NVS (N bytes), provisioning...
+I (xxx) freezer: Thread provisioned from NVS — device will join network
 ```
 
 If you see `No thread NVS namespace — skipping Thread provisioning`, the NVS

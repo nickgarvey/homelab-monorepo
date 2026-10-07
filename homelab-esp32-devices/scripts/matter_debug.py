@@ -5,8 +5,8 @@ Queries the HA REST + WebSocket APIs to show raw cluster attribute data
 for a device, useful for debugging without serial access.
 
 Usage (from repo root, inside nix develop .#esp32):
-  python3 scripts/matter_debug.py laundry-detector
-  python3 scripts/matter_debug.py --watch laundry-detector
+  python3 scripts/matter_debug.py freezer-temp-sensor
+  python3 scripts/matter_debug.py --watch freezer-temp-sensor
 """
 
 import argparse
@@ -58,7 +58,7 @@ def ha_get(url: str, token: str) -> dict:
         return json.loads(resp.read())
 
 
-def get_laundry_states(base_url: str, token: str, device_name: str) -> dict:
+def get_device_states(base_url: str, token: str, device_name: str) -> dict:
     """Get all entity states for a device."""
     states = ha_get(f"{base_url}/api/states", token)
     name_slug = device_name.replace("-", "_")
@@ -84,7 +84,7 @@ def print_states(states: dict) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("device", help="device name (e.g. laundry-detector)")
+    parser.add_argument("device", help="device name (e.g. freezer-temp-sensor)")
     parser.add_argument("--watch", "-w", action="store_true",
                         help="poll every 30s")
     args = parser.parse_args()
@@ -99,7 +99,7 @@ def main() -> None:
         die("HA_BASE_URL or HA_API_KEY missing from secrets")
 
     while True:
-        states = get_laundry_states(base_url, token, args.device)
+        states = get_device_states(base_url, token, args.device)
         if not states:
             print(f"No entities found for '{args.device}'")
         else:

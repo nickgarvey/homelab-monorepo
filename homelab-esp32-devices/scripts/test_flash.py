@@ -375,7 +375,7 @@ class TestDeepSleepFlashWorkflow(unittest.TestCase):
     ):
         mock_build.return_value = Path("/nix/store/fake-firmware")
 
-        with patch("sys.argv", ["flash.py", "--no-monitor", "devices/laundry-detector"]):
+        with patch("sys.argv", ["flash.py", "--no-monitor", "devices/freezer-temp-sensor"]):
             with patch("pathlib.Path.is_dir", return_value=True):
                 try:
                     flash.main()
@@ -413,11 +413,6 @@ class TestDeepSleepFlashWorkflow(unittest.TestCase):
 
 class TestDeviceUsesDeepSleep(unittest.TestCase):
     """Test device_uses_deep_sleep() — checks sdkconfig/source for deep sleep."""
-
-    def test_laundry_detector_uses_deep_sleep(self):
-        device_dir = Path(__file__).parent.parent / "devices" / "laundry-detector"
-        if device_dir.exists():
-            self.assertTrue(flash.device_uses_deep_sleep(device_dir))
 
     def test_freezer_does_not_use_deep_sleep(self):
         device_dir = Path(__file__).parent.parent / "devices" / "freezer-temp-sensor"
@@ -471,7 +466,7 @@ class TestGetPairingInfo(unittest.TestCase):
 
     def test_reads_real_device_files(self):
         """Verify the actual matter-pairing.json files in the repo."""
-        for device in ["laundry-detector", "freezer-temp-sensor"]:
+        for device in ["freezer-temp-sensor"]:
             device_dir = Path(__file__).parent.parent / "devices" / device
             if device_dir.exists():
                 info = flash.get_pairing_info(device_dir)
@@ -587,7 +582,7 @@ class TestThreadNvsFlashGuard(unittest.TestCase):
         """--thread without --erase should NOT call generate_thread_nvs_partition."""
         mock_build.return_value = Path("/nix/store/fake-firmware")
 
-        with patch("sys.argv", ["flash.py", "--no-monitor", "--thread", "devices/laundry-detector"]):
+        with patch("sys.argv", ["flash.py", "--no-monitor", "--thread", "devices/freezer-temp-sensor"]):
             with patch("pathlib.Path.is_dir", return_value=True):
                 try:
                     flash.main()
@@ -643,7 +638,7 @@ class TestThreadNvsFlashGuard(unittest.TestCase):
         fake_bin = Path("/tmp/fake-thread.bin")
         mock_thread_nvs.return_value = MagicMock()  # non-None = NVS bin path
 
-        with patch("sys.argv", ["flash.py", "--no-monitor", "--thread", "--erase", "devices/laundry-detector"]):
+        with patch("sys.argv", ["flash.py", "--no-monitor", "--thread", "--erase", "devices/freezer-temp-sensor"]):
             with patch("pathlib.Path.is_dir", return_value=True):
                 with patch("builtins.open", unittest.mock.mock_open(read_data='{"extra_esptool_args": {"chip": "esp32c6"}}')):
                     try:

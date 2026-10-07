@@ -49,7 +49,7 @@ chip-tool discover commissionables
    Stored in `secrets/thread-info.txt` (the `Active dataset TLVs` line).
 
 2. **Setup pin code** and **discriminator** — from the device's QR payload.
-   For the laundry-detector: pin=`20202021`, discriminator=`3840`.
+   For the freezer-temp-sensor: pin=`20202021`, discriminator=`3840`.
    (These are the esp-matter test defaults matching QR code `MT:Y.K90AFN00KA0648G00`.)
 
 3. **Clean BlueZ state** — stale BLE connections from previous attempts block
@@ -75,7 +75,7 @@ chip-tool pairing ble-thread \
     --storage-directory /tmp/chip-tool-storage
 ```
 
-Example for laundry-detector:
+Example for freezer-temp-sensor:
 
 ```bash
 DATASET="0e080000000000010000000300000f4a0300001935060004001fffe00208ee05a9d2c8031b890708fdb923a9d342bb3d05109adbf9f1e55a8db015f808106a06dab4030e68612d7468726561642d35353037010255070410e017a5c81cd05bb05bd689c8848c33a50c0402a0f7f8"
