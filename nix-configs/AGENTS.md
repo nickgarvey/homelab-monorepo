@@ -1,0 +1,86 @@
+# Nix Config Conventions
+
+## Module taxonomy
+
+Modules live under `modules/` grouped by concern. Add new modules to the
+narrowest matching subdir; create a new one only when you have ≥2 related files.
+
+| Subdir | What belongs here |
+|---|---|
+| `core/` | Baseline config applied to virtually every host (NixOS defaults, SSH, locale, CA certs). Currently: `nixos-common`, `nspawn-cleanup`, `server-base` (networkd + systemd-boot + sops defaults for LAN servers; k3s-common builds on it). |
+| `networking/` | Network configuration and shared host-address data. Currently: `networkd`, `network-manager`, `dns`, `lan-hosts`, `ipv6-accept-ra-routes`, `thunderbolt-mesh` (FRR-routed Thunderbolt mesh between the storage nodes). |
+| `desktop/` | Workstation/desktop features (Wayland compositors, audio, packages, udev rules for peripherals). Currently: `common-workstation`, `common-tv`, `niri`, `steam`, `upower-overlay`, `printer`, `orca-slicer`, `mic-mute`, `rtl-sdr`, `zot-push` (containers auth.json for pushing to oci.garvey.sh). |
+| `nix/` | Nix-daemon tooling: binary caches, remote builders, flake checks. Currently: `nix-binary-cache`, `nix-remote-builder-client`, `flake-build-check`. |
+| `services/` | Host services that don't fit a tighter category. Currently: `smb-automount`, `fancontrol`, `ceph` (mon/mgr/OSD/RGW on joor/zah/frul, no Rook), `ceph-backup` (daily Kopia backups of RBD volumes to Garage). |
+| `k3s/` | Kubernetes cluster node configuration. Currently: `k3s-common`. |
+| `router/` | Router subsystem (nftables, DHCP, DNS, IPv6 tunnel, NAT64). Exposes a `default.nix` — import the directory. |
+| `containers/` | systemd-nspawn container definitions. Common networking lives in `common.nix`. |
+| `microvm/` | MicroVM guest definitions. |
+
+## Imports
+
+Hosts import individual files by path:
+
+```nix
+imports = [
+  ../../modules/core/nixos-common.nix
+  ../../modules/networking/networkd.nix
+  ../../modules/desktop/common-workstation.nix
+];
+```
+
+No `default.nix` aggregators — except `router/`, which intentionally exposes
+one. Hosts opt in to each module explicitly.
+
+## Host `configuration.nix` structure
+
+```nix
+imports = [
+  ./hardware-configuration.nix          # hardware-config first
+  # shared modules, grouped by subdir:
+  ../../modules/core/nixos-common.nix
+  ../../modules/networking/networkd.nix
+  ../../modules/services/nix-binary-cache.nix
+  # host-specific opt-ins last
+];
+# host-specific config below the imports block
+```
+
+## Paths escaping `modules/`
+
+When a module references `pkgs/`, `patches/`, `secrets/`, or `configs/` it
+must use paths relative to its own location. From inside a
+subdir (e.g. `modules/desktop/`) those roots are two levels up (`../../`), not
+one. Example: `../../patches/my-fix.patch`.
+
+## Module header comment
+
+The first non-blank line of each module should be a `#` comment describing its
+purpose in one sentence, so `ls` + skimming the top of a file is enough to
+understand what it does.
+
+## Deploys and reboots
+
+The deploy tool warns "needs reboot" whenever a host's running kernel differs
+from its new generation. Treat that as informational: do not relay it, suggest
+a reboot, or list it as a follow-up. The human decides when hosts reboot. Only
+raise a reboot when the task itself cannot finish without one (e.g. a kernel
+module or kernel parameter the change depends on).
+
+## Commit messages
+
+Use this shape, with the subject on the first line:
+
+```
+<subject>
+
+Human Text:
+None
+
+LLM Text:
+<body: what changed and why>
+```
+
+Leave `Human Text:` as `None`; the human fills it in later. Put your
+explanation under `LLM Text:` (leave it empty if the subject says it all). Do
+not add a `Co-Authored-By:` trailer.

@@ -1,0 +1,173 @@
+package main
+
+import (
+	"sort"
+	"strings"
+	"testing"
+)
+
+func TestHostOrdering(t *testing.T) {
+	// AllHosts should be authored sorted by Order.
+	for i := 1; i < len(AllHosts); i++ {
+		if AllHosts[i-1].Order > AllHosts[i].Order {
+			t.Fatalf("AllHosts not sorted by Order at index %d: %q(%d) > %q(%d)",
+				i-1, AllHosts[i-1].Name, AllHosts[i-1].Order,
+				AllHosts[i].Name, AllHosts[i].Order)
+		}
+	}
+	// All k3s nodes must precede any non-k3s host.
+	lastK3s := -1
+	firstNonK3s := len(AllHosts)
+	for i, h := range AllHosts {
+		if h.InGroup("k3s") {
+			lastK3s = i
+		} else if i < firstNonK3s {
+			firstNonK3s = i
+		}
+	}
+	if lastK3s > firstNonK3s {
+		t.Fatalf("k3s host at index %d follows non-k3s host at index %d", lastK3s, firstNonK3s)
+	}
+}
+
+func TestHostFQDN(t *testing.T) {
+	cases := []struct {
+		h    Host
+		want string
+	}{
+		{Host{Name: "dragonsreach", SSHAddress: "10.28.0.1"}, "10.28.0.1"},
+		{Host{Name: "talos"}, "talos"},
+		{Host{Name: "dovahkiin"}, "dovahkiin"},
+	}
+	for _, c := range cases {
+		if got := c.h.FQDN(); got != c.want {
+			t.Errorf("FQDN(%+v) = %q, want %q", c.h, got, c.want)
+		}
+	}
+}
+
+func TestSelectHosts(t *testing.T) {
+	cases := []struct {
+		name      string
+		input     []string
+		want      []string
+		wantError bool
+	}{
+		{
+			name:  "empty selects default hosts in order",
+			input: nil,
+			want: []string{
+				"fus", "ro", "dah", "joor", "zah", "frul",
+				"wabbajack", "talos", "lydia",
+				"skyforge", "dragonsreach",
+			},
+		},
+		{
+			name:  "explicit single",
+			input: []string{"dragonsreach"},
+			want:  []string{"dragonsreach"},
+		},
+		{
+			name:  "explicit selects non-default host (dovahkiin)",
+			input: []string{"dovahkiin"},
+			want:  []string{"dovahkiin"},
+		},
+		{
+			name:  "multi reorders by Order",
+			input: []string{"dragonsreach", "fus", "talos"},
+			want:  []string{"fus", "talos", "dragonsreach"},
+		},
+		{
+			name:  "duplicates deduped",
+			input: []string{"fus", "fus"},
+			want:  []string{"fus"},
+		},
+		{
+			name:      "unknown name errors",
+			input:     []string{"nonexistent"},
+			wantError: true,
+		},
+		{
+			name:  "whitespace trimmed",
+			input: []string{"  dragonsreach  "},
+			want:  []string{"dragonsreach"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := SelectHosts(AllHosts, c.input)
+			if c.wantError {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			gotNames := make([]string, len(got))
+			for i, h := range got {
+				gotNames[i] = h.Name
+			}
+			if strings.Join(gotNames, ",") != strings.Join(c.want, ",") {
+				t.Errorf("got %v, want %v", gotNames, c.want)
+			}
+		})
+	}
+}
+
+func TestSelectHostsResultIsSorted(t *testing.T) {
+	got, err := SelectHosts(AllHosts, []string{"dragonsreach", "skyforge", "ro"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sort.SliceIsSorted(got, func(i, j int) bool { return got[i].Order < got[j].Order }) {
+		t.Fatalf("result not sorted by Order: %v", got)
+	}
+}
+
+func TestBuildOnlyHosts(t *testing.T) {
+	var got []string
+	for _, h := range BuildOnlyHosts(AllHosts, nil) {
+		got = append(got, h.Name)
+	}
+	if want := "dovahkiin,guevenne,nelkir"; strings.Join(got, ",") != want {
+		t.Errorf("no --hosts: got %v, want %s", got, want)
+	}
+	if got := BuildOnlyHosts(AllHosts, []string{"talos"}); got != nil {
+		t.Errorf("named hosts: want nil, got %v", got)
+	}
+}
+
+func TestHostNames(t *testing.T) {
+	hosts := []Host{
+		{Name: "late", Order: 30, Default: true},
+		{Name: "optin", Order: 20, Default: false},
+		{Name: "early", Order: 10, Default: true},
+	}
+	cases := []struct {
+		name string
+		pred func(Host) bool
+		want []string
+	}{
+		{"defaults sorted by order", func(h Host) bool { return h.Default }, []string{"early", "late"}},
+		{"opt-in only", func(h Host) bool { return !h.Default }, []string{"optin"}},
+		{"none match", func(h Host) bool { return false }, nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := HostNames(hosts, c.pred)
+			if strings.Join(got, ",") != strings.Join(c.want, ",") {
+				t.Errorf("got %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
+func TestHostNamesDoesNotReorderInput(t *testing.T) {
+	hosts := []Host{{Name: "b", Order: 20}, {Name: "a", Order: 10}}
+	HostNames(hosts, func(Host) bool { return true })
+	if hosts[0].Name != "b" {
+		t.Errorf("input slice reordered: %v", hosts)
+	}
+}

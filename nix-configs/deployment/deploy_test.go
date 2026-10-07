@@ -1,0 +1,588 @@
+package main
+
+import (
+	"context"
+	"strings"
+	"testing"
+	"time"
+)
+
+// systemPath is a stable fake nix store path used across deploy tests.
+const fakeSystemPath = "/nix/store/abc123-nixos-system-test-25.11"
+
+func testCtx(r Runner) *DeployContext {
+	return &DeployContext{
+		Runner:     r,
+		Sleeper:    func(time.Duration) {},
+		Now:        func() time.Time { return time.Unix(1700000000, 0) },
+		RebootFlag: RebootFlagNever,
+	}
+}
+
+// buildOKResponses returns the canonical responses for a happy-path safe
+// deploy. Tests overlay additional matchers in front for specific behaviors.
+func buildOKResponses(systemPath string) []FakeResponse {
+	return []FakeResponse{
+		// SSH reachable check
+		{Match: MatchContains("echo ok"), Result: RunResult{Stdout: "ok\n"}},
+		// boot default starts stale so the happy path does NOT trip the
+		// already-deployed skip (must precede the generic readlink matcher)
+		{Match: MatchContains("readlink", "profiles/system"), Result: RunResult{Stdout: "/nix/store/STALE-system\n"}},
+		// readlink /run/current-system returns expected path
+		{Match: MatchContains("readlink"), Result: RunResult{Stdout: systemPath + "\n"}},
+		// Kernel detection: no change
+		{Match: MatchContains("uname -r"), Result: RunResult{Stdout: "6.6.50\n"}},
+		{Match: MatchContains("kernel-modules"), Result: RunResult{Stdout: "6.6.50\n"}},
+		{Match: MatchContains("booted-system/kernel-params"), Result: RunResult{Stdout: "quiet\n"}},
+		{Match: MatchContains("current-system/kernel-params"), Result: RunResult{Stdout: "quiet\n"}},
+		// Default for everything else (arm, activate, persist, disarm)
+		{Match: func([]string) bool { return true }, Result: RunResult{}},
+	}
+}
+
+func TestSafeDeployHappyPath(t *testing.T) {
+	host := AllHosts[1] // ro
+	fake := &FakeRunner{Responses: buildOKResponses(fakeSystemPath)}
+	ctx := testCtx(fake)
+
+	// k8s health: skip via removing the K8sHealthCheck field for this test
+	host.K8sHealthCheck = false
+
+	if !Deploy(ctx, host, ModeSafe, Plan{SystemPath: fakeSystemPath}) {
+		t.Fatal("expected success")
+	}
+
+	calls := joinedCalls(fake)
+	// Required call sequence (substring matches, in order):
+	wantOrder := []string{
+		"echo ok", // initial SSH check
+		// No build or copy here: the pipeline did both before handing the host over.
+		"systemd-run --unit=deploy-watchdog-1700000000 --on-active=120s",
+		"switch-to-configuration test",
+		"readlink /run/current-system",
+		"nix-env --profile /nix/var/nix/profiles/system --set " + fakeSystemPath, // step 6
+		"switch-to-configuration boot",                                     // step 6
+		"systemctl stop deploy-watchdog-1700000000",                        // step 7
+	}
+	assertOrder(t, calls, wantOrder)
+}
+
+func TestSafeDeploySkipsIfAlreadyDeployed(t *testing.T) {
+	host := AllHosts[1] // ro
+	host.K8sHealthCheck = false
+
+	// Both the active system and the boot default already point at the built
+	// path, so deploySafe should short-circuit after the build.
+	resps := []FakeResponse{
+		{Match: MatchContains("echo ok"), Result: RunResult{Stdout: "ok\n"}},
+		// readlink -f /nix/var/nix/profiles/system (boot default)
+		{Match: MatchContains("readlink", "profiles/system"), Result: RunResult{Stdout: fakeSystemPath + "\n"}},
+		// readlink /run/current-system (active)
+		{Match: MatchContains("readlink"), Result: RunResult{Stdout: fakeSystemPath + "\n"}},
+		{Match: func([]string) bool { return true }, Result: RunResult{}},
+	}
+	fake := &FakeRunner{Responses: resps}
+	ctx := testCtx(fake)
+
+	if !Deploy(ctx, host, ModeSafe, Plan{SystemPath: fakeSystemPath}) {
+		t.Fatal("expected success via already-deployed skip")
+	}
+
+	calls := joinedCalls(fake)
+	for _, forbidden := range []string{
+		"systemd-run",                  // watchdog armed
+		"switch-to-configuration test", // activation
+		"nix-env --profile",            // persist profile
+		"switch-to-configuration boot", // persist boot
+	} {
+		if contains(calls, forbidden) {
+			t.Errorf("expected skip to avoid %q, but it ran.\nCalls:\n%s",
+				forbidden, strings.Join(calls, "\n"))
+		}
+	}
+}
+
+func TestSafeDeploySkipStillRebootsWhenOwed(t *testing.T) {
+	host := AllHosts[1] // ro
+	host.K8sHealthCheck = false
+
+	// Active + boot already match the build (skip path), but the running
+	// kernel differs from the activated config, so a reboot is still owed.
+	resps := []FakeResponse{
+		{Match: MatchContains("echo ok"), Result: RunResult{Stdout: "ok\n"}},
+		{Match: MatchContains("readlink", "profiles/system"), Result: RunResult{Stdout: fakeSystemPath + "\n"}},
+		{Match: MatchContains("readlink"), Result: RunResult{Stdout: fakeSystemPath + "\n"}},
+		// running kernel != activated kernel -> reboot needed
+		{Match: MatchContains("uname -r"), Result: RunResult{Stdout: "6.6.50\n"}},
+		{Match: MatchContains("kernel-modules"), Result: RunResult{Stdout: "6.6.99\n"}},
+		{Match: func([]string) bool { return true }, Result: RunResult{}},
+	}
+	fake := &FakeRunner{Responses: resps}
+	ctx := testCtx(fake)
+	ctx.RebootFlag = RebootFlagAuto
+
+	if !Deploy(ctx, host, ModeSafe, Plan{SystemPath: fakeSystemPath}) {
+		t.Fatal("expected success (skip + reboot)")
+	}
+
+	calls := joinedCalls(fake)
+	// Skipped the redundant work...
+	for _, forbidden := range []string{"systemd-run", "switch-to-configuration test", "nix-env --profile"} {
+		if contains(calls, forbidden) {
+			t.Errorf("expected skip to avoid %q, but it ran", forbidden)
+		}
+	}
+	// ...but still rebooted.
+	if !contains(calls, "systemctl reboot") {
+		t.Errorf("expected an owed reboot to be issued.\nCalls:\n%s", strings.Join(calls, "\n"))
+	}
+}
+
+func TestSafeDeployActivationTimeoutHostReachable(t *testing.T) {
+	host := AllHosts[1]
+	host.K8sHealthCheck = false
+
+	// Activation 'test' fails but echo ok still succeeds → testTimedOut path.
+	resps := []FakeResponse{
+		{Match: MatchContains("switch-to-configuration test"), Result: RunResult{TimedOut: true}},
+	}
+	resps = append(resps, buildOKResponses(fakeSystemPath)...)
+	fake := &FakeRunner{Responses: resps}
+	ctx := testCtx(fake)
+
+	if !Deploy(ctx, host, ModeSafe, Plan{SystemPath: fakeSystemPath}) {
+		t.Fatal("expected success via testTimedOut recovery")
+	}
+	// Must have cleared the unit a second time before persist.
+	clears := 0
+	for _, c := range joinedCalls(fake) {
+		if strings.Contains(c, "systemctl stop nixos-rebuild-switch-to-configuration") {
+			clears++
+		}
+	}
+	if clears < 2 {
+		t.Errorf("expected >=2 unit clears (pre-arm + pre-persist), got %d", clears)
+	}
+}
+
+func TestSafeDeployActivationFailNotReachable(t *testing.T) {
+	host := AllHosts[1]
+	host.K8sHealthCheck = false
+
+	// activation fails AND ssh-reachable check after sleep also fails.
+	// Trick: the post-failure echo ok call needs to fail. Use a counting runner
+	// that returns ok the first time (initial reachability) and fail thereafter.
+	cnt := 0
+	wrapper := &probeFailRunner{
+		echoCount: &cnt,
+		systemPath: fakeSystemPath,
+	}
+	ctx := testCtx(wrapper)
+
+	if Deploy(ctx, host, ModeSafe, Plan{SystemPath: fakeSystemPath}) {
+		t.Fatal("expected failure")
+	}
+	// Must NOT have called switch-to-configuration boot or disarmed.
+	for _, c := range wrapper.calls {
+		joined := strings.Join(c, " ")
+		if strings.Contains(joined, "switch-to-configuration boot") {
+			t.Errorf("should not have persisted: %s", joined)
+		}
+		if strings.Contains(joined, "systemctl stop deploy-watchdog") {
+			t.Errorf("should not have disarmed watchdog: %s", joined)
+		}
+	}
+}
+
+const fakePriorPath = "/nix/store/prior123-nixos-system-test-25.11"
+
+// readlinkSeq scripts successive answers to `readlink /run/current-system`. The
+// first is the generation the host ran before the deploy (what deploySafe keeps
+// as priorPath); later ones are what step 5 observes. The last answer sticks for
+// any further reads. FakeRunner responses are never consumed, so the sequencing
+// has to live in the matchers.
+func readlinkSeq(paths ...string) []FakeResponse {
+	n := 0
+	out := make([]FakeResponse, 0, len(paths))
+	for i, p := range paths {
+		idx, last := i, i == len(paths)-1
+		out = append(out, FakeResponse{
+			Match: func(argv []string) bool {
+				if !MatchContains("readlink /run/current-system")(argv) {
+					return false
+				}
+				if n != idx && !(last && n > idx) {
+					return false
+				}
+				n++
+				return true
+			},
+			Result: RunResult{Stdout: p + "\n"},
+		})
+	}
+	return out
+}
+
+func pathMismatchFake(t *testing.T, observed string) *FakeRunner {
+	t.Helper()
+	resps := readlinkSeq(fakePriorPath, observed)
+	resps = append(resps, buildOKResponses(fakeSystemPath)...)
+	fake := &FakeRunner{Responses: resps}
+	if Deploy(testCtx(fake), pathMismatchHost(), ModeSafe, Plan{SystemPath: fakeSystemPath}) {
+		t.Fatal("expected failure due to path mismatch")
+	}
+	for _, c := range joinedCalls(fake) {
+		if strings.Contains(c, "switch-to-configuration boot") || strings.Contains(c, "nix-env --profile") {
+			t.Errorf("should not have persisted: %s", c)
+		}
+	}
+	return fake
+}
+
+func pathMismatchHost() Host {
+	host := AllHosts[1]
+	host.K8sHealthCheck = false
+	return host
+}
+
+// The switch did not take effect and the host is still on the generation it
+// came up on, verified reachable by step 4. Nothing has been persisted, so a
+// watchdog reboot would only restore the config already running — release it.
+func TestSafeDeployPathMismatchOnPriorGenerationDisarms(t *testing.T) {
+	fake := pathMismatchFake(t, fakePriorPath)
+	if len(fake.CallsContaining("systemctl stop deploy-watchdog")) == 0 {
+		t.Error("watchdog should be disarmed when the host is still on its previous generation")
+	}
+}
+
+// A third path is a state we cannot account for (the existing "watchdog
+// mid-reboot?" reading), so the watchdog stays armed.
+func TestSafeDeployPathMismatchUnknownGenerationKeepsWatchdog(t *testing.T) {
+	fake := pathMismatchFake(t, "/nix/store/wrong-path")
+	for _, c := range joinedCalls(fake) {
+		if strings.Contains(c, "systemctl stop deploy-watchdog") {
+			t.Errorf("should not have disarmed on an unrecognised generation: %s", c)
+		}
+	}
+}
+
+// Step 4 said the host is reachable but /run/current-system won't read: also
+// unaccounted for, so the watchdog stays armed.
+func TestSafeDeployUnreadableActivePathKeepsWatchdog(t *testing.T) {
+	fake := pathMismatchFake(t, "")
+	for _, c := range joinedCalls(fake) {
+		if strings.Contains(c, "systemctl stop deploy-watchdog") {
+			t.Errorf("should not have disarmed on an unreadable path: %s", c)
+		}
+	}
+}
+
+// Activation uses exactly the path the pipeline pinned. Nothing re-evaluates
+// between the precheck and here, so there is no second path to prefer.
+func TestSafeDeployActivatesThePlannedPath(t *testing.T) {
+	host := AllHosts[1] // ro
+	host.K8sHealthCheck = false
+
+	fake := &FakeRunner{Responses: buildOKResponses(fakeSystemPath)}
+	if !Deploy(testCtx(fake), host, ModeSafe, Plan{SystemPath: fakeSystemPath}) {
+		t.Fatal("expected success")
+	}
+
+	for _, sub := range []string{"switch-to-configuration test", "switch-to-configuration boot", "nix-env --profile"} {
+		calls := fake.CallsContaining(sub)
+		if len(calls) == 0 {
+			t.Fatalf("expected a %q call", sub)
+		}
+		for _, c := range calls {
+			if !strings.Contains(strings.Join(c, " "), fakeSystemPath) {
+				t.Errorf("expected %q to use the planned path, got %s", sub, CallString(c))
+			}
+		}
+	}
+
+	// No re-evaluation: the derivation was pinned up front.
+	if n := len(fake.CallsContaining("nix", "eval")); n != 0 {
+		t.Errorf("deploySafe must not evaluate anything, got %d eval calls", n)
+	}
+}
+
+func TestSafeDeployArmFailureAbortsEarly(t *testing.T) {
+	host := AllHosts[1]
+	host.K8sHealthCheck = false
+
+	resps := []FakeResponse{
+		{Match: MatchContains("systemd-run"), Result: RunResult{ExitCode: 1, Stderr: "permission denied"}},
+	}
+	resps = append(resps, buildOKResponses(fakeSystemPath)...)
+	fake := &FakeRunner{Responses: resps}
+	ctx := testCtx(fake)
+
+	if Deploy(ctx, host, ModeSafe, Plan{SystemPath: fakeSystemPath}) {
+		t.Fatal("expected failure")
+	}
+	for _, c := range joinedCalls(fake) {
+		// The clear-unit call references "nixos-rebuild-switch-to-configuration.service"
+		// which contains "switch-to-configuration"; filter for the actual activation form.
+		if strings.Contains(c, "/bin/switch-to-configuration") {
+			t.Errorf("should not have attempted activation: %s", c)
+		}
+	}
+	// The arm is not retried, so it may have armed the timer before the
+	// connection died. Nothing was activated, so that timer must not be left
+	// to reboot the host.
+	if len(fake.CallsContaining("systemctl stop deploy-watchdog-1700000000")) == 0 {
+		t.Error("a failed arm should still attempt a disarm")
+	}
+}
+
+func TestSafeDeployPersistFailureStillDisarms(t *testing.T) {
+	host := AllHosts[1]
+	host.K8sHealthCheck = false
+
+	// Persist fails on the nix-env call.
+	resps := []FakeResponse{
+		{Match: MatchContains("nix-env --profile"), Result: RunResult{ExitCode: 1}},
+	}
+	resps = append(resps, buildOKResponses(fakeSystemPath)...)
+	fake := &FakeRunner{Responses: resps}
+	ctx := testCtx(fake)
+
+	if Deploy(ctx, host, ModeSafe, Plan{SystemPath: fakeSystemPath}) {
+		t.Fatal("expected failure")
+	}
+	disarmed := false
+	for _, c := range joinedCalls(fake) {
+		if strings.Contains(c, "systemctl stop deploy-watchdog") {
+			disarmed = true
+		}
+	}
+	if !disarmed {
+		t.Error("watchdog should be disarmed when persist fails (config is active)")
+	}
+}
+
+func TestModeDispatchSwitch(t *testing.T) {
+	host := AllHosts[1]
+	host.K8sHealthCheck = false
+	fake := &FakeRunner{Responses: buildOKResponses(fakeSystemPath)}
+	ctx := testCtx(fake)
+
+	if !Deploy(ctx, host, ModeSwitch, Plan{SystemPath: fakeSystemPath}) {
+		t.Fatal("expected success")
+	}
+	joined := joinedCalls(fake)
+	if !contains(joined, "nixos-rebuild switch") {
+		t.Errorf("expected 'nixos-rebuild switch', got %v", joined)
+	}
+	// No watchdog in unsafe mode.
+	for _, c := range joined {
+		if strings.Contains(c, "systemd-run") || strings.Contains(c, "switch-to-configuration") {
+			t.Errorf("unsafe mode should not arm watchdog or call switch-to-configuration: %s", c)
+		}
+	}
+}
+
+func TestModeDispatchBoot(t *testing.T) {
+	host := AllHosts[1]
+	host.K8sHealthCheck = false
+	// testCtx uses --reboot never, so nothing reboots.
+	fake := &FakeRunner{Responses: buildOKResponses(fakeSystemPath)}
+	ctx := testCtx(fake)
+
+	if !Deploy(ctx, host, ModeBoot, Plan{SystemPath: fakeSystemPath}) {
+		t.Fatal("expected success")
+	}
+	joined := joinedCalls(fake)
+	if !contains(joined, "nixos-rebuild boot") {
+		t.Errorf("expected 'nixos-rebuild boot', got %v", joined)
+	}
+	assertNoDetection(t, joined)
+	if contains(joined, "systemctl reboot") {
+		t.Errorf("--reboot never should not reboot, got %v", joined)
+	}
+}
+
+// Boot mode knows a reboot is owed without detecting anything, so --reboot
+// always reboots with no kernel queries.
+func TestModeDispatchBootRebootAlways(t *testing.T) {
+	host := AllHosts[1]
+	host.K8sHealthCheck = false
+	fake := &FakeRunner{Responses: buildOKResponses(fakeSystemPath)}
+	ctx := testCtx(fake)
+	ctx.RebootFlag = RebootFlagAlways
+
+	if !Deploy(ctx, host, ModeBoot, Plan{SystemPath: fakeSystemPath}) {
+		t.Fatal("expected success")
+	}
+	joined := joinedCalls(fake)
+	if !contains(joined, "systemctl reboot") {
+		t.Errorf("--reboot always should reboot, got %v", joined)
+	}
+	assertNoDetection(t, joined)
+}
+
+// assertNoDetection fails if the kernel/params reboot check was run. Boot mode
+// stages without activating, so /run/current-system can't answer the question
+// and the check is skipped entirely.
+func assertNoDetection(t *testing.T, calls []string) {
+	t.Helper()
+	for _, probe := range []string{"uname -r", "kernel-modules", "kernel-params"} {
+		if contains(calls, probe) {
+			t.Errorf("boot mode should not run detection, but called %q: %v", probe, calls)
+		}
+	}
+}
+
+// assertOrder verifies that the given substring patterns appear in order
+// somewhere in the joined call list.
+func assertOrder(t *testing.T, calls []string, patterns []string) {
+	t.Helper()
+	pi := 0
+	for _, c := range calls {
+		if pi < len(patterns) && strings.Contains(c, patterns[pi]) {
+			pi++
+		}
+	}
+	if pi != len(patterns) {
+		t.Errorf("missing pattern %q at position %d.\nCalls:\n%s",
+			patterns[pi], pi, strings.Join(calls, "\n"))
+	}
+}
+
+// probeFailRunner returns ok for the FIRST echo-ok call (initial SSH check)
+// and fails subsequent ones. Used to simulate activation-timeout + truly-down.
+type probeFailRunner struct {
+	echoCount  *int
+	systemPath string
+	calls      [][]string
+}
+
+func (p *probeFailRunner) Run(_ context.Context, argv []string, _ RunOpts) RunResult {
+	p.calls = append(p.calls, argv)
+	joined := strings.Join(argv, " ")
+	if strings.Contains(joined, "echo ok") {
+		*p.echoCount++
+		if *p.echoCount == 1 {
+			return RunResult{Stdout: "ok\n"}
+		}
+		return RunResult{ExitCode: 255}
+	}
+	if strings.Contains(joined, "switch-to-configuration test") {
+		return RunResult{TimedOut: true}
+	}
+	if strings.Contains(joined, "profiles/system") {
+		// boot default is stale, so the already-deployed skip does not trip
+		return RunResult{Stdout: "/nix/store/STALE-system\n"}
+	}
+	if strings.Contains(joined, "readlink") {
+		return RunResult{Stdout: p.systemPath + "\n"}
+	}
+	return RunResult{}
+}
+
+// Every build runs on this machine, so nothing may offload it.
+func TestBuildsNeverOffload(t *testing.T) {
+	joined := strings.Join(BuildArgv([]string{"/nix/store/a.drv"}, BuildOpts{}), " ")
+	for _, forbidden := range []string{"--build-host", "--builders", "--builders-use-substitutes"} {
+		if strings.Contains(joined, forbidden) {
+			t.Errorf("build argv offloads via %s: %s", forbidden, joined)
+		}
+	}
+
+	// The copy is the only thing that may name a remote store.
+	copyJoined := strings.Join(CopyArgv(AllHosts[1], "/nix/store/a"), " ")
+	for _, forbidden := range []string{"--build-host", "--builders"} {
+		if strings.Contains(copyJoined, forbidden) {
+			t.Errorf("copy argv offloads via %s: %s", forbidden, copyJoined)
+		}
+	}
+}
+
+// deployFake is a FakeRunner that carries an ssh control, so the deploy flow
+// takes its multiplexed paths and emits `ssh -O exit` where it should.
+type deployFake struct {
+	*FakeRunner
+	ctl *SSHControl
+}
+
+func (d deployFake) SSHControl() *SSHControl { return d.ctl }
+
+func newDeployFake(resps []FakeResponse) deployFake {
+	return deployFake{
+		FakeRunner: &FakeRunner{Responses: resps},
+		ctl:        &SSHControl{Dir: "/tmp/deploy-ssh-test"},
+	}
+}
+
+func masterDrops(f *FakeRunner) int {
+	n := 0
+	for _, c := range f.Calls {
+		for _, a := range c {
+			if a == "-O" {
+				n++
+				break
+			}
+		}
+	}
+	return n
+}
+
+// Activation restarts networkd, so the master must be discarded even when
+// switch-to-configuration exits 0 — a master pointing at a dropped session
+// looks alive and would stall the connectivity check that gates the watchdog.
+func TestActivateDropsMasterOnSuccess(t *testing.T) {
+	fake := newDeployFake(buildOKResponses(fakeSystemPath))
+	timedOut := false
+	if !activate(testCtx(fake), AllHosts[1], fakeSystemPath, "test", &timedOut) {
+		t.Fatal("expected activation to succeed")
+	}
+	if got := masterDrops(fake.FakeRunner); got != 1 {
+		t.Errorf("expected the master to be dropped once, got %d", got)
+	}
+}
+
+// The reboot wait must not question a socket about a host that is going down:
+// the master is dropped, and each poll dials its own connection.
+func TestRebootDropsMasterAndPollsDirectly(t *testing.T) {
+	fake := newDeployFake(buildOKResponses(fakeSystemPath))
+	if !rebootAndWait(testCtx(fake), AllHosts[1]) {
+		t.Fatal("expected the host to come back")
+	}
+	if got := masterDrops(fake.FakeRunner); got != 1 {
+		t.Errorf("expected the master to be dropped once, got %d", got)
+	}
+	probes := 0
+	for _, c := range joinedCalls(fake.FakeRunner) {
+		if strings.Contains(c, "echo ok") {
+			probes++
+			if !strings.Contains(c, "ControlPath=none") {
+				t.Errorf("reboot probe must bypass the master: %s", c)
+			}
+		}
+	}
+	if probes == 0 {
+		t.Error("expected at least one reachability probe")
+	}
+}
+
+// The closure copy shares our master rather than opening its own. nix spawns
+// its own ssh, so the control options have to reach it through NIX_SSHOPTS.
+func TestCopyPassesControlToNix(t *testing.T) {
+	fake := newDeployFake([]FakeResponse{
+		{Match: func([]string) bool { return true }, Result: RunResult{}},
+	})
+	if !CopyClosure(fake, AllHosts[1], fakeSystemPath) {
+		t.Fatal("expected copy to succeed")
+	}
+	env := copyEnv(fake)
+	if len(env) != 1 || !strings.Contains(env[0], "ControlPath=/tmp/deploy-ssh-test/%C") {
+		t.Errorf("nix copy must inherit our control path, got %v", env)
+	}
+	// nix supplies none of these itself; without them a copy to a host that has
+	// gone away blocks until the OS TCP timeout.
+	for _, want := range []string{"BatchMode=yes", "ConnectTimeout="} {
+		if !strings.Contains(env[0], want) {
+			t.Errorf("copy env missing %q: %v", want, env)
+		}
+	}
+}

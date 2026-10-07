@@ -1,0 +1,85 @@
+* {
+    font-family: "DejaVu Sans Mono", "Font Awesome 6 Free", monospace;
+    font-size: 13px;
+    border: none;
+    border-radius: 0;
+}
+
+window#waybar {
+    background-color: rgba(24, 24, 28, 0.92);
+    color: #e0e0e0;
+}
+
+#workspaces button {
+    padding: 0 8px;
+    color: #909090;
+    background: transparent;
+}
+
+#workspaces button.active {
+    color: #1a1a1a;
+    background-color: #7fc8ff;
+    border-radius: 4px;
+}
+
+#workspaces button.urgent {
+    background-color: #ff6b6b;
+    color: #1a1a1a;
+}
+
+#window {
+    color: #c0c0c0;
+    padding: 0 8px;
+}
+
+#clock,
+#cpu,
+#memory,
+#network,
+#custom-kanata,
+#pulseaudio,
+#battery,
+#tray {
+    padding: 0 10px;
+    color: #e0e0e0;
+}
+
+#clock {
+    color: #7fc8ff;
+    font-weight: bold;
+}
+
+#network.disconnected {
+    color: #ff6b6b;
+}
+
+#pulseaudio.muted {
+    color: #909090;
+}
+
+#battery.warning {
+    color: #ffd166;
+}
+
+#battery.critical {
+    color: #ff6b6b;
+}
+
+#battery.charging {
+    color: #7fc8ff;
+}
+
+/* DejaVu's ⌨ glyph is tiny (12x7 px at 20px); Noto Sans Symbols 2 draws it
+   roughly 19x15. */
+#custom-kanata {
+    font-family: "Noto Sans Symbols 2", "DejaVu Sans Mono", monospace;
+    font-size: 20px;
+}
+
+#custom-kanata.restarting {
+    color: #ffd166;
+}
+
+#custom-kanata.failed {
+    color: #ff6b6b;
+}

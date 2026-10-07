@@ -1,0 +1,218 @@
+package main
+
+import (
+	"fmt"
+	"sort"
+	"strings"
+)
+
+// ConnCheck names the per-host connectivity probes to run after activation.
+type ConnCheck string
+
+const (
+	CheckSSH          ConnCheck = "ssh"
+	CheckPingGateway  ConnCheck = "ping_gateway"
+	CheckPing6Gateway ConnCheck = "ping6_gateway"
+	CheckPingInternet ConnCheck = "ping_internet"
+	CheckDNS          ConnCheck = "dns"
+	CheckIPv6Tunnel   ConnCheck = "ipv6_tunnel"
+	CheckIPv6Internet ConnCheck = "ipv6_internet"
+)
+
+type Host struct {
+	Name           string
+	FlakeName      string
+	Domain         string
+	SSHAddress     string // overrides FQDN if set (used by dragonsreach)
+	Order          int
+	K8sHealthCheck bool
+	// CephHealthCheck gates the deploy on the Ceph cluster: see ceph.go.
+	CephHealthCheck bool
+	Groups          []string
+	// Default hosts are deployed when --hosts is not given. The rest are still
+	// built on such a run, and deployed only when named in --hosts.
+	Default    bool
+	ConnChecks []ConnCheck
+}
+
+func (h Host) FQDN() string {
+	if h.SSHAddress != "" {
+		return h.SSHAddress
+	}
+	if h.Domain == "" {
+		return h.Name
+	}
+	return h.Name + "." + h.Domain
+}
+
+func (h Host) InGroup(g string) bool {
+	for _, hg := range h.Groups {
+		if hg == g {
+			return true
+		}
+	}
+	return false
+}
+
+// AllHosts is the source of truth for managed hosts. Keep entries sorted by
+// Order so the deploy plan is read top-to-bottom.
+var AllHosts = []Host{
+	{
+		Name: "fus", FlakeName: "fus",
+		Order: 10, K8sHealthCheck: true,
+		Groups: []string{"k3s", "infra"}, Default: true,
+		ConnChecks: []ConnCheck{CheckSSH, CheckPing6Gateway},
+	},
+	{
+		Name: "ro", FlakeName: "ro",
+		Order: 11, K8sHealthCheck: true,
+		Groups: []string{"k3s", "infra"}, Default: true,
+		ConnChecks: []ConnCheck{CheckSSH, CheckPing6Gateway},
+	},
+	{
+		Name: "dah", FlakeName: "dah",
+		Order: 12, K8sHealthCheck: true,
+		Groups: []string{"k3s", "infra"}, Default: true,
+		ConnChecks: []ConnCheck{CheckSSH, CheckPing6Gateway},
+	},
+	{
+		Name: "joor", FlakeName: "joor",
+		Order: 13, K8sHealthCheck: true, CephHealthCheck: true,
+		Groups: []string{"k3s", "infra"}, Default: true,
+		ConnChecks: []ConnCheck{CheckSSH, CheckPing6Gateway},
+	},
+	{
+		Name: "zah", FlakeName: "zah",
+		Order: 14, K8sHealthCheck: true, CephHealthCheck: true,
+		Groups: []string{"k3s", "infra"}, Default: true,
+		ConnChecks: []ConnCheck{CheckSSH, CheckPing6Gateway},
+	},
+	{
+		Name: "frul", FlakeName: "frul",
+		Order: 15, K8sHealthCheck: true, CephHealthCheck: true,
+		Groups: []string{"k3s", "infra"}, Default: true,
+		ConnChecks: []ConnCheck{CheckSSH, CheckPing6Gateway},
+	},
+	{
+		Name: "wabbajack", FlakeName: "wabbajack",
+		Order: 20, Groups: []string{"infra"}, Default: true,
+		ConnChecks: []ConnCheck{CheckSSH, CheckPingGateway, CheckPing6Gateway},
+	},
+	{
+		Name: "talos", FlakeName: "talos",
+		Order: 21, Groups: []string{"workstation"}, Default: true,
+		ConnChecks: []ConnCheck{CheckSSH, CheckPingGateway},
+	},
+	{
+		Name: "lydia", FlakeName: "lydia",
+		Order: 30, Groups: []string{"infra"}, Default: true,
+		ConnChecks: []ConnCheck{CheckSSH, CheckPingGateway},
+	},
+	{
+		Name: "dovahkiin", FlakeName: "dovahkiin",
+		Order: 40, Groups: []string{"workstation"}, Default: false,
+		ConnChecks: []ConnCheck{CheckSSH},
+	},
+	{
+		// Unplugged: built on every run, deployed only when named.
+		Name: "guevenne", FlakeName: "guevenne",
+		Order: 41, Groups: []string{"media"}, Default: false,
+		ConnChecks: []ConnCheck{CheckSSH},
+	},
+	{
+		Name: "skyforge", FlakeName: "skyforge",
+		Order: 50, Groups: []string{"printer"}, Default: true,
+		ConnChecks: []ConnCheck{CheckSSH},
+	},
+	{
+		// aarch64; the closure comes from the binary cache, so this is cheap.
+		// Unplugged: built on every run, deployed only when named.
+		Name: "nelkir", FlakeName: "nelkir",
+		Order: 51, Groups: []string{"media"}, Default: false,
+		ConnChecks: []ConnCheck{CheckSSH},
+	},
+	{
+		Name: "dragonsreach", FlakeName: "dragonsreach",
+		SSHAddress: "10.28.0.1",
+		Order:      99,
+		Groups:     []string{"infra", "router"},
+		Default:    true,
+		ConnChecks: []ConnCheck{
+			CheckSSH, CheckPingInternet, CheckDNS, CheckIPv6Tunnel, CheckIPv6Internet,
+		},
+	},
+}
+
+// HostNames returns the names of hosts matching pred, sorted by Order.
+func HostNames(all []Host, pred func(Host) bool) []string {
+	sorted := append([]Host(nil), all...)
+	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Order < sorted[j].Order })
+	var names []string
+	for _, h := range sorted {
+		if pred(h) {
+			names = append(names, h.Name)
+		}
+	}
+	return names
+}
+
+// BuildOnlyHosts returns the hosts a run builds without deploying: with no
+// --hosts, the non-Default ones, so that a plain run builds every
+// configuration. Named hosts are selected exactly, so then it returns nil.
+func BuildOnlyHosts(all []Host, names []string) []Host {
+	if len(names) > 0 {
+		return nil
+	}
+	var out []Host
+	for _, h := range all {
+		if !h.Default {
+			out = append(out, h)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Order < out[j].Order })
+	return out
+}
+
+// SelectHosts filters AllHosts by the --hosts flag. Empty selector returns all
+// Default hosts. Named hosts are returned even if !Default. Unknown names are
+// an error. Output is sorted by Order; duplicates in the input are deduped.
+func SelectHosts(all []Host, names []string) ([]Host, error) {
+	var out []Host
+	if len(names) == 0 {
+		for _, h := range all {
+			if h.Default {
+				out = append(out, h)
+			}
+		}
+	} else {
+		seen := map[string]bool{}
+		byName := map[string]Host{}
+		for _, h := range all {
+			byName[h.Name] = h
+		}
+		var unknown []string
+		for _, n := range names {
+			n = strings.TrimSpace(n)
+			if n == "" || seen[n] {
+				continue
+			}
+			seen[n] = true
+			h, ok := byName[n]
+			if !ok {
+				unknown = append(unknown, n)
+				continue
+			}
+			out = append(out, h)
+		}
+		if len(unknown) > 0 {
+			known := make([]string, 0, len(all))
+			for _, h := range all {
+				known = append(known, h.Name)
+			}
+			return nil, fmt.Errorf("unknown host(s): %s (known: %s)",
+				strings.Join(unknown, ", "), strings.Join(known, ", "))
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Order < out[j].Order })
+	return out, nil
+}
