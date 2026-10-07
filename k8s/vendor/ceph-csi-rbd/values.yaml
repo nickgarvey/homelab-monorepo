@@ -1,0 +1,38 @@
+# Values for the ceph-csi-rbd chart, rendered into ceph-csi-rbd.yaml with:
+#
+#   helm repo add ceph-csi https://ceph.github.io/csi-charts
+#   helm template ceph-csi-rbd ceph-csi/ceph-csi-rbd --version 3.17.1 \
+#     --namespace ceph-csi-rbd -f vendor/ceph-csi-rbd/values.yaml \
+#     > vendor/ceph-csi-rbd/ceph-csi-rbd.yaml
+#
+# then prepend the Namespace object (helm template does not emit one).
+#
+# The Ceph cluster is external: joor/zah/frul, run by NixOS
+# (modules/services/ceph.nix). The StorageClass and the client Secret live in
+# manifests/ceph-csi-rbd/, not here.
+csiConfig:
+  - clusterID: "8d324da3-f3ab-40f8-aaa1-71ed33705f75"
+    monitors:
+      - "[2001:470:482f::24]:6789"
+      - "[2001:470:482f::25]:6789"
+      - "[2001:470:482f::26]:6789"
+
+provisioner:
+  replicaCount: 2
+
+# NixOS has no SELinux.
+selinuxMount: false
+
+storageClass:
+  create: false
+secret:
+  create: false
+
+# The cluster is IPv6-only; librbd in the provisioner must bind IPv6.
+cephconf: |
+  [global]
+    auth_cluster_required = cephx
+    auth_service_required = cephx
+    auth_client_required = cephx
+    ms_bind_ipv6 = true
+    ms_bind_ipv4 = false

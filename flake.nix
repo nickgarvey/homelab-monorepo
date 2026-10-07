@@ -56,13 +56,13 @@
     # the legacy Cartographer3D/cartographer-klipper loose-script repo,
     # this is the pip-distributed proper python package that the official
     # docs target). Consumed via overlay on services.klipper.package in
-    # nix-configs/hosts/skyforge/configuration.nix.
+    # hosts/skyforge/configuration.nix.
     cartographer3d-plugin = {
       url = "github:Cartographer3D/cartographer3d-plugin";
       flake = false;
     };
 
-    # ESP-IDF for homelab-esp32-devices. Its packages are built against the
+    # ESP-IDF for firmware/. Its packages are built against the
     # nixpkgs in its own lock, which pins the firmware toolchain.
     nixpkgs-esp-dev.url = "github:mirrexagon/nixpkgs-esp-dev";
   };
@@ -82,8 +82,9 @@
         ) sets;
     in
     disjointMerge 3 [ ] [
-      (import ./nix-configs/outputs.nix inputs)
-      (import ./homelab-nixpkgs/outputs.nix inputs)
-      (import ./homelab-esp32-devices/outputs.nix inputs)
+      (import ./hosts/outputs.nix inputs)
+      (import ./devshells/outputs.nix inputs)
+      (import ./packages/outputs.nix inputs)
+      (import ./firmware/outputs.nix inputs)
     ];
 }

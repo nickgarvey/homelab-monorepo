@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: anki-sync-server
+  namespace: anki
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+  annotations:
+    # A free address from the pool. Matched by the anki AAAA record in
+    # modules/networking/dns.nix -- no garveyShOverrides entry is
+    # needed, since home.garvey.sh is our own zone rather than Cloudflare's.
+    io.cilium/lb-ipam-ips: "2001:470:482f:2::5003"
+spec:
+  type: LoadBalancer
+  ipFamilies: [IPv6]
+  ipFamilyPolicy: SingleStack
+  selector:
+    app: anki-sync-server
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 80
+    - name: https
+      protocol: TCP
+      port: 443
+      targetPort: 443

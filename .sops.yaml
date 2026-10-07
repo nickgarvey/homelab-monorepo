@@ -5,7 +5,6 @@ keys:
   - &dovahkiin age1m9l2ncrkg5zelkegwpa2ux2kw5cljay2m9sxuzf2eyz8qqje45vsmfn76k
   - &dragonsreach age1c3fwgyf6tm44gzhyvfjk5eyysef0shufd50kdg4t0w2rd9jylcusakgxpy
   - &lydia age1cz96x8w6653wruqxrwquczv3ulwe5gfnvyy6p3tzvs8mehc7gyas7hty0k
-  - &skyforge age1z95v2ahfghn34yg2yl8k3crtqtraqg6mnvvzq2audzr96savcqxs5p7yfe
   # fus/ro/dah/joor/zah/frul: derived with ssh-to-age from each host's
   # /etc/ssh/ssh_host_ed25519_key.pub. sops-nix reads that key by default
   # (sops.age.sshKeyPaths), so nothing is placed on the machine by hand.
@@ -17,12 +16,12 @@ keys:
   - &frul age1a230t20a7jl2ce5w9axz8caajgk2s4w6ry2cvy52l2vupf685ujsrhfsdl
   - &k8s-operator age1zd28lg5yxxc06jnyym92fep4gdwwnk3k3my9l247pvskjdj8mv4sa89d08
 creation_rules:
-  - path_regex: nix-configs/secrets/frigate.yaml
+  - path_regex: secrets/frigate.yaml
     key_groups:
     - age:
       - *ngarvey
       - *lydia
-  - path_regex: nix-configs/secrets/garage.yaml
+  - path_regex: secrets/garage.yaml
     key_groups:
     - age:
       - *ngarvey
@@ -35,7 +34,7 @@ creation_rules:
   #   - lydia + wabbajack run lego. Every garage node holds this key; the Knot
   #     ACL is scoped to the one owner name they all write, not to a host, so
   #     adding a node is just another recipient here.
-  - path_regex: nix-configs/secrets/garage-acme.yaml
+  - path_regex: secrets/garage-acme.yaml
     key_groups:
     - age:
       - *ngarvey
@@ -45,7 +44,7 @@ creation_rules:
   # rgw-acme: TSIG secret for the acme-rgw key (ACME DNS-01 for
   # rgw.home.garvey.sh). dragonsreach holds it for Knot; each Ceph node runs
   # lego for its own copy of the certificate (modules/services/ceph.nix).
-  - path_regex: nix-configs/secrets/rgw-acme.yaml
+  - path_regex: secrets/rgw-acme.yaml
     key_groups:
     - age:
       - *ngarvey
@@ -55,24 +54,23 @@ creation_rules:
       - *frul
   # llm-models: dedicated garage S3 key for the LLM model store.
   #   - dovahkiin + wabbajack present their own host keys; dovahkiin runs the
-  #     hf-to-garage upload tool, wabbajack retains access from when it did.
+  #     hf-to-garage upload tool. wabbajack has no consumer of this secret.
   #   - `workstation` is the identity talos presents (same one that decrypts
-  #     garage.yaml); it stays so a host running the vLLM module
-  #     (modules/llms/vllm.nix) can read the key.
+  #     garage.yaml).
   # ngarvey is included so the secret can be edited.
-  - path_regex: nix-configs/secrets/llm-models.yaml
+  - path_regex: secrets/llm-models.yaml
     key_groups:
     - age:
       - *ngarvey
       - *workstation
       - *dovahkiin
       - *wabbajack
-  - path_regex: nix-configs/secrets/dragonsreach.yaml
+  - path_regex: secrets/dragonsreach.yaml
     key_groups:
     - age:
       - *ngarvey
       - *dragonsreach
-  - path_regex: nix-configs/secrets/k3s.yaml
+  - path_regex: secrets/k3s.yaml
     key_groups:
     - age:
       - *ngarvey
@@ -86,7 +84,7 @@ creation_rules:
   # can decrypt it; no host needs it, since each storage node keeps its own
   # /etc/ceph/ceph.client.admin.keyring. With any one mon still up, this key is
   # enough to administer the cluster and re-issue every other key.
-  - path_regex: nix-configs/secrets/ceph-admin.yaml
+  - path_regex: secrets/ceph-admin.yaml
     key_groups:
     - age:
       - *ngarvey
@@ -94,14 +92,14 @@ creation_rules:
   # repository password. joor runs the backups (modules/services/ceph-backup.nix);
   # ngarvey is here so the backups can be restored from any machine if joor is
   # gone: without the password the repository is unreadable.
-  - path_regex: nix-configs/secrets/ceph-backup.yaml
+  - path_regex: secrets/ceph-backup.yaml
     key_groups:
     - age:
       - *ngarvey
       - *joor
   # llm-api-keys: the hosted-LLM API keys pi uses. `workstation` is the identity
   # both workstations present, so one recipient covers talos and dovahkiin.
-  - path_regex: nix-configs/secrets/llm-api-keys.yaml
+  - path_regex: secrets/llm-api-keys.yaml
     key_groups:
     - age:
       - *ngarvey
@@ -109,13 +107,13 @@ creation_rules:
   # zot-push: the `auth` value (base64 of user:password) for pushing to the
   # oci.garvey.sh registry. `workstation` lets talos and dovahkiin install it as
   # ~/.config/containers/auth.json (modules/desktop/zot-push.nix). zot itself
-  # holds only the bcrypt hash (k8s-gitops manifests/zot/secret.yaml).
-  - path_regex: nix-configs/secrets/zot-push.yaml
+  # holds only the bcrypt hash (k8s/manifests/zot/secret.yaml).
+  - path_regex: secrets/zot-push.yaml
     key_groups:
     - age:
       - *ngarvey
       - *workstation
-  - path_regex: nix-configs/secrets/smb-credentials.yaml
+  - path_regex: secrets/smb-credentials.yaml
     key_groups:
     - age:
       - *ngarvey
@@ -123,12 +121,12 @@ creation_rules:
       - *wabbajack
       - *dovahkiin
       - *lydia
-  - path_regex: nix-configs/secrets/storj-gateway.yaml
+  - path_regex: secrets/storj-gateway.yaml
     key_groups:
     - age:
       - *ngarvey
       - *dragonsreach
-  - path_regex: k8s-gitops/manifests/.*/secret\.yaml$
+  - path_regex: k8s/manifests/.*/secret\.yaml$
     # Only encrypt values under stringData and data keys
     encrypted_regex: "^(data|stringData)$"
     key_groups:
@@ -137,7 +135,7 @@ creation_rules:
       - *k8s-operator
   # ESP32 firmware secrets (wifi, thread, ha). `workstation` and dovahkiin are
   # the machines that build and flash the devices.
-  - path_regex: homelab-esp32-devices/secrets/.*\.sops\.yaml$
+  - path_regex: firmware/secrets/.*\.sops\.yaml$
     key_groups:
     - age:
       - *workstation

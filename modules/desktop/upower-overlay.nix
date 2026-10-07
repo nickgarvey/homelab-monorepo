@@ -1,0 +1,16 @@
+# Patches upower to ignore spurious single-cycle zero battery readings (see patches/UPSTREAMABLE_FIXES.md).
+
+{ ... }:
+
+{
+  nixpkgs.overlays = [
+    (self: super: {
+      upower = super.upower.overrideAttrs (old: {
+        patches = (old.patches or []) ++ [
+          ../../patches/upower-filter-spurious-zero.patch
+        ];
+        doCheck = false;
+      });
+    })
+  ];
+}

@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: couchdb-https
+  namespace: couchdb
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+  annotations:
+    # A free address from the pool, matched by the obsidian-livesync AAAA record in
+    # modules/networking/dns.nix. Only the Caddy sidecar's ports
+    # are exposed here; the app's own plaintext port stays cluster-internal.
+    io.cilium/lb-ipam-ips: "2001:470:482f:2::5004"
+spec:
+  type: LoadBalancer
+  ipFamilies: [IPv6]
+  ipFamilyPolicy: SingleStack
+  selector:
+    app: couchdb
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 80
+    - name: https
+      protocol: TCP
+      port: 443
+      targetPort: 443

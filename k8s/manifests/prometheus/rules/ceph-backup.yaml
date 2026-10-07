@@ -1,0 +1,53 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: ceph-backup-alerts
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+    prometheus: prometheus
+spec:
+  groups:
+    - name: ceph.backup
+      rules:
+        # Fed by ceph-backup.service on joor
+        # (modules/services/ceph-backup.nix), which backs up every ceph-rbd
+        # volume daily at ~10:00 UTC to Garage; vector pushes the results.
+        # Recovery: docs/ceph-backup.md.
+        - alert: CephBackupFailed
+          expr: homelab_ceph_backup_last_run_success == 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "The last Ceph volume backup run failed"
+            description: "At least one volume failed. On joor: `journalctl -u ceph-backup`; rerun with `sudo systemctl start ceph-backup`."
+
+        # A day plus slack for the timer's random delay and a slow run.
+        - alert: CephBackupStale
+          expr: time() - homelab_ceph_backup_last_success_timestamp_seconds > 26 * 3600
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.namespace }}/{{ $labels.pvc }} has not been backed up for over a day"
+            description: "Its last successful backup is {{ $value | humanizeDuration }} old. Check `journalctl -u ceph-backup` on joor."
+
+        - alert: CephBackupNotRunning
+          expr: time() - homelab_ceph_backup_last_run_timestamp_seconds > 26 * 3600
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "The Ceph volume backup job has not run for over a day"
+            description: "Check `systemctl list-timers ceph-backup` on joor."
+
+        # Pushed, not scraped: silence looks like health unless alerted on.
+        - alert: CephBackupMetricsMissing
+          expr: absent(homelab_ceph_backup_last_run_timestamp_seconds)
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: "No Ceph backup metrics for an hour"
+            description: "joor or its vector agent is down, or the backup job has never run. Until this recovers the other backup alerts cannot fire."

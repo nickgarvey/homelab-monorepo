@@ -1,0 +1,1 @@
+../joor/hardware-configuration.nix

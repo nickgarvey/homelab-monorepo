@@ -1,3 +1,11 @@
 result
+result-*
 .claude/
 .ait
+.extra-files
+.direnv/
+__pycache__/
+*.pyc
+.vscode/
+.cursor/
+.prompts/

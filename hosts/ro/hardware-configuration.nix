@@ -1,0 +1,1 @@
+../fus/hardware-configuration.nix

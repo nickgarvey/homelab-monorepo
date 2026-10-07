@@ -1,0 +1,121 @@
+# Shared k3s node config for servers and agents: node IPs from lan-hosts.nix, join address, and the Cilium-ready flags.
+
+{ config, lib, pkgs, inputs, sops-nix, ... }:
+let
+  cfg = config.k3sConfig;
+  isServer = config.services.k3s.role == "server";
+  isAgent = config.services.k3s.role == "agent";
+  isFirstNode = cfg.isFirstNode;
+
+  # Derive node IPv6 from lan-hosts.nix
+  inherit (import ../networking/lan-hosts.nix) lanHosts;
+  hostname = config.networking.hostName;
+  hostEntry = lib.findFirst (h: h.hostname == hostname) null lanHosts;
+  nodeIpFlags = lib.optionals (hostEntry != null && hostEntry.ipv6 != null) [
+    "--node-ip=${hostEntry.ipv6}"
+  ];
+in
+{
+  imports = [ ../core/server-base.nix ];
+
+  options.k3sConfig = {
+    isFirstNode = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Whether this is the first/initial node that bootstraps the cluster";
+    };
+  };
+
+  config = {
+    environment.systemPackages = with pkgs; [
+      pciutils
+      atop
+      nfs-utils  # Required by Longhorn for NFS backup targets
+    ];
+
+    sops.defaultSopsFile = ../../secrets/k3s.yaml;
+    sops.secrets.cluster_token = { };
+
+    # KUBECONFIG only exists on server nodes
+    environment.variables = lib.mkIf isServer {
+      KUBECONFIG = "/etc/rancher/k3s/k3s.yaml";
+    };
+
+    # Configure Zot registry for k3s
+    environment.etc."rancher/k3s/registries.yaml".text = ''
+      mirrors:
+        "zot.zot.k8s.home.garvey.sh":
+          endpoint:
+            - "https://oci.garvey.sh"
+    '';
+
+    systemd.services.k3s.restartTriggers = [
+      config.environment.etc."rancher/k3s/registries.yaml".source
+    ];
+
+    services.k3s = {
+      enable = true;
+      tokenFile = "/run/secrets/cluster_token";
+      role = lib.mkDefault "server";
+      clusterInit = lib.mkIf isFirstNode true;
+      serverAddr = lib.mkIf (!isFirstNode) "https://k3s-api.home.arpa:6443";
+      extraFlags = lib.optionals isServer [
+        "--write-kubeconfig-mode=600"
+        "--disable=servicelb"
+        "--disable=traefik"
+        # local-path's StorageClass would be (re-)marked default on every k3s
+        # start; ceph-rbd is the default (k8s/), and nothing uses it.
+        "--disable=local-storage"
+        # fus/ro/dah run only the control plane, cluster services and monitoring
+        # (pinned there in k8s/); apps go to the storage nodes. k3s
+        # applies this only when a node registers; taint an already-registered
+        # server with kubectl.
+        "--node-taint=node-role.kubernetes.io/control-plane=true:NoSchedule"
+        "--flannel-backend=none"
+        "--disable-network-policy"
+        "--disable-kube-proxy"
+        "--cluster-cidr=2001:470:482f:100::/56"
+        "--service-cidr=fd43::/112"
+        "--tls-san=k3s-api.home.arpa"
+      ] ++ lib.optionals (isServer && hostEntry != null && hostEntry.ipv6 != null) [
+        "--etcd-arg=--advertise-peer-urls=https://[${hostEntry.ipv6}]:2380"
+      ] ++ nodeIpFlags;
+    };
+
+    homelab.network.ipv6Only = true;
+    homelab.network.ipv4Forward = false;
+    homelab.network.ipv6Forward = true;
+
+    # Disable IPv6 RA/SLAAC — etcd peers must use the static address only
+    systemd.network.networks."25-static".ipv6AcceptRAConfig.UseAutonomousPrefix = false;
+    systemd.network.networks."25-static".networkConfig.IPv6AcceptRA = false;
+
+    # Disable systemd-resolved stub listener so /etc/resolv.conf contains the
+    # real DNS server IP (2001:470:482f::1) instead of 127.0.0.53.
+    # k3s rejects loopback in resolv.conf and falls back to Google DNS,
+    # which can't resolve .home.arpa domains.
+    services.resolved.settings.Resolve.DNSStubListener = "no";
+
+    # Cilium BPF host routing bypasses conntrack, so the NixOS iptables
+    # firewall drops pod return traffic as unsolicited.  Disable iptables
+    # and rely on Cilium Host Firewall (eBPF) instead.
+    networking.firewall.enable = false;
+
+    # ceph-csi maps RBD volumes with the kernel client. Its node plugin would
+    # modprobe rbd itself, but it looks in /lib/modules, which NixOS does not
+    # have, so load it at boot instead.
+    boot.kernelModules = [ "rbd" ];
+
+    # Longhorn settings
+    services.openiscsi = {
+      enable = true;
+      name = "${config.networking.hostName}-initiatorhost";
+    };
+    systemd.services.iscsid.serviceConfig = {
+      PrivateMounts = "yes";
+      BindPaths = "/run/current-system/sw/bin:/bin";
+    };
+
+    system.stateVersion = "25.11";
+  };
+}

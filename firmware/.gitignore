@@ -1,0 +1,8 @@
+# ESP-IDF build artifacts
+build/
+sdkconfig
+managed_components/
+
+# Secrets — ignore contents of any secrets/ dir, but allow SOPS-encrypted files
+**/secrets/*
+!**/secrets/*.sops.*
