@@ -66,7 +66,7 @@ value: "true"
 # monitoring volumes and are independent of Ceph on joor/zah/frul. This pins
 # its system-managed components (instance managers, engine images, CSI);
 # the manager, driver deployer and UI get the same nodeSelector in
-# vendor/longhorn/longhorn.yaml. Changing it requires every volume detached.
+# vendor/longhorn/values.yaml. Changing it requires every volume detached.
 apiVersion: longhorn.io/v1beta2
 kind: Setting
 metadata:

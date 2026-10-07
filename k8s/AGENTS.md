@@ -30,9 +30,19 @@ When unsure whether something holds unrecoverable data, ask.
 
 ---
 
+# Vendored components
+
+`vendor/` holds upstream components; charts are rendered there by
+`scripts/render-chart.sh` from a checked-in `values.yaml`, and static files are
+downloaded by `scripts/fetch-vendor.sh`. Never hand-edit either; local changes go
+in `values.yaml` or a kustomization. `vendor/README.md` lists each component,
+its source and version, and its apply command.
+
+---
+
 # Network Configuration
 
-The cluster is **IPv6-only** (`enable-ipv4: "false"` in `vendor/cilium/cilium.yaml`).
+The cluster is **IPv6-only** (`ipv4.enabled: false` in `vendor/cilium/values.yaml`).
 Pods, Services and LoadBalancers have IPv6 addresses only; IPv4 exists on the LAN and for
 the nodes' host addresses, not inside the cluster.
 

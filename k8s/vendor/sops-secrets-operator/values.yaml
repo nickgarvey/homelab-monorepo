@@ -1,0 +1,24 @@
+# Values for the sops-secrets-operator chart (version in chart.env), rendered
+# by scripts/render-chart.sh; see vendor/README.md.
+#
+# The age key it decrypts with is manifests/sops-secrets-operator/age-key-secret.yaml.
+
+image:
+  # The tag is pinned, so there is nothing to gain from pulling on every start.
+  pullPolicy: IfNotPresent
+
+secretsAsFiles:
+  - name: sops-age-key
+    mountPath: /etc/sops-age-key
+    secretName: sops-age-key
+extraEnv:
+  - name: SOPS_AGE_KEY_FILE
+    value: /etc/sops-age-key/keys.txt
+
+# The cluster services run on fus/ro/dah.
+nodeSelector:
+  node-role.kubernetes.io/control-plane: "true"
+tolerations:
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule

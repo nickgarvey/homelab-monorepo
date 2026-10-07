@@ -74796,10 +74796,6 @@ spec:
         app.kubernetes.io/name: prometheus-operator
         app.kubernetes.io/version: 0.90.1
     spec:
-      tolerations:
-        - key: node-role.kubernetes.io/control-plane
-          operator: Exists
-          effect: NoSchedule
       automountServiceAccountToken: true
       containers:
       - args:
@@ -74831,7 +74827,6 @@ spec:
             - ALL
           readOnlyRootFilesystem: true
       nodeSelector:
-        node-role.kubernetes.io/control-plane: "true"
         kubernetes.io/os: linux
       securityContext:
         runAsNonRoot: true

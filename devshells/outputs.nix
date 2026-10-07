@@ -12,6 +12,7 @@ in
         go
         self.packages.x86_64-linux.deploy
         kubectl
+        kubernetes-helm
         skopeo
         jq
       ];

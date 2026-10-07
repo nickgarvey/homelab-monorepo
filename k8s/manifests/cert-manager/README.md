@@ -1,22 +1,15 @@
 # cert-manager
 
-cert-manager is **vendored pristine** at `vendor/cert-manager/cert-manager.yaml` (upstream
-v1.20.1) and applied with one small **patch on top** — `vendor/` is never edited.
+cert-manager is rendered from its Helm chart into `vendor/cert-manager/cert-manager.yaml`;
+`vendor/cert-manager/values.yaml` holds the two DNS-01 self-check flags and why the
+IPv6-only cluster needs them. See `vendor/README.md` for rendering and upgrades.
 
 ## Install / upgrade order
 
 ```sh
-# 1. Base (pristine upstream)
 kubectl apply -f vendor/cert-manager/cert-manager.yaml
-
-# 2. Controller patch: DNS-01 self-check via cluster CoreDNS (see patch file header)
-kubectl patch deploy cert-manager -n cert-manager --type=strategic \
-  --patch-file manifests/cert-manager/cert-manager-controller-recursive-ns.patch.yaml
+kubectl apply -f manifests/cert-manager/
 ```
-
-The patch's `args` list mirrors upstream's 5 controller args plus 2 added flags; because `args`
-has no strategic-merge key it is replaced wholesale, so re-check the first 5 entries when bumping
-the vendored version.
 
 ## Issuers & secrets (this dir)
 

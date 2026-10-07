@@ -246,7 +246,7 @@ without migrating every consumer to another name first:
 
 - `modules/k3s/k3s-common.nix`: `serverAddr` for joining nodes, and `--tls-san` on the
   API server cert
-- `k8s/vendor/cilium/cilium.yaml`: `KUBERNETES_SERVICE_HOST` for the Cilium agents and
+- `k8s/vendor/cilium/values.yaml`: `k8sServiceHost` for the Cilium agents and
   operator
 - `modules/router/blocky-dns.nix`: keeps the record resolving (from `k3s-api` in
   `modules/networking/dns.nix`)

@@ -1,0 +1,45 @@
+# Values for the cert-manager chart (version in chart.env), rendered by
+# scripts/render-chart.sh; see vendor/README.md.
+#
+# The ClusterIssuers and ServiceMonitor live in manifests/cert-manager/.
+
+crds:
+  enabled: true
+
+# The cluster services run on fus/ro/dah.
+nodeSelector: &controlPlaneSelector
+  kubernetes.io/os: linux
+  node-role.kubernetes.io/control-plane: "true"
+tolerations: &controlPlaneTolerations
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule
+webhook:
+  nodeSelector: *controlPlaneSelector
+  tolerations: *controlPlaneTolerations
+cainjector:
+  nodeSelector: *controlPlaneSelector
+  tolerations: *controlPlaneTolerations
+
+# The cluster is IPv6-only and acme.garvey.sh has an IPv4-only A record.
+# cert-manager's default DNS-01 self-check queries the authoritative server
+# (64.186.8.205) directly -> NAT64 -> our own WAN IP -> router input reject
+# ("permission denied"), so DNS-01 challenges never advance. These two args
+# make the self-check use cluster CoreDNS as a recursive resolver instead;
+# CoreDNS -> node -> Blocky -> upstream resolves the public delegation/TXT
+# that Let's Encrypt itself also uses. (LE's own validation was never the
+# problem.)
+#
+# fd43::a is the kube-dns Service ClusterIP (CoreDNS), i.e. the same resolver
+# every pod uses. It is NOT a magic constant: Kubernetes/k3s assigns cluster
+# DNS the 10th address of the Service CIDR, and ours is fd43::/112 (k3s
+# --service-cidr in modules/k3s/k3s-common.nix), so 10 == 0xa == fd43::a.
+# ClusterIPs are sticky (stored in etcd), so this survives pod restarts and
+# CoreDNS/cert-manager upgrades. It would only change if the Service CIDR
+# changes (a cluster rebuild). To re-derive:
+#   kubectl -n kube-system get svc kube-dns -o jsonpath='{.spec.clusterIP}'
+# Must be IP:port (cert-manager can't resolve a hostname for its own resolver
+# list). Public fallback: [2606:4700:4700::1111]:53,[2001:4860:4860::8888]:53
+extraArgs:
+  - --dns01-recursive-nameservers-only
+  - --dns01-recursive-nameservers=[fd43::a]:53

@@ -1,5 +1,5 @@
 ---
-# Builtin: "helm template" does not respect --create-namespace
+# Builtin: "helm template" does not emit a Namespace
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -12,12 +12,15 @@ metadata:
   name: "longhorn-critical"
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
 description: "Ensure Longhorn pods have the highest priority to prevent any unexpected eviction by the Kubernetes scheduler under node pressure"
 globalDefault: false
 preemptionPolicy: PreemptLowerPriority
 value: 1000000000
+
 ---
 # Source: longhorn/templates/serviceaccount.yaml
 apiVersion: v1
@@ -27,8 +30,11 @@ metadata:
   namespace: longhorn-system
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
+
 ---
 # Source: longhorn/templates/serviceaccount.yaml
 apiVersion: v1
@@ -38,8 +44,11 @@ metadata:
   namespace: longhorn-system
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
+
 ---
 # Source: longhorn/templates/serviceaccount.yaml
 apiVersion: v1
@@ -49,6 +58,8 @@ metadata:
   namespace: longhorn-system
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
 ---
@@ -60,10 +71,13 @@ metadata:
   namespace: longhorn-system
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
 data:
   default-resource.yaml: |-
+
 ---
 # Source: longhorn/templates/default-setting.yaml
 apiVersion: v1
@@ -73,12 +87,15 @@ metadata:
   namespace: longhorn-system
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
 data:
   default-setting.yaml: |-
     priority-class: "longhorn-critical"
     disable-revision-counter: "{\"v1\":\"true\"}"
+
 ---
 # Source: longhorn/templates/storageclass.yaml
 apiVersion: v1
@@ -88,6 +105,8 @@ metadata:
   namespace: longhorn-system
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
 data:
@@ -112,6 +131,7 @@ data:
       disableRevisionCounter: "true"
       dataEngine: "v1"
       backupTargetName: "default"
+
 ---
 # Source: longhorn/templates/crds.yaml
 # Generated crds.yaml from github.com/longhorn/longhorn-manager/k8s/pkg/apis and the crds.yaml will be copied to longhorn/longhorn chart/templates and cannot be directly used by kubectl apply.
@@ -122,6 +142,8 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.19.0
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
     longhorn-manager: ""
@@ -250,6 +272,7 @@ spec:
     storage: true
     subresources:
       status: {}
+
 ---
 # Source: longhorn/templates/crds.yaml
 apiVersion: apiextensions.k8s.io/v1
@@ -259,6 +282,8 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.19.0
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
     longhorn-manager: ""
@@ -391,6 +416,7 @@ spec:
     storage: true
     subresources:
       status: {}
+
 ---
 # Source: longhorn/templates/crds.yaml
 apiVersion: apiextensions.k8s.io/v1
@@ -400,6 +426,8 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.19.0
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
     longhorn-manager: ""
@@ -574,6 +602,7 @@ spec:
     storage: true
     subresources:
       status: {}
+
 ---
 # Source: longhorn/templates/crds.yaml
 apiVersion: apiextensions.k8s.io/v1
@@ -583,6 +612,8 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.19.0
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
     longhorn-manager: ""
@@ -745,6 +776,7 @@ spec:
     storage: true
     subresources:
       status: {}
+
 ---
 # Source: longhorn/templates/crds.yaml
 apiVersion: apiextensions.k8s.io/v1
@@ -754,6 +786,8 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.19.0
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
     longhorn-manager: ""
@@ -935,6 +969,7 @@ spec:
     storage: true
     subresources:
       status: {}
+
 ---
 # Source: longhorn/templates/crds.yaml
 apiVersion: apiextensions.k8s.io/v1
@@ -944,6 +979,8 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.19.0
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
     longhorn-manager: ""
@@ -1076,6 +1113,7 @@ spec:
     storage: true
     subresources:
       status: {}
+
 ---
 # Source: longhorn/templates/crds.yaml
 apiVersion: apiextensions.k8s.io/v1
@@ -1085,6 +1123,8 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.19.0
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
     longhorn-manager: ""
@@ -1222,6 +1262,7 @@ spec:
     storage: true
     subresources:
       status: {}
+
 ---
 # Source: longhorn/templates/crds.yaml
 apiVersion: apiextensions.k8s.io/v1
@@ -1231,6 +1272,8 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.19.0
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
     longhorn-manager: ""
@@ -1374,6 +1417,7 @@ spec:
     storage: true
     subresources:
       status: {}
+
 ---
 # Source: longhorn/templates/crds.yaml
 apiVersion: apiextensions.k8s.io/v1
@@ -1383,6 +1427,8 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.19.0
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
     longhorn-manager: ""
@@ -1756,6 +1802,7 @@ spec:
     storage: true
     subresources:
       status: {}
+
 ---
 # Source: longhorn/templates/crds.yaml
 apiVersion: apiextensions.k8s.io/v1
@@ -1765,6 +1812,8 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.19.0
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
     longhorn-manager: ""
@@ -2043,6 +2092,7 @@ spec:
     storage: true
     subresources:
       status: {}
+
 ---
 # Source: longhorn/templates/crds.yaml
 apiVersion: apiextensions.k8s.io/v1
@@ -2052,6 +2102,8 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.19.0
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
     longhorn-manager: ""
@@ -2329,6 +2381,7 @@ spec:
     storage: true
     subresources:
       status: {}
+
 ---
 # Source: longhorn/templates/crds.yaml
 apiVersion: apiextensions.k8s.io/v1
@@ -2338,6 +2391,8 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.19.0
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
     longhorn-manager: ""
@@ -2452,6 +2507,7 @@ spec:
     storage: true
     subresources:
       status: {}
+
 ---
 # Source: longhorn/templates/crds.yaml
 apiVersion: apiextensions.k8s.io/v1
@@ -2461,6 +2517,8 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.19.0
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
     longhorn-manager: ""
@@ -2593,6 +2651,7 @@ spec:
     storage: true
     subresources:
       status: {}
+
 ---
 # Source: longhorn/templates/crds.yaml
 apiVersion: apiextensions.k8s.io/v1
@@ -2602,6 +2661,8 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.19.0
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
     longhorn-manager: ""
@@ -2824,6 +2885,7 @@ spec:
     storage: true
     subresources:
       status: {}
+
 ---
 # Source: longhorn/templates/crds.yaml
 apiVersion: apiextensions.k8s.io/v1
@@ -2833,6 +2895,8 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.19.0
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
     longhorn-manager: ""
@@ -2904,6 +2968,7 @@ spec:
     storage: true
     subresources:
       status: {}
+
 ---
 # Source: longhorn/templates/crds.yaml
 apiVersion: apiextensions.k8s.io/v1
@@ -2913,6 +2978,8 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.19.0
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
     longhorn-manager: ""
@@ -2992,6 +3059,7 @@ spec:
     storage: true
     subresources:
       status: {}
+
 ---
 # Source: longhorn/templates/crds.yaml
 apiVersion: apiextensions.k8s.io/v1
@@ -3001,6 +3069,8 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.19.0
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
     longhorn-manager: ""
@@ -3125,6 +3195,7 @@ spec:
     storage: true
     subresources:
       status: {}
+
 ---
 # Source: longhorn/templates/crds.yaml
 apiVersion: apiextensions.k8s.io/v1
@@ -3134,6 +3205,8 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.19.0
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
     longhorn-manager: ""
@@ -3260,6 +3333,7 @@ spec:
     storage: true
     subresources:
       status: {}
+
 ---
 # Source: longhorn/templates/crds.yaml
 apiVersion: apiextensions.k8s.io/v1
@@ -3269,6 +3343,8 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.19.0
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
     longhorn-manager: ""
@@ -3401,6 +3477,7 @@ spec:
     storage: true
     subresources:
       status: {}
+
 ---
 # Source: longhorn/templates/crds.yaml
 apiVersion: apiextensions.k8s.io/v1
@@ -3410,6 +3487,8 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.19.0
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
     longhorn-manager: ""
@@ -3514,6 +3593,7 @@ spec:
     storage: true
     subresources:
       status: {}
+
 ---
 # Source: longhorn/templates/crds.yaml
 apiVersion: apiextensions.k8s.io/v1
@@ -3523,6 +3603,8 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.19.0
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
     longhorn-manager: ""
@@ -3662,6 +3744,7 @@ spec:
     storage: true
     subresources:
       status: {}
+
 ---
 # Source: longhorn/templates/crds.yaml
 apiVersion: apiextensions.k8s.io/v1
@@ -3671,6 +3754,8 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.19.0
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
     longhorn-manager: ""
@@ -4052,6 +4137,7 @@ spec:
     storage: true
     subresources:
       status: {}
+
 ---
 # Source: longhorn/templates/clusterrole.yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -4060,6 +4146,8 @@ metadata:
   name: longhorn-role
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
 rules:
@@ -4130,6 +4218,7 @@ rules:
 - apiGroups: ["rbac.authorization.k8s.io"]
   resources: ["clusterrolebindings", "clusterroles"]
   verbs: ["*"]
+
 ---
 # Source: longhorn/templates/clusterrolebinding.yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -4138,6 +4227,8 @@ metadata:
   name: longhorn-bind
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
 roleRef:
@@ -4148,6 +4239,7 @@ subjects:
 - kind: ServiceAccount
   name: longhorn-service-account
   namespace: longhorn-system
+
 ---
 # Source: longhorn/templates/clusterrolebinding.yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -4156,6 +4248,8 @@ metadata:
   name: longhorn-support-bundle
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
 roleRef:
@@ -4166,6 +4260,7 @@ subjects:
 - kind: ServiceAccount
   name: longhorn-support-bundle
   namespace: longhorn-system
+
 ---
 # Source: longhorn/templates/role.yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -4175,6 +4270,8 @@ metadata:
   namespace: longhorn-system
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
 rules:
@@ -4199,6 +4296,7 @@ rules:
 - apiGroups: ["discovery.k8s.io"]
   resources: ["endpointslices"]
   verbs: ["*"]
+
 ---
 # Source: longhorn/templates/rolebinding.yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -4214,6 +4312,7 @@ subjects:
 - kind: ServiceAccount
   name: longhorn-service-account
   namespace: longhorn-system
+
 ---
 # Source: longhorn/templates/daemonset-sa.yaml
 apiVersion: v1
@@ -4221,6 +4320,8 @@ kind: Service
 metadata:
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
     app: longhorn-manager
@@ -4234,6 +4335,7 @@ spec:
   - name: manager
     port: 9500
     targetPort: manager
+
 ---
 # Source: longhorn/templates/deployment-ui.yaml
 kind: Service
@@ -4241,6 +4343,8 @@ apiVersion: v1
 metadata:
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
     app: longhorn-ui
@@ -4255,6 +4359,7 @@ spec:
     port: 80
     targetPort: http
     nodePort: null
+
 ---
 # Source: longhorn/templates/services.yaml
 apiVersion: v1
@@ -4262,6 +4367,8 @@ kind: Service
 metadata:
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
     app: longhorn-admission-webhook
@@ -4275,6 +4382,7 @@ spec:
   - name: admission-webhook
     port: 9502
     targetPort: admission-wh
+
 ---
 # Source: longhorn/templates/services.yaml
 apiVersion: v1
@@ -4282,6 +4390,8 @@ kind: Service
 metadata:
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
     app: longhorn-recovery-backend
@@ -4295,6 +4405,7 @@ spec:
   - name: recovery-backend
     port: 9503
     targetPort: recov-backend
+
 ---
 # Source: longhorn/templates/daemonset-sa.yaml
 apiVersion: apps/v1
@@ -4302,6 +4413,8 @@ kind: DaemonSet
 metadata:
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
     app: longhorn-manager
@@ -4315,18 +4428,12 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: longhorn
+        helm.sh/chart: longhorn-1.11.1
+        app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/instance: longhorn
         app.kubernetes.io/version: v1.11.1
         app: longhorn-manager
     spec:
-      # Local edit (helm values longhornManager/longhornDriver/longhornUI
-      # .nodeSelector/.tolerations): Longhorn runs only on fus/ro/dah.
-      nodeSelector:
-        node-role.kubernetes.io/control-plane: "true"
-      tolerations:
-        - key: node-role.kubernetes.io/control-plane
-          operator: Exists
-          effect: NoSchedule
       containers:
       - name: longhorn-manager
         image: docker.io/longhornio/longhorn-manager:v1.11.1
@@ -4424,10 +4531,17 @@ spec:
           secretName: longhorn-grpc-tls
           optional: true
       priorityClassName: "longhorn-critical"
+      tolerations:
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/control-plane
+        operator: Exists
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
       serviceAccountName: longhorn-service-account
   updateStrategy:
     rollingUpdate:
       maxUnavailable: 100%
+
 ---
 # Source: longhorn/templates/deployment-driver.yaml
 apiVersion: apps/v1
@@ -4437,6 +4551,8 @@ metadata:
   namespace: longhorn-system
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
 spec:
@@ -4448,18 +4564,12 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: longhorn
+        helm.sh/chart: longhorn-1.11.1
+        app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/instance: longhorn
         app.kubernetes.io/version: v1.11.1
         app: longhorn-driver-deployer
     spec:
-      # Local edit (helm values longhornManager/longhornDriver/longhornUI
-      # .nodeSelector/.tolerations): Longhorn runs only on fus/ro/dah.
-      nodeSelector:
-        node-role.kubernetes.io/control-plane: "true"
-      tolerations:
-        - key: node-role.kubernetes.io/control-plane
-          operator: Exists
-          effect: NoSchedule
       initContainers:
         - name: wait-longhorn-manager
           image: docker.io/longhornio/longhorn-manager:v1.11.1
@@ -4503,9 +4613,16 @@ spec:
             value: "docker.io/longhornio/livenessprobe:v2.18.0"
           
       priorityClassName: "longhorn-critical"
+      tolerations:
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/control-plane
+        operator: Exists
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
       serviceAccountName: longhorn-service-account
       securityContext:
         runAsUser: 0
+
 ---
 # Source: longhorn/templates/deployment-ui.yaml
 apiVersion: apps/v1
@@ -4513,6 +4630,8 @@ kind: Deployment
 metadata:
   labels:
     app.kubernetes.io/name: longhorn
+    helm.sh/chart: longhorn-1.11.1
+    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/instance: longhorn
     app.kubernetes.io/version: v1.11.1
     app: longhorn-ui
@@ -4527,18 +4646,12 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: longhorn
+        helm.sh/chart: longhorn-1.11.1
+        app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/instance: longhorn
         app.kubernetes.io/version: v1.11.1
         app: longhorn-ui
     spec:
-      # Local edit (helm values longhornManager/longhornDriver/longhornUI
-      # .nodeSelector/.tolerations): Longhorn runs only on fus/ro/dah.
-      nodeSelector:
-        node-role.kubernetes.io/control-plane: "true"
-      tolerations:
-        - key: node-role.kubernetes.io/control-plane
-          operator: Exists
-          effect: NoSchedule
       serviceAccountName: longhorn-ui-service-account
       affinity:
         podAntiAffinity:
@@ -4580,6 +4693,13 @@ spec:
       - emptyDir: {}
         name: var-run
       priorityClassName: "longhorn-critical"
+      tolerations:
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/control-plane
+        operator: Exists
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
+
 ---
 # Source: longhorn/templates/validate-psp-install.yaml
 #

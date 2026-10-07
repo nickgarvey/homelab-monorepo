@@ -1,0 +1,58 @@
+# Values for the cilium chart (version in chart.env), rendered by
+# scripts/render-chart.sh; see vendor/README.md.
+#
+# The LB-IPAM pool and L2 announcement policy live in
+# manifests/cilium/l2-config.yaml, the host firewall policies in
+# manifests/cilium/host-firewall.yaml.
+
+# The cluster is IPv6-only, on GUAs from the HE /48 (modules/networking/lan-hosts.nix).
+ipv4:
+  enabled: false
+ipv6:
+  enabled: true
+ipam:
+  mode: kubernetes
+# Pod addresses are routable on the LAN, so no tunnel and no masquerade.
+routingMode: native
+ipv6NativeRoutingCIDR: 2001:470:482f::/48
+autoDirectNodeRoutes: true
+enableIPv6Masquerade: false
+
+# k3s runs with --disable-kube-proxy; Cilium reaches the API server directly.
+kubeProxyReplacement: true
+k8sServiceHost: k3s-api.home.arpa
+k8sServicePort: 6443
+nodePort:
+  addresses:
+    - 2001:470:482f::/48
+devices: enp+
+
+hostFirewall:
+  enabled: true
+l2announcements:
+  enabled: true
+
+hubble:
+  relay:
+    enabled: true
+    # The cluster services run on fus/ro/dah.
+    nodeSelector:
+      kubernetes.io/os: linux
+      node-role.kubernetes.io/control-plane: "true"
+    tolerations:
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule
+  tls:
+    auto:
+      # certgen issues the Hubble server and relay certs (reusing the
+      # cilium-ca Secret if it exists) and its CronJob reissues them every
+      # four months. The default, "helm", generates new random certs on
+      # every render, so the render could never be checked or re-run.
+      method: cronJob
+
+operator:
+  # The cluster services run on fus/ro/dah.
+  nodeSelector:
+    kubernetes.io/os: linux
+    node-role.kubernetes.io/control-plane: "true"

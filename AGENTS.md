@@ -25,7 +25,7 @@ own `outputs.nix`, and `flake.nix` merges them, failing evaluation if two
 define the same output name. Nix finds the root flake from any subdirectory,
 so `nix run .#deploy` and `nix build .#<pkg>` work from anywhere in the repo.
 
-- `nix develop` gives the default shell: deploy, go, python, kubectl, skopeo, jq.
+- `nix develop` gives the default shell: deploy, go, python, kubectl, helm, skopeo, jq.
   The only other shells are `.#esp32` (ESP-IDF; needed for anything in
   `firmware/`) and `.#makernexus`.
 - There is one `nixpkgs`. Two inputs keep their own locked nixpkgs on purpose:

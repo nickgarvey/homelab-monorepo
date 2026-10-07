@@ -1,0 +1,29 @@
+# Upstream's bundle.yaml (fetched by scripts/fetch-vendor.sh, never edited)
+# moved out of "default" into its own namespace, with the operator pinned.
+# Apply with: kubectl apply --server-side -k vendor/prometheus-operator
+# (--server-side because the CRDs are too big for client-side apply).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: prometheus-operator
+resources:
+  - namespace.yaml
+  - bundle.yaml
+patches:
+  # The cluster services run on fus/ro/dah.
+  - target:
+      kind: Deployment
+      name: prometheus-operator
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: prometheus-operator
+      spec:
+        template:
+          spec:
+            nodeSelector:
+              node-role.kubernetes.io/control-plane: "true"
+            tolerations:
+              - key: node-role.kubernetes.io/control-plane
+                operator: Exists
+                effect: NoSchedule

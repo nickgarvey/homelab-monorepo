@@ -1,0 +1,21 @@
+# Values for the longhorn chart (version in chart.env), rendered by
+# scripts/render-chart.sh; see vendor/README.md.
+#
+# The StorageClasses, settings, backup target and recurring jobs live in
+# manifests/longhorn/.
+
+# manifests/longhorn/storage-class.yaml defines the classes we use; the
+# chart's own "longhorn" class must not become the cluster default.
+persistence:
+  defaultClass: false
+
+# Longhorn runs only on fus/ro/dah.
+longhornManager: &controlPlane
+  nodeSelector:
+    node-role.kubernetes.io/control-plane: "true"
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+longhornDriver: *controlPlane
+longhornUI: *controlPlane

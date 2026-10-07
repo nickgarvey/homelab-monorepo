@@ -7,10 +7,9 @@ metadata:
     app.kubernetes.io/managed-by: ngarvey-homelab
     app.kubernetes.io/name: cert-manager
 spec:
-  # cert-manager is vendored pristine (vendor/cert-manager/cert-manager.yaml) and
-  # applied with a strategic patch, so this lives in its own file rather than as an
-  # edit to the vendored manifest. The selector matches the controller Service the
-  # upstream bundle already creates -- component:controller is what distinguishes it
+  # Kept out of the chart render (vendor/cert-manager/) so the render applies
+  # before the prometheus-operator CRDs exist. The selector matches the controller
+  # Service the chart creates -- component:controller is what distinguishes it
   # from the webhook/cainjector Services, which expose no useful metrics.
   selector:
     matchLabels:
