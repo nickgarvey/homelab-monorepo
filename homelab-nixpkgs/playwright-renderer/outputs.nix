@@ -56,19 +56,4 @@ in
       };
     }
   );
-
-  devShells = forAllSystems (system:
-    let pkgs = nixpkgs.legacyPackages.${system};
-    in {
-      default = pkgs.mkShell {
-        packages = [
-          (pkgs.python3.withPackages (ps: [ ps.playwright ]))
-        ];
-        env = {
-          PLAYWRIGHT_BROWSERS_PATH = pkgs.playwright-driver.browsers;
-          PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "true";
-        };
-      };
-    }
-  );
 }

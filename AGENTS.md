@@ -20,8 +20,8 @@ the root flake from any subdirectory, so `nix run .#deploy` and
 `nix build .#<pkg>` work from anywhere in the repo.
 
 - `nix develop` gives the default shell: deploy, go, python, kubectl, skopeo, jq.
-  Other shells are named: `.#esp32` (ESP-IDF; needed for anything in
-  `homelab-esp32-devices/`), `.#makernexus`, and one per homelab-nixpkgs package.
+  The only other shells are `.#esp32` (ESP-IDF; needed for anything in
+  `homelab-esp32-devices/`) and `.#makernexus`.
 - Container images that `homelab-nixpkgs/deploy.sh` pushes live under
   `legacyPackages.x86_64-linux.images`.
 - `nixpkgs` is shared by hosts and homelab-nixpkgs. `nixpkgs-stable` (Ceph)

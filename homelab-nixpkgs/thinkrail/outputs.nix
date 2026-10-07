@@ -146,12 +146,4 @@ in
     default = thinkrail;
     node-modules = nodeModulesFor system;
   });
-
-  devShells = forAllSystems (system:
-    let pkgs = pkgsFor system; in
-    {
-      default = pkgs.mkShell {
-        packages = [ pkgs.bun pkgs.nodejs_22 pkgs.git ];
-      };
-    });
 }

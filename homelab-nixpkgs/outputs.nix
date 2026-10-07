@@ -1,5 +1,5 @@
-# homelab-nixpkgs outputs: homelab packages, their dev shells, and the
-# container images deploy.sh pushes. Imported by the root flake.nix.
+# homelab-nixpkgs outputs: homelab packages and the container images
+# deploy.sh pushes. Imported by the root flake.nix.
 { nixpkgs, ... }:
 let
   system = "x86_64-linux";
@@ -26,13 +26,5 @@ in
     playwright-renderer = playwright-renderer.dockerImage.${system};
     trmnl-display = trmnl-display.dockerImage.${system};
     ninfer = ninfer.dockerImage.${system};
-  };
-
-  devShells.${system} = {
-    playwright-renderer = playwright-renderer.devShells.${system}.default;
-    trmnl-display = trmnl-display.devShells.${system}.default;
-    ninfer = ninfer.devShells.${system}.default;
-    thinkrail = thinkrail.devShells.${system}.default;
-    lan-table = lan-table.devShells.${system}.default;
   };
 }

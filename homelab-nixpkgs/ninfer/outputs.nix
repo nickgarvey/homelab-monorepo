@@ -150,23 +150,4 @@ in
   });
 
   dockerImage = forAllSystems dockerImageFor;
-
-  devShells = forAllSystems (system:
-    let
-      pkgs = pkgsFor system;
-      cuda = pkgs.cudaPackages_13_1;
-    in
-    {
-      default = pkgs.mkShell {
-        packages = [
-          pkgs.cmake
-          pkgs.ninja
-          pkgs.pkg-config
-          pkgs.ffmpeg
-          pkgs.curl
-          cuda.cuda_nvcc
-          cuda.cuda_cudart
-        ];
-      };
-    });
 }
