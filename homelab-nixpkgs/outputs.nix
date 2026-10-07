@@ -1,5 +1,5 @@
-# homelab-nixpkgs outputs: homelab packages and the container images
-# deploy.sh pushes. Imported by the root flake.nix.
+# homelab-nixpkgs outputs: homelab packages and container images. Imported by
+# the root flake.nix.
 { nixpkgs, ... }:
 let
   system = "x86_64-linux";
@@ -15,16 +15,9 @@ in
     playwright-renderer = playwright-renderer.dockerImage.${system};
     trmnl-display = trmnl-display.dockerImage.${system};
     ninfer = ninfer.packages.${system}.ninfer;
+    ninfer-image = ninfer.dockerImage.${system};
     thinkrail = thinkrail.packages.${system}.thinkrail;
     thinkrail-node-modules = thinkrail.packages.${system}.node-modules;
     lan-table = lan-table.packages.${system}.lan-table;
-  };
-
-  # The images deploy.sh builds and pushes to zot. legacyPackages because
-  # `nix flake check` rejects nested attrsets under packages.
-  legacyPackages.${system}.images = {
-    playwright-renderer = playwright-renderer.dockerImage.${system};
-    trmnl-display = trmnl-display.dockerImage.${system};
-    ninfer = ninfer.dockerImage.${system};
   };
 }
