@@ -38,7 +38,7 @@ run the Ceph storage cluster on their 4 TB drives.
 
 [`modules/k3s-common.nix`](modules/k3s-common.nix) contain the main configuration for those hosts.
 
-Services running on that cluster are found in the [k8s-gitops](https://github.com/nickgarvey/k8s-gitops) repository.
+Services running on that cluster are found in the [`k8s-gitops/`](../k8s-gitops) directory of this repo.
 
 ### Servers
 

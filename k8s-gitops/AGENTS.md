@@ -38,7 +38,7 @@ opt-in per address — but an address being "internal" does not make it private.
 
 ## Where the network facts live
 
-`~/nix-configs` is the source of truth. Read them there rather than copying them here,
+`~/homelab-monorepo/nix-configs` is the source of truth. Read them there rather than copying them here,
 where they drift:
 
 | What | File |

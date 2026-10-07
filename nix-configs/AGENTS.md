@@ -1,4 +1,4 @@
-# Nix Config Conventions
+# nix-configs Conventions
 
 ## Module taxonomy
 
@@ -58,29 +58,3 @@ one. Example: `../../patches/my-fix.patch`.
 The first non-blank line of each module should be a `#` comment describing its
 purpose in one sentence, so `ls` + skimming the top of a file is enough to
 understand what it does.
-
-## Deploys and reboots
-
-The deploy tool warns "needs reboot" whenever a host's running kernel differs
-from its new generation. Treat that as informational: do not relay it, suggest
-a reboot, or list it as a follow-up. The human decides when hosts reboot. Only
-raise a reboot when the task itself cannot finish without one (e.g. a kernel
-module or kernel parameter the change depends on).
-
-## Commit messages
-
-Use this shape, with the subject on the first line:
-
-```
-<subject>
-
-Human Text:
-None
-
-LLM Text:
-<body: what changed and why>
-```
-
-Leave `Human Text:` as `None`; the human fills it in later. Put your
-explanation under `LLM Text:` (leave it empty if the subject says it all). Do
-not add a `Co-Authored-By:` trailer.

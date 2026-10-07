@@ -51,7 +51,7 @@ the missing `/certs`.
 
 Split-horizon DNS lives outside this repo: add
 `"temporal.garvey.sh" = "2001:470:482f:2::5002";` to `garveyShOverrides` in
-`~/nix-configs/modules/networking/dns.nix`, then `nixos-rebuild switch` on the
+`~/homelab-monorepo/nix-configs/modules/networking/dns.nix`, then `nixos-rebuild switch` on the
 router.
 
 ## The POSTGRES_DB gotcha
@@ -100,12 +100,6 @@ Off-cluster workers use `frontend-lb-service.yaml`, a LoadBalancer on
 `temporal.temporal.k8s.home.garvey.sh`. A ClusterIP is not an option for them:
 the service CIDR is `fd43::/112`, which is not routed off-cluster, and Cilium
 does not serve ClusterIP to external clients by default.
-
-The first such worker is `nix-build-worker` from
-[temporal-workflows](https://github.com/nickgarvey/temporal-workflows), running
-as a systemd service on talos (`services.temporalNixBuilder` in nix-configs) on
-task queue `nix-build`. It runs there rather than here because its job is to
-prime talos's `/nix/store`, which serves the fleet as a binary cache.
 
 That endpoint carries no TLS and no auth, exactly like the in-cluster one --
 anything on the LAN that can route to the LB IP can drive Temporal. That is the

@@ -1,4 +1,4 @@
-# RBD volumes on the external Ceph cluster (joor/zah/frul, ~/nix-configs
+# RBD volumes on the external Ceph cluster (joor/zah/frul, ~/homelab-monorepo/nix-configs
 # modules/services/ceph.nix): pool `kubernetes`, 3 copies, any node can mount.
 # The cluster's only default StorageClass: a PVC that names no class lands
 # here, and so is covered by the Ceph backups (nix-configs

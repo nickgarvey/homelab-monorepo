@@ -7,7 +7,7 @@
 #
 # then prepend the Namespace object (helm template does not emit one).
 #
-# The Ceph cluster is external: joor/zah/frul, run by NixOS (~/nix-configs
+# The Ceph cluster is external: joor/zah/frul, run by NixOS (~/homelab-monorepo/nix-configs
 # modules/services/ceph.nix). The StorageClass and the client Secret live in
 # manifests/ceph-csi-rbd/, not here.
 csiConfig:

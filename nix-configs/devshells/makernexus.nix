@@ -1,5 +1,5 @@
 # MakerNexus Python development shell
-# Activate with: nix develop ~/nix-configs#makernexus
+# Activate with: nix develop ~/homelab-monorepo/nix-configs#makernexus
 { pkgs }:
 
 pkgs.mkShell {

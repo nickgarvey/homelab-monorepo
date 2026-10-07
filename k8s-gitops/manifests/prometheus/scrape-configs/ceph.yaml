@@ -6,7 +6,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: ngarvey-homelab
 spec:
-  # The Ceph mgr prometheus module on joor/zah/frul (~/nix-configs
+  # The Ceph mgr prometheus module on joor/zah/frul (~/homelab-monorepo/nix-configs
   # modules/services/ceph.nix). Only the active mgr serves metrics; standbys
   # answer 200 with an empty body, so all three stay "up" and whichever is
   # active supplies the data, with no scrape change on failover.

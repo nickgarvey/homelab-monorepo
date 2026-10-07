@@ -36,12 +36,6 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # Temporal workers.
-    temporal-workflows = {
-      url = "github:nickgarvey/temporal-workflows";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
     claude-code-nix = {
       url = "github:sadjow/claude-code-nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -57,15 +51,15 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # LAN inventory page, packaged in the homelab-nixpkgs repo.
+    # LAN inventory page, packaged in ../homelab-nixpkgs.
     lan-table = {
-      url = "github:nickgarvey/homelab-nixpkgs?dir=lan-table";
+      url = "path:../homelab-nixpkgs/lan-table";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # ThinkRail, packaged in the homelab-nixpkgs repo.
+    # ThinkRail, packaged in ../homelab-nixpkgs.
     thinkrail = {
-      url = "github:nickgarvey/homelab-nixpkgs?dir=thinkrail";
+      url = "path:../homelab-nixpkgs/thinkrail";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 

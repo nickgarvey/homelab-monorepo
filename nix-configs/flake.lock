@@ -290,20 +290,14 @@
         ]
       },
       "locked": {
-        "dir": "lan-table",
-        "lastModified": 1788791639,
-        "narHash": "sha256-SQZz4oUwm2og2+Qdz6no9kLhBzT6fSxGt0L2OtD9nOo=",
-        "owner": "nickgarvey",
-        "repo": "homelab-nixpkgs",
-        "rev": "f7e580cdddc3aa03f5f25ee11d526510a4bc23ab",
-        "type": "github"
+        "path": "../homelab-nixpkgs/lan-table",
+        "type": "path"
       },
       "original": {
-        "dir": "lan-table",
-        "owner": "nickgarvey",
-        "repo": "homelab-nixpkgs",
-        "type": "github"
-      }
+        "path": "../homelab-nixpkgs/lan-table",
+        "type": "path"
+      },
+      "parent": []
     },
     "microvm": {
       "inputs": {
@@ -515,7 +509,6 @@
         "nixpkgs-stable": "nixpkgs-stable",
         "pi-nix": "pi-nix",
         "sops-nix": "sops-nix",
-        "temporal-workflows": "temporal-workflows",
         "thinkrail": "thinkrail"
       }
     },
@@ -600,26 +593,6 @@
         "type": "github"
       }
     },
-    "temporal-workflows": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1786412500,
-        "narHash": "sha256-3Cml2xliDCY05+Ob8HYn7BdPAoUtKdQP1Lnc0qth/2s=",
-        "owner": "nickgarvey",
-        "repo": "temporal-workflows",
-        "rev": "fa4ecdec230cd3ab887b9232dd89034bab25cd12",
-        "type": "github"
-      },
-      "original": {
-        "owner": "nickgarvey",
-        "repo": "temporal-workflows",
-        "type": "github"
-      }
-    },
     "thinkrail": {
       "inputs": {
         "nixpkgs": [
@@ -627,20 +600,14 @@
         ]
       },
       "locked": {
-        "dir": "thinkrail",
-        "lastModified": 1788791639,
-        "narHash": "sha256-SQZz4oUwm2og2+Qdz6no9kLhBzT6fSxGt0L2OtD9nOo=",
-        "owner": "nickgarvey",
-        "repo": "homelab-nixpkgs",
-        "rev": "f7e580cdddc3aa03f5f25ee11d526510a4bc23ab",
-        "type": "github"
+        "path": "../homelab-nixpkgs/thinkrail",
+        "type": "path"
       },
       "original": {
-        "dir": "thinkrail",
-        "owner": "nickgarvey",
-        "repo": "homelab-nixpkgs",
-        "type": "github"
-      }
+        "path": "../homelab-nixpkgs/thinkrail",
+        "type": "path"
+      },
+      "parent": []
     },
     "treefmt-nix": {
       "inputs": {

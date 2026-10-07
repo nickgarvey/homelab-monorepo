@@ -157,7 +157,7 @@ dig +short _acme-challenge.foo.garvey.sh CNAME      # -> <fulldomain>.acme.garve
 
 This zone is ours, so the delegation is declared in git instead of clicked into
 someone else's control panel. Add it to `cnames` in
-`~/nix-configs/modules/networking/dns.nix`; `zone.nix` renders it into the Knot
+`~/homelab-monorepo/nix-configs/modules/networking/dns.nix`; `zone.nix` renders it into the Knot
 zone automatically:
 
 ```nix
@@ -171,7 +171,7 @@ external one is what Let's Encrypt actually walks (`ns1` → router DNAT → dns
 Knot):
 
 ```bash
-cd ~/nix-configs && nix run .#deploy -- --hosts dragonsreach --mode safe
+cd ~/homelab-monorepo/nix-configs && nix run .#deploy -- --hosts dragonsreach --mode safe
 dig +short _acme-challenge.foo.home.garvey.sh CNAME @10.28.0.1   # internal
 dig +short _acme-challenge.foo.home.garvey.sh CNAME @1.1.1.1     # external
 ```
@@ -295,7 +295,7 @@ garveyShOverrides = {
   "foo.garvey.sh" = "<picked LB IP>";
 };
 ```
-Deploy the router: `cd ~/nix-configs && nix run .#deploy -- --hosts <router> --mode safe`.
+Deploy the router: `cd ~/homelab-monorepo/nix-configs && nix run .#deploy -- --hosts <router> --mode safe`.
 
 ### Verify
 ```bash
