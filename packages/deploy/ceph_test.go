@@ -46,9 +46,6 @@ func TestCephBeforeDeployRefusesWhenAnotherNodeIsDown(t *testing.T) {
 	if CephBeforeDeploy(fake, cephHost("joor")) {
 		t.Fatal("expected refusal: zah's OSD is down")
 	}
-	if len(fake.CallsContaining("set-group noout")) != 0 {
-		t.Error("noout must not be set when refusing")
-	}
 }
 
 func TestCephBeforeDeployAllowsFixingOwnDownOSD(t *testing.T) {
@@ -58,14 +55,11 @@ func TestCephBeforeDeployAllowsFixingOwnDownOSD(t *testing.T) {
 	if !CephBeforeDeploy(fake, cephHost("joor")) {
 		t.Fatal("expected to proceed: only joor's own OSD is down")
 	}
-	if len(fake.CallsContaining("sudo ceph osd set-group noout joor")) != 1 {
-		t.Error("expected noout set on joor")
-	}
 }
 
 func noSleep(time.Duration) {}
 
-func TestCephAfterDeployWaitsThenClearsNoout(t *testing.T) {
+func TestCephAfterDeployWaitsForActiveClean(t *testing.T) {
 	polls := 0
 	fake := &FakeRunner{Responses: []FakeResponse{
 		{Match: func(argv []string) bool {
@@ -84,21 +78,15 @@ func TestCephAfterDeployWaitsThenClearsNoout(t *testing.T) {
 	if polls != 3 {
 		t.Errorf("expected 3 pg polls, got %d", polls)
 	}
-	if len(fake.CallsContaining("sudo ceph osd unset-group noout zah")) != 1 {
-		t.Error("expected noout cleared on zah")
-	}
 }
 
-func TestCephAfterDeployTimeoutKeepsNoout(t *testing.T) {
+func TestCephAfterDeployTimesOut(t *testing.T) {
 	fake := &FakeRunner{Responses: []FakeResponse{
 		{Match: MatchContains("ceph osd tree"), Result: RunResult{Stdout: osdTreeJSON("up", "down", "up")}},
 		{Match: MatchContains("ceph pg stat"), Result: RunResult{Stdout: pgStatDegraded}},
 	}}
 	if CephAfterDeploy(fake, cephHost("zah"), noSleep) {
 		t.Fatal("expected failure: zah's OSD never comes back")
-	}
-	if len(fake.CallsContaining("unset-group noout")) != 0 {
-		t.Error("noout must stay set when Ceph is not healthy")
 	}
 }
 
@@ -118,7 +106,7 @@ func TestDeployRefusedByCephNeverActivates(t *testing.T) {
 	}
 }
 
-func TestDeployCephHappyPathClearsNoout(t *testing.T) {
+func TestDeployCephHappyPathWaitsForHealth(t *testing.T) {
 	resps := append([]FakeResponse{
 		{Match: MatchContains("ceph osd tree"), Result: RunResult{Stdout: osdTreeJSON("up", "up", "up")}},
 		{Match: MatchContains("ceph pg stat"), Result: RunResult{Stdout: pgStatClean}},
@@ -133,11 +121,14 @@ func TestDeployCephHappyPathClearsNoout(t *testing.T) {
 		t.Fatal("expected success")
 	}
 	assertOrder(t, joinedCalls(fake), []string{
-		"ceph osd set-group noout frul",
+		"ceph osd tree",
 		"switch-to-configuration test",
 		"switch-to-configuration boot",
-		"ceph osd unset-group noout frul",
+		"ceph pg stat",
 	})
+	if len(fake.CallsContaining("noout")) != 0 {
+		t.Error("the Ceph gate must not set noout: the cluster never marks OSDs out")
+	}
 	if len(warnings) != 0 {
 		t.Errorf("unexpected warnings: %v", warnings)
 	}

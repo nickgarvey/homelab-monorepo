@@ -14,6 +14,10 @@ keys:
   - &joor age1dyx6ej446fhg7zgvs9ldjqcg77dxldd9mj3q3klxvfsg8mr54fwsd3nuuk
   - &zah age1zecjn7d4f364fku7n6s7mktwzpklqt0u0an0edjykmg59sgj743q8fvmkx
   - &frul age1a230t20a7jl2ce5w9axz8caajgk2s4w6ry2cvy52l2vupf685ujsrhfsdl
+  # skyforge: also from its ssh_host_ed25519_key.pub via ssh-to-age.
+  - &skyforge age1z95v2ahfghn34yg2yl8k3crtqtraqg6mnvvzq2audzr96savcqxs5p7yfe
+  # guevenne: also from its ssh_host_ed25519_key.pub via ssh-to-age.
+  - &guevenne age1wht0shv9rw22tmcnuvmzpywxsfzv0ujgswsuc0nuw72p7g3p4scqzdmxv8
   - &k8s-operator age1zd28lg5yxxc06jnyym92fep4gdwwnk3k3my9l247pvskjdj8mv4sa89d08
 creation_rules:
   - path_regex: secrets/frigate.yaml
@@ -52,6 +56,24 @@ creation_rules:
       - *joor
       - *zah
       - *frul
+  # skyforge-acme: TSIG secret for the acme-skyforge key (ACME DNS-01 for
+  # skyforge.home.garvey.sh). dragonsreach holds it for Knot; skyforge runs lego
+  # (hosts/skyforge/web-gate.nix).
+  - path_regex: secrets/skyforge-acme.yaml
+    key_groups:
+    - age:
+      - *ngarvey
+      - *dragonsreach
+      - *skyforge
+  # skyforge-orca: the API key OrcaSlicer sends as X-Api-Key. skyforge's nginx
+  # checks it (hosts/skyforge/web-gate.nix); `workstation` lets talos and
+  # dovahkiin install it into OrcaSlicer's printer preset.
+  - path_regex: secrets/skyforge-orca.yaml
+    key_groups:
+    - age:
+      - *ngarvey
+      - *skyforge
+      - *workstation
   # rgw-sts: rgw_sts_key, which encrypts RGW's STS session tokens; the same on
   # every RGW (modules/services/ceph.nix).
   - path_regex: secrets/rgw-sts.yaml
@@ -79,13 +101,22 @@ creation_rules:
     - age:
       - *ngarvey
       - *dragonsreach
-  - path_regex: secrets/k3s.yaml
+  # k3s-server: the server token (joins servers; with it a node can fetch the
+  # cluster CA keys, i.e. full admin) and the agent token the servers accept.
+  # Only the servers can decrypt it.
+  - path_regex: secrets/k3s-server.yaml
     key_groups:
     - age:
       - *ngarvey
       - *fus
       - *ro
       - *dah
+  # k3s-agent: the agent token joor/zah/frul join with, in K10<ca-hash>:: form
+  # so they check the cluster CA before sending it. It joins agents only.
+  - path_regex: secrets/k3s-agent.yaml
+    key_groups:
+    - age:
+      - *ngarvey
       - *joor
       - *zah
       - *frul
@@ -122,6 +153,28 @@ creation_rules:
     - age:
       - *ngarvey
       - *workstation
+  # prometheus-remote-write: the password the Vector agent on every host sends
+  # to prometheus.home.garvey.sh/api/v1/write (modules/services/vector-agent.nix).
+  # Prometheus's Caddy sidecar holds only the bcrypt hash
+  # (k8s/manifests/prometheus/secret.yaml). nelkir is missing until its host key
+  # is added.
+  - path_regex: secrets/prometheus-remote-write.yaml
+    key_groups:
+    - age:
+      - *ngarvey
+      - *workstation
+      - *dovahkiin
+      - *dragonsreach
+      - *lydia
+      - *wabbajack
+      - *fus
+      - *ro
+      - *dah
+      - *joor
+      - *zah
+      - *frul
+      - *skyforge
+      - *guevenne
   # celler-push: one push-only celler token per workstation, keyed by host
   # name, for `celler watch-store` (modules/desktop/celler-push.nix). Minted
   # with the key in secrets/celler-admin.yaml; the server checks them with its
@@ -145,6 +198,13 @@ creation_rules:
       - *workstation
       - *wabbajack
       - *dovahkiin
+      - *lydia
+  # The SMB microvm's SSH host key: lydia stages it into the guest over virtiofs
+  # (modules/microvm/smb.nix), so the key survives reboots.
+  - path_regex: secrets/smb-vm-ssh-host-key.yaml
+    key_groups:
+    - age:
+      - *ngarvey
       - *lydia
   - path_regex: secrets/storj-gateway.yaml
     key_groups:

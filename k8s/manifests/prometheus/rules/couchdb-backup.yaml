@@ -1,0 +1,46 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: couchdb-backup-alerts
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+    prometheus: prometheus
+spec:
+  groups:
+    - name: couchdb.backup
+      rules:
+        # CronJob couchdb-backup (manifests/couchdb/backup-cronjob.yaml) dumps
+        # CouchDB to restic in B2 daily at 03:00 UTC. The CronJob keeps its last
+        # three failed Jobs, so this stays firing until the failed Job is
+        # looked at and deleted.
+        - alert: CouchDBBackupFailed
+          expr: |
+            max by (job_name) (kube_job_status_failed{namespace="couchdb"} > 0)
+              * on (job_name) group_left()
+            max by (job_name) (kube_job_owner{namespace="couchdb", owner_kind="CronJob", owner_name="couchdb-backup"})
+          labels:
+            severity: warning
+          annotations:
+            summary: "CouchDB backup Job {{ $labels.job_name }} failed"
+            description: "Read its logs with `kubectl -n couchdb logs job/{{ $labels.job_name }}`, then delete it: `kubectl -n couchdb delete job {{ $labels.job_name }}`."
+
+        # A day plus slack for a slow run; also catches the CronJob not
+        # running at all.
+        - alert: CouchDBBackupStale
+          expr: time() - kube_cronjob_status_last_successful_time{namespace="couchdb", cronjob="couchdb-backup"} > 26 * 3600
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "CouchDB has not been backed up for over a day"
+            description: "The last successful couchdb-backup run was {{ $value | humanizeDuration }} ago. Check `kubectl -n couchdb get jobs`."
+
+        - alert: CouchDBBackupMetricsMissing
+          expr: absent(kube_cronjob_status_last_successful_time{namespace="couchdb", cronjob="couchdb-backup"})
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: "No metrics for the CouchDB backup CronJob"
+            description: "kube-state-metrics is down, or the CronJob is gone or has never succeeded. Until this recovers the other CouchDB backup alerts cannot fire."

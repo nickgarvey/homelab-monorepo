@@ -28,7 +28,7 @@ in rec {
     # v4-only: the container has IPv6 disabled (modules/containers/unifi.nix).
     unifi         = { v4 = [ "10.28.0.4" ]; v6 = []; };
     k3s-api       = { v4 = []; v6 = map hostV6 [ "fus" "ro" "dah" ]; };
-    # The three Ceph RGW gateways (S3 on port 7480). Clients round-robin; any
+    # The three Ceph RGW gateways (S3 over HTTPS on 443). Clients round-robin; any
     # gateway serves the whole S3 API. See modules/services/ceph.nix.
     rgw           = { v4 = []; v6 = map hostV6 [ "joor" "zah" "frul" ]; };
     # trmnl-display keeps A+AAAA: the ESP32 client is IPv4-only and hits an
@@ -49,6 +49,9 @@ in rec {
     # Celler Nix binary cache; Caddy sidecar terminates TLS on 443
     # (k8s/manifests/celler).
     celler        = { v4 = []; v6 = [ "2001:470:482f:2::5008" ]; };
+    # Prometheus; Caddy sidecar terminates TLS on 443 and authenticates remote
+    # write (k8s/manifests/prometheus).
+    prometheus    = { v4 = []; v6 = [ "2001:470:482f:2::5009" ]; };
   };
 
   # CNAMEs (targets are FQDNs with trailing dot).
@@ -59,6 +62,7 @@ in rec {
     "_acme-challenge.auth" = "bfeb451a-9409-4da5-a44e-f1b80354a075.acme.garvey.sh.";
     "_acme-challenge.spiffe-oidc" = "cb6844ff-24e9-46c4-a148-550d1bc2d414.acme.garvey.sh.";
     "_acme-challenge.celler" = "3a7bfadd-a547-4fb2-83ea-dfb61749790f.acme.garvey.sh.";
+    "_acme-challenge.prometheus" = "3b73977a-42e6-4a93-b8bd-ae5f03189a30.acme.garvey.sh.";
   };
 
   # Split-horizon overrides: public (garvey.sh) names answered internally with

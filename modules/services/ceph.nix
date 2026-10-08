@@ -34,6 +34,7 @@ let
   rgwCertDir = "/var/lib/acme/${rgwDomain}";
   # Knot (knot-auth container, 10.28.0.6) through the router's NAT64.
   knotViaNat64 = "[64:ff9b::a1c:6]:53";
+  cephConf = config.environment.etc."ceph/ceph.conf".source;
 in
 {
   assertions = [{
@@ -47,7 +48,7 @@ in
       fsid = "8d324da3-f3ab-40f8-aaa1-71ed33705f75";
       monInitialMembers = lib.concatStringsSep "," monNames;
       monHost = lib.concatMapStringsSep ","
-        (n: "[v2:[${lanV6 n}]:3300,v1:[${lanV6 n}]:6789]") monNames;
+        (n: "[v2:[${lanV6 n}]:3300]") monNames;
       # Only the static addresses: matching the whole LAN /64 lets daemons bind a
       # temporary privacy address, which expires.
       publicNetwork = lib.concatMapStringsSep "," (n: "${lanV6 n}/128") monNames;
@@ -57,9 +58,35 @@ in
     extraConfig = {
       "ms bind ipv6" = "true";
       "ms bind ipv4" = "false";
+      # msgr2 only. The legacy protocol has no secure mode, so it would be a
+      # way around the encryption below. The monmap lists only v2 addresses
+      # too (ceph mon set-addrs); ceph-csi talks to the mons on 3300
+      # (k8s/vendor/ceph-csi-rbd/values.yaml).
+      "ms bind msgr1" = "false";
       # Read by the mons when a pool is created.
       "osd pool default size" = "3";
       "osd pool default min size" = "2";
+      # Never mark a down OSD out. With one OSD per host and size 3 there is
+      # nowhere to re-replicate to, and an OSD that was out gets a full
+      # backfill when it returns instead of catching up from the PG log.
+      # Revisit if a fourth storage node is added.
+      "mon osd down out interval" = "0";
+      # Ceph raises OSD_NO_DOWN_OUT_INTERVAL while the interval is 0, which
+      # would hold the cluster at HEALTH_WARN for good.
+      "mon warn on osd down out interval zero" = "false";
+      # Encrypt every messenger connection (AES-GCM): clients' RBD I/O and the
+      # daemons' own traffic cross the LAN, where crc mode would let anyone
+      # who can spoof ARP/NDP read and rewrite it. cephx authenticates either
+      # way. Every client here speaks msgr2 secure (kernel RBD from 5.11,
+      # ceph-csi's librbd). The client picks among the modes the server
+      # allows, so the server must allow secure alone for ceph-csi's
+      # ms_mode=prefer-crc maps to end up encrypted.
+      "ms cluster mode" = "secure";
+      "ms service mode" = "secure";
+      "ms client mode" = "secure";
+      "ms mon cluster mode" = "secure";
+      "ms mon service mode" = "secure";
+      "ms mon client mode" = "secure";
     };
 
     mon = { enable = true; daemons = [ hostname ]; package = ceph; };
@@ -75,11 +102,12 @@ in
     rgw = { enable = true; daemons = [ "rgw.${hostname}" ]; package = ceph; };
     client = {
       enable = true;
-      # HTTPS on 443 with this node's certificate for the shared name (below);
-      # plain HTTP stays on 7480.
+      # HTTPS only, on 443 with this node's certificate for the shared name
+      # (below). There is no plain HTTP endpoint: STS replies carry temporary
+      # S3 credentials.
       extraConfig."client.rgw.${hostname}" = {
         "rgw frontends" =
-          "beast endpoint=[::]:7480 ssl_endpoint=[::]:443"
+          "beast ssl_endpoint=[::]:443"
           + " ssl_certificate=${rgwCertDir}/fullchain.pem ssl_private_key=${rgwCertDir}/key.pem";
         # STS, for AssumeRoleWithWebIdentity with SPIRE's JWT-SVIDs
         # (k8s/manifests/spire/README.md). rgw_sts_key comes from sops (below).
@@ -144,15 +172,24 @@ in
     # first real one is issued, so RGW always has files to load.
     wants = [ "acme-${rgwDomain}.service" ];
     after = [ "acme-${rgwDomain}.service" ];
+    restartTriggers = [ cephConf ];
     serviceConfig.AmbientCapabilities = [ "CAP_NET_BIND_SERVICE" ];
     serviceConfig.EnvironmentFile = config.sops.templates."rgw-sts.env".path;
   };
+
+  # The NixOS module does not restart Ceph daemons when ceph.conf changes, and
+  # most options there (the messenger modes, RGW's frontends) are read only at
+  # start. Restart them on a change; the deploy tool's Ceph gate does one host
+  # at a time and waits for every PG to be active+clean.
+  systemd.services."ceph-mon-${hostname}".restartTriggers = [ cephConf ];
+  systemd.services."ceph-mgr-${hostname}".restartTriggers = [ cephConf ];
+  systemd.services."ceph-osd-${node.osd}".restartTriggers = [ cephConf ];
 
   environment.systemPackages = [ ceph ];
 
   # Mesh interfaces are already trusted; these are for LAN clients and peers.
   # 9283: the mgr prometheus module, scraped by the k3s cluster's Prometheus.
-  networking.firewall.allowedTCPPorts = [ 443 3300 6789 9283 ];
-  # OSD and mgr messengers (ms_bind_port_min..max), and RGW on 7480.
+  networking.firewall.allowedTCPPorts = [ 443 3300 9283 ];
+  # OSD and mgr messengers (ms_bind_port_min..max).
   networking.firewall.allowedTCPPortRanges = [ { from = 6800; to = 7568; } ];
 }

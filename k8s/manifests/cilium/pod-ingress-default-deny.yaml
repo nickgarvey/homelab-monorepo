@@ -1,0 +1,46 @@
+# Default-deny pod ingress from outside the cluster (ait nix-rI8Cl.4).
+#
+# Pod IPs are GUAs routed on the LAN, so without this every port of every pod
+# (metrics, admin APIs, the plaintext backends behind Caddy sidecars) is
+# reachable from the LAN at the pod IP. "ClusterIP-only" is not a boundary;
+# this policy is.
+#
+# Selecting a pod with an ingress rule makes Cilium drop all other ingress to
+# it. The one rule here lets in the cluster itself: pods, the nodes (kubelet
+# probes, LB traffic SNATed from another node), kube-apiserver (webhooks) and
+# cilium-health. Everything else, the LAN included, is dropped unless an app
+# allows it. Node identities are derived from source IPs on the LAN /64, so
+# "cluster" trusts addresses until WireGuard strict mode lands (nix-rI8Cl.28).
+#
+# Apps reachable from outside the cluster (every LoadBalancer Service) allow
+# their Service's target ports in their own manifests/<app>/network-policy.yaml.
+# Those are allow-only policies (enableDefaultDeny.ingress: false); this file
+# is what turns the deny on. A new LoadBalancer needs such a policy, or it is
+# reachable only from inside the cluster.
+#
+# Excluded, because they have tighter ingress policies of their own and this
+# policy's allow would widen them (allow rules from all policies are unioned):
+# - longhorn-system: manifests/longhorn/network-policy.yaml
+# - OpenShell sandbox pods (label openshell.ai/managed-by): the chart's
+#   NetworkPolicies in the openshell namespace
+#
+# Rollback: kubectl delete ciliumclusterwidenetworkpolicy pod-ingress-default-deny
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: pod-ingress-default-deny
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  description: "Pods accept ingress only from the cluster, plus what per-app policies allow"
+  endpointSelector:
+    matchExpressions:
+      - key: k8s:io.kubernetes.pod.namespace
+        operator: NotIn
+        values:
+          - longhorn-system
+      - key: k8s:openshell.ai/managed-by
+        operator: DoesNotExist
+  ingress:
+    - fromEntities:
+        - cluster

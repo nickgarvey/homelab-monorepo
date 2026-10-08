@@ -10,10 +10,20 @@
 # `log_to_metric` transform (i.e. it actually emits a metric event, as
 # opposed to an intermediate `remap` transform that only reshapes fields).
 
-{ config, lib, pkgs, ... }:
+{ config, lib, pkgs, inputs, ... }:
 
+let
+  cfg = config.homelab.metrics;
+in
 {
+  imports = [ inputs.sops-nix.nixosModules.sops ];
+
   options.homelab.metrics = {
+    enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Run the Vector agent. The host needs its age key in the secrets/prometheus-remote-write.yaml rule of .sops.yaml.";
+    };
     sources = lib.mkOption {
       type = lib.types.attrsOf lib.types.attrs;
       default = { };
@@ -26,10 +36,27 @@
     };
   };
 
-  config = {
+  config = lib.mkIf cfg.enable {
+    # The remote-write password, handed to Vector as a systemd credential and
+    # read through its directory secret backend (Vector does not interpolate
+    # environment variables by default). Prometheus's Caddy sidecar checks it
+    # against a bcrypt hash (k8s/manifests/prometheus/caddy-configmap.yaml).
+    sops.secrets.prometheus-remote-write-password = {
+      sopsFile = ../../secrets/prometheus-remote-write.yaml;
+      key = "password";
+      restartUnits = [ "vector.service" ];
+    };
+    systemd.services.vector.serviceConfig.LoadCredential =
+      "prometheus-remote-write:${config.sops.secrets.prometheus-remote-write-password.path}";
+
     services.vector = {
       enable = true;
       settings = {
+        secret.credentials = {
+          type = "directory";
+          path = "/run/credentials/vector.service";
+          remove_trailing_whitespace = true;
+        };
         sources = config.homelab.metrics.sources;
         transforms = config.homelab.metrics.transforms;
         sinks.prometheus_remote_write = {
@@ -37,7 +64,12 @@
           inputs = [ "disk_usage" ] ++ builtins.attrNames (
             lib.filterAttrs (_: t: t.type == "log_to_metric") config.homelab.metrics.transforms
           );
-          endpoint = "http://prometheus.prometheus.k8s.home.garvey.sh:9090/api/v1/write";
+          endpoint = "https://prometheus.home.garvey.sh/api/v1/write";
+          auth = {
+            strategy = "basic";
+            user = "vector";
+            password = "SECRET[credentials.prometheus-remote-write]";
+          };
         };
       };
     };

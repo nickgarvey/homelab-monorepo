@@ -1,0 +1,25 @@
+# Anyone may reach the LoadBalancer Service in k8s-gateway.yaml on its target ports.
+# Allow-only: the deny comes from manifests/cilium/pod-ingress-default-deny.yaml.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: k8s-gateway-lb-ingress
+  namespace: k8s-gateway
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  description: "LoadBalancer target ports open to all"
+  enableDefaultDeny:
+    ingress: false
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: k8s-gateway
+  ingress:
+    - fromEntities:
+        - all
+      toPorts:
+        - ports:
+            - port: "1053"
+              protocol: UDP
+            - port: "1053"
+              protocol: TCP

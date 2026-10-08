@@ -1,9 +1,6 @@
-# In-cluster only, and the only Service service-monitor.yaml scrapes. In-cluster
-# workers reach the frontend at temporal-frontend.temporal.svc:7233.
-#
-# Off-cluster gRPC clients -- the nix-build worker on talos -- go through the
-# LoadBalancer in frontend-lb-service.yaml instead, which is why this one stays
-# ClusterIP.
+# The frontend's only Service, and the only one service-monitor.yaml scrapes.
+# Workers reach the frontend at temporal-frontend.temporal.svc:7233. There is no
+# off-cluster path: the service CIDR (fd43::/112) is not routed off-cluster.
 apiVersion: v1
 kind: Service
 metadata:

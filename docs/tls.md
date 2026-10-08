@@ -87,9 +87,11 @@ nginx.service` from the host's acme unit.
 
 Two consequences: **each node issues its own copy** of the same name, so a cluster-wide
 first issuance spends one of Let's Encrypt's 5-per-week duplicate certificates per node
-(renewals stagger themselves and come nowhere near it); and **port 3900 stays plaintext**,
-so a failed cert degrades to what garage did before rather than taking the service down.
-Consumers move to `https://garage.home.garvey.sh` one at a time.
+(renewals stagger themselves and come nowhere near it); and **HTTPS is the only way in**:
+with `tls.enable`, the plaintext API on 3900 binds the container's loopback, for nginx
+alone. A certificate that fails to renew therefore takes that node's S3 endpoint down when
+it expires, rather than degrading to plaintext; the certificate-expiry alerts are what
+catch it first. Every client uses `https://garage.home.garvey.sh`.
 
 **The Storj gateway's shape is different, and the difference is instructive.** gateway-st
 embeds minio, which reads its own certificate from `<config-dir>/certs/{public.crt,

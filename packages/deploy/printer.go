@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"time"
 )
 
@@ -32,12 +31,12 @@ type moonrakerPrintStatsResp struct {
 // already wedged, but it could also mean the printer is mid-job with a
 // network blip, and we shouldn't guess).
 func CheckPrinterIdle(r Runner, host Host) (idle bool, state string, queryOK bool) {
-	url := fmt.Sprintf("http://%s:7125/printer/objects/query?print_stats", host.FQDN())
-	ctx, cancel := WithTimeout(10 * time.Second)
-	defer cancel()
-	res := r.Run(ctx, []string{
-		"curl", "-fsS", "--max-time", "5", url,
-	}, RunOpts{})
+	// Moonraker listens on the printer host's loopback only; everything else
+	// goes through nginx, which wants an Authelia login or the API key. So ask
+	// it from the host itself, over SSH.
+	res := SSHRun(r, host,
+		"curl -fsS --max-time 5 'http://[::1]:7125/printer/objects/query?print_stats'",
+		15*time.Second)
 	if res.Failed() {
 		return false, "", false
 	}

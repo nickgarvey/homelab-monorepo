@@ -70,9 +70,6 @@ in
             # LAN inventory page (modules/router/lan-table.nix)
             iifname "${cfg.lanInterface}" tcp dport { 8080 } accept
 
-            # TRMNL reverse proxy (nspawn container, host networking)
-            iifname "${cfg.lanInterface}" tcp dport { 80 } ip daddr 10.28.0.2 accept
-
             # NOTE: storj-gateway listener now lives in an nspawn container
             # at 2001:470:482f:300::2; traffic destined for it is handled
             # by the forward chain (pod-CIDR sources permitted via the
@@ -176,9 +173,11 @@ in
               iifname "he-ipv6" oifname "${cfg.lanInterface}" counter drop
             ''}
 
-            # LAN <-> Tailscale
+            # Tailscale -> LAN. Not the reverse: LAN-originated packets keep their
+            # LAN source, so a LAN client could reach any tailnet peer that
+            # routes replies back here. Replies to tailnet-started connections
+            # pass the established,related rule.
             iifname "tailscale0" oifname "${cfg.lanInterface}" accept
-            iifname "${cfg.lanInterface}" oifname "tailscale0" accept
 
             # Tailscale exit-node: clients egress to internet via router
             iifname "tailscale0" oifname "${cfg.wanInterface}" accept
@@ -213,9 +212,6 @@ in
 
           chain postrouting {
             type nat hook postrouting priority srcnat;
-
-            # Hairpin NAT — allows LAN clients to reach port-forwarded services via the WAN IP
-            iifname "${cfg.lanInterface}" oifname "${cfg.lanInterface}" masquerade
 
             # Masquerade all traffic going out WAN (internet-bound)
             oifname "${cfg.wanInterface}" masquerade

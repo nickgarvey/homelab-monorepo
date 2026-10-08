@@ -77,8 +77,8 @@ in
 
     tls = {
       enable = lib.mkEnableOption ''
-        an HTTPS listener for the S3 API on port 443, in addition to the
-        plaintext API on 3900 (which is left untouched).
+        an HTTPS listener for the S3 API on port 443, which then becomes the
+        only way in: the plaintext API on 3900 binds the container's loopback.
 
         Garage speaks no TLS itself, so nginx in the container terminates it
         and proxies to garage on the loopback. The container has no route to
@@ -193,13 +193,17 @@ in
               rpc_public_addr = "[${lib.head (lib.splitString "/" cfg.localAddress6)}]:3901";
               bootstrap_peers = cfg.peers;
 
+              # With TLS on, plaintext S3 is for nginx alone; clients use
+              # https://<tls.domain>. The admin API (metrics, health, and
+              # token-gated admin calls) has no remote user: the garage CLI
+              # speaks RPC on 3901.
               s3_api = {
                 s3_region = "garage";
-                api_bind_addr = "[::]:3900";
+                api_bind_addr = if cfg.tls.enable then "[::1]:3900" else "[::]:3900";
               };
 
               admin = {
-                api_bind_addr = "[::]:3903";
+                api_bind_addr = "[::1]:3903";
               };
             };
           };

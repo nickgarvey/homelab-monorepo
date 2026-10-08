@@ -4,6 +4,7 @@
     ../../modules/core/nixos-common.nix
     ../../modules/networking/networkd.nix
     ./hardware-configuration.nix
+    ./web-gate.nix
   ];
 
   networking.hostName = "skyforge";
@@ -159,18 +160,25 @@
     enable = true;
     user = "klipper";
     group = "klipper";
-    allowSystemControl = true;
-    address = "::";
+    # Off: it adds a polkit rule letting klipper manage systemd units and power
+    # off the host, which turns a Moonraker session into root. Mainsail's
+    # reboot and service buttons stop working; Klipper's own RESTART and
+    # FIRMWARE_RESTART do not depend on it.
+    allowSystemControl = false;
+    # Loopback only: nginx (web-gate.nix) is the way in, and it has already
+    # required an Authelia login or the API key.
+    address = "::1";
     port = 7125;
     settings = {
-      # Omitting [authorization] does NOT disable auth — moonraker loads
-      # the authorization component by default and defaults trusted_clients
-      # to []. Result: every request 401s. Explicitly trust everything
-      # since this is LAN-only with no public exposure (tailnet devices reach
-      # it through dragonsreach's advertised IPv6 route).
+      # Moonraker trusts nginx, the only client that can reach it. nginx strips
+      # X-Real-IP and X-Forwarded-For, which Moonraker would otherwise take as
+      # the client address. Omitting [authorization] would not turn auth off:
+      # the component loads anyway with no trusted clients, and every request
+      # gets 401. Moonraker's own API key is off; nginx checks the key.
       authorization = {
-        cors_domains = [ "*" ];
-        trusted_clients = [ "0.0.0.0/0" "::/0" ];
+        cors_domains = [ "https://skyforge.home.garvey.sh" ];
+        trusted_clients = [ "::1/128" ];
+        enable_api_key = false;
       };
       octoprint_compat = { };
       history = { };
@@ -178,8 +186,9 @@
         location = "printer";
         service = "mjpegstreamer-adaptive";
         target_fps = 15;
-        stream_url = "http://skyforge.home.garvey.sh:8080/stream";
-        snapshot_url = "http://skyforge.home.garvey.sh:8080/snapshot";
+        # Served by nginx over https (web-gate.nix); ustreamer is loopback-only.
+        stream_url = "/webcam/stream";
+        snapshot_url = "/webcam/snapshot";
       };
     };
   };
@@ -187,12 +196,11 @@
   services.ustreamer = {
     enable = true;
     device = "/dev/video0";
-    listenAddress = "[::]:8080";
+    listenAddress = "[::1]:8080";
     extraArgs = [
       "--resolution=1920x1080"
       "--desired-fps=60"
       "--format=MJPEG"
-      "--allow-origin=*"
     ];
   };
 
@@ -218,8 +226,8 @@
   };
 
   # The mainsail module builds its nginx upstream as `${moonraker.address}:${port}`,
-  # which produces an unbracketed `:::7125` when moonraker listens on `::`. Override
-  # to a bracketed v6 loopback so nginx parses it correctly.
+  # which leaves an IPv6 address unbracketed (`::1:7125`). Override it with the
+  # bracketed form so nginx parses it correctly.
   services.nginx.upstreams.mainsail-apiserver.servers = lib.mkForce {
     "[::1]:7125" = {};
   };
@@ -227,9 +235,7 @@
   # Default nginx client_max_body_size (1M) rejects large gcode uploads with 413.
   services.nginx.clientMaxBodySize = "2G";
 
-  networking.firewall.allowedTCPPorts = [ 80 7125 8080 ];
-
-  security.polkit.enable = true;
+  networking.firewall.allowedTCPPorts = [ 80 443 ];
 
   users.users.klipper = {
     isSystemUser = true;

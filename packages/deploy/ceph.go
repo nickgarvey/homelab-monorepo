@@ -77,8 +77,7 @@ func cephJSON(r Runner, host Host, args string, out any) error {
 }
 
 // CephBeforeDeploy refuses to touch host while an OSD on any other host is
-// down (two OSDs down at once can leave placement groups without quorum), then
-// sets noout on host so its OSD restarting does not start a rebalance. The
+// down (two OSDs down at once can leave placement groups without quorum). The
 // host's own OSD may already be down: a deploy is often how it gets fixed.
 func CephBeforeDeploy(r Runner, host Host) bool {
 	fmt.Println("\n  Ceph: checking the other nodes before deploying...")
@@ -94,19 +93,12 @@ func CephBeforeDeploy(r Runner, host Host) bool {
 			return false
 		}
 	}
-	res := SSHRun(r, host, "sudo ceph osd set-group noout "+host.Name, 30*time.Second)
-	if res.Failed() {
-		fmt.Printf("  ✗ could not set noout on %s: %s\n", host.Name, strings.TrimSpace(res.Stderr))
-		return false
-	}
-	fmt.Printf("  ✓ other nodes' OSDs are up; noout set on %s\n", host.Name)
+	fmt.Println("  ✓ other nodes' OSDs are up")
 	return true
 }
 
 // CephAfterDeploy waits for every OSD to be up and every placement group to be
-// active+clean, then clears host's noout. On timeout noout stays set: the
-// caller reports it, since a forgotten noout would stop Ceph re-replicating
-// if the node later fails for real.
+// active+clean, so the next host is not touched while this one is recovering.
 func CephAfterDeploy(r Runner, host Host, sleeper func(time.Duration)) bool {
 	if sleeper == nil {
 		sleeper = time.Sleep
@@ -127,13 +119,7 @@ func CephAfterDeploy(r Runner, host Host, sleeper func(time.Duration)) bool {
 		case !pgs.allActiveClean():
 			fmt.Printf("  PGs not all active+clean (attempt %d/%d)\n", i+1, cephHealthRetries)
 		default:
-			res := SSHRun(r, host, "sudo ceph osd unset-group noout "+host.Name, 30*time.Second)
-			if res.Failed() {
-				fmt.Printf("  ✗ Ceph healthy but could not clear noout on %s: %s\n",
-					host.Name, strings.TrimSpace(res.Stderr))
-				return false
-			}
-			fmt.Printf("  ✓ Ceph healthy; noout cleared on %s\n", host.Name)
+			fmt.Println("  ✓ Ceph healthy")
 			return true
 		}
 		if i < cephHealthRetries-1 {
@@ -142,11 +128,4 @@ func CephAfterDeploy(r Runner, host Host, sleeper func(time.Duration)) bool {
 	}
 	fmt.Printf("  ✗ Ceph did not become healthy after deploying %s\n", host.Name)
 	return false
-}
-
-// cephNooutLeftSet is the warning recorded when a deploy ends with host's
-// noout still set.
-func cephNooutLeftSet(host Host) string {
-	return fmt.Sprintf("%s: Ceph noout is still set on this host. Once its OSD is back and PGs are "+
-		"active+clean, clear it: ssh %s sudo ceph osd unset-group noout %s", host.Name, host.FQDN(), host.Name)
 }

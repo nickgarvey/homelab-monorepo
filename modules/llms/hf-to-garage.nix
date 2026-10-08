@@ -24,7 +24,7 @@ in
 
     endpoint = lib.mkOption {
       type = lib.types.str;
-      default = "http://garage.home.garvey.sh:3900";
+      default = "https://garage.home.garvey.sh";
       description = "garage S3 endpoint URL (reachable over LAN IPv6 when on-network).";
     };
 

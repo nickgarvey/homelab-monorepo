@@ -6,10 +6,11 @@
 # manifests/ceph-csi-rbd/, not here.
 csiConfig:
   - clusterID: "8d324da3-f3ab-40f8-aaa1-71ed33705f75"
+    # msgr2 (3300): the mons do not listen on msgr1 (6789).
     monitors:
-      - "[2001:470:482f::24]:6789"
-      - "[2001:470:482f::25]:6789"
-      - "[2001:470:482f::26]:6789"
+      - "[2001:470:482f::24]:3300"
+      - "[2001:470:482f::25]:3300"
+      - "[2001:470:482f::26]:3300"
 
 provisioner:
   replicaCount: 2

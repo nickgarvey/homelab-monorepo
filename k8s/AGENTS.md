@@ -77,6 +77,15 @@ Before picking one, list what is already taken:
 grep -rh lb-ipam-ips manifests/*/*.yaml | sed 's/.*: //' | tr -d '"' | sort
 ```
 
+## Pod ingress is default-deny
+
+Pod IPs are routable from the LAN, so `manifests/cilium/pod-ingress-default-deny.yaml`
+drops all pod ingress that does not come from the cluster itself. **A new LoadBalancer
+needs a `manifests/<app>/network-policy.yaml`** allowing its Service's *target* ports
+(copy any existing one, e.g. `manifests/zot/network-policy.yaml`); without it the
+LoadBalancer only answers inside the cluster. Allow the Caddy port, never the backend
+port behind it.
+
 ---
 
 # DNS

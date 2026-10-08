@@ -1,4 +1,4 @@
-{ config, lib, pkgs, modulesPath, ... }:
+{ config, lib, pkgs, modulesPath, inputs, ... }:
 
 let
   # guevenne's addresses come from the canonical LAN inventory rather than
@@ -17,6 +17,14 @@ in
   ];
 
   networking.hostName = "nelkir";
+
+  # No Vector agent until nelkir's age key is in the
+  # secrets/prometheus-remote-write.yaml rule of .sops.yaml (ait nix-rI8Cl.33).
+  homelab.metrics.enable = false;
+  assertions = [{
+    assertion = lib.max inputs.self.lastModified inputs.nixpkgs.lastModified < 1796083200; # 2026-12-01T00:00:00Z
+    message = "nelkir still runs without Vector. Add its age key to the prometheus-remote-write sops rule and drop homelab.metrics.enable = false and this assertion (ait nix-rI8Cl.33), or move the deadline out on purpose.";
+  }];
 
   # This Pi lives at the TV on wifi, joined interactively with nmcli and
   # persisted by NetworkManager. Its lan-hosts entry carries the wifi MAC, so

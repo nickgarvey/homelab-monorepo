@@ -1,0 +1,25 @@
+# Anyone may reach the LoadBalancer Service in service.yaml on its target ports.
+# Allow-only: the deny comes from manifests/cilium/pod-ingress-default-deny.yaml.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: anki-sync-server-lb-ingress
+  namespace: anki
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  description: "LoadBalancer target ports open to all"
+  enableDefaultDeny:
+    ingress: false
+  endpointSelector:
+    matchLabels:
+      app: anki-sync-server
+  ingress:
+    - fromEntities:
+        - all
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+            - port: "443"
+              protocol: TCP

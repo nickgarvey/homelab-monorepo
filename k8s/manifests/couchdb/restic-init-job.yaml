@@ -1,13 +1,7 @@
-# One-shot job to initialize the restic repository in B2. Run ONCE after
-# the secret is created and before the first backup CronJob fires:
-#
-#   kubectl apply -f manifests/couchdb/restic-init-job.yaml
-#   kubectl -n couchdb logs -f job/couchdb-restic-init
-#   kubectl -n couchdb delete job couchdb-restic-init   # after success
-#
-# Re-running against an already-initialized repo will fail loudly and is
-# safe (it cannot overwrite). Kept in the repo for reference and disaster
-# recovery.
+# Creates the restic repository in B2 if it does not exist yet. It sits with
+# the rest of the couchdb manifests, so `kubectl apply -f manifests/couchdb/`
+# runs it again: against an existing repository it only checks that the
+# repository opens, and the finished Job deletes itself a day later.
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -16,6 +10,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: ngarvey-homelab
 spec:
+  ttlSecondsAfterFinished: 86400
   backoffLimit: 0
   template:
     metadata:
@@ -35,7 +30,15 @@ spec:
             - |
               set -eu
               apk add --no-cache restic >/dev/null
-              restic init
+              # `restic cat config` fails both when there is no repository and when
+              # it cannot be opened (wrong password, B2 unreachable), and init
+              # refuses to touch an existing one, so a broken connection still
+              # fails the Job instead of being mistaken for a missing repository.
+              if restic cat config >/dev/null 2>&1; then
+                echo "repository already initialized"
+              else
+                restic init
+              fi
           resources:
             requests:
               cpu: "50m"

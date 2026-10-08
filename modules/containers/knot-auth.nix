@@ -60,6 +60,13 @@ let
       sopsFile = ../../secrets/rgw-acme.yaml;
       sopsKey = "acme_tsig_secret";
     }
+    {
+      name = "acme-skyforge";
+      owner = "_acme-challenge.skyforge.${domain}.";
+      sopsName = "skyforge-acme-tsig";
+      sopsFile = ../../secrets/skyforge-acme.yaml;
+      sopsKey = "acme_tsig_secret";
+    }
   ];
 
   # Zone serial must increase on every content change. The flake's lastModified

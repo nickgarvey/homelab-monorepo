@@ -72,11 +72,57 @@ spec:
     runAsGroup: 65534
     fsGroup: 65534
 
-  # Enable admin API for lifecycle management
-  enableAdminAPI: true
+  # Off: the admin API (TSDB delete_series, snapshot, clean_tombstones) has no
+  # auth, the LoadBalancer is open to the LAN, and nothing uses it.
+  enableAdminAPI: false
 
   # Accept pushed samples from host-level Vector agents
   enableRemoteWriteReceiver: true
+
+  # TLS terminator for prometheus.home.garvey.sh, and the only way in from the
+  # LAN (service-https.yaml): it requires the Vector credential for remote write
+  # and refuses the lifecycle endpoints (caddy-configmap.yaml). Caddy loads the
+  # cert only at startup, so `kubectl -n prometheus rollout restart
+  # statefulset/prometheus-prometheus` after each ~60-day cert-manager renewal,
+  # same as grafana.
+  containers:
+    - name: caddy
+      image: caddy:2-alpine
+      command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile"]
+      env:
+        - name: REMOTE_WRITE_BCRYPT
+          valueFrom:
+            secretKeyRef:
+              name: prometheus-remote-write
+              key: bcrypt
+      ports:
+        - containerPort: 80
+          name: http-redirect
+        - containerPort: 443
+          name: https
+      volumeMounts:
+        - name: caddy-config
+          mountPath: /etc/caddy
+        - name: caddy-data
+          mountPath: /data
+        - name: certs
+          mountPath: /certs
+          readOnly: true
+      resources:
+        requests:
+          cpu: 20m
+          memory: 32Mi
+        limits:
+          memory: 128Mi
+  volumes:
+    - name: caddy-config
+      configMap:
+        name: prometheus-caddy
+    - name: caddy-data
+      emptyDir: {}
+    - name: certs
+      secret:
+        secretName: prometheus-tls
 
   # AlertManager configuration
   alerting:

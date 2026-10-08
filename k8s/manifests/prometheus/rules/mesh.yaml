@@ -49,7 +49,7 @@ spec:
             severity: warning
           annotations:
             summary: "{{ $labels.hostname }}'s Thunderbolt link to {{ $labels.peer }} runs on {{ $value }} lane"
-            description: "Lane bonding did not complete on the {{ $labels.hostname }} <-> {{ $labels.peer }} link. Reload the thunderbolt stack on one end (noout; modprobe -r thunderbolt_net thunderbolt; modprobe thunderbolt; systemctl start thunderbolt-net-load) or reboot it."
+            description: "Lane bonding did not complete on the {{ $labels.hostname }} <-> {{ $labels.peer }} link. Reload the thunderbolt stack on one end (modprobe -r thunderbolt_net thunderbolt; modprobe thunderbolt; systemctl start thunderbolt-net-load) or reboot it."
 
         # No Thunderbolt path at all to a peer, direct or through the third
         # node, so its mesh address is reached over the LAN fallback route

@@ -10,7 +10,7 @@ spec:
   retentionPolicy: 14d
   configuration:
     destinationPath: s3://postgres-backups/
-    endpointURL: http://garage.home.garvey.sh:3900
+    endpointURL: https://garage.home.garvey.sh
     s3Credentials:
       accessKeyId:
         name: postgres-backups-s3

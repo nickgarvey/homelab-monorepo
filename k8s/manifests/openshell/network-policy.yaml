@@ -1,0 +1,24 @@
+# Anyone may reach the LoadBalancer Service in service-lb.yaml on its target ports.
+# Allow-only: the deny comes from manifests/cilium/pod-ingress-default-deny.yaml.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: openshell-gateway-lb-ingress
+  namespace: openshell
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  description: "LoadBalancer target ports open to all"
+  enableDefaultDeny:
+    ingress: false
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/instance: openshell
+      app.kubernetes.io/name: openshell
+  ingress:
+    - fromEntities:
+        - all
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP

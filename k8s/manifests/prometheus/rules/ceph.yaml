@@ -22,8 +22,8 @@ spec:
             summary: "Ceph is HEALTH_ERR"
             description: "Run `sudo ceph health detail` on joor/zah/frul. The failing checks are also in ceph_health_detail."
 
-        # Deploys set noout on the host being switched, which is itself a
-        # HEALTH_WARN for as long as the deploy runs; the `for` rides that out.
+        # A deploy restarting a node's OSD is HEALTH_WARN (OSD down, PGs
+        # degraded) while it runs; the `for` rides that out.
         - alert: CephHealthWarning
           expr: ceph_health_status == 1
           for: 30m
@@ -31,7 +31,7 @@ spec:
             severity: warning
           annotations:
             summary: "Ceph has been HEALTH_WARN for 30 minutes"
-            description: "Run `sudo ceph health detail`. A leftover noout from a failed deploy shows up here: clear it with `sudo ceph osd unset-group noout <host>` once the OSD is back."
+            description: "Run `sudo ceph health detail`."
 
         - alert: CephOSDDown
           expr: ceph_osd_up == 0

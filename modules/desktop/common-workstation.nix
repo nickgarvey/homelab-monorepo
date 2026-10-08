@@ -56,6 +56,7 @@ in
     ../core/nixos-common.nix
     ./printer.nix
     ./orca-slicer.nix
+    ./orca-skyforge.nix
     ./steam.nix
     ../services/smb-automount.nix
     ../home/ngarvey.nix
@@ -193,12 +194,22 @@ in
     logRefusedConnections = false;
   };
 
+  # The SMB microvm on lydia; its host key is pinned in sops
+  # (modules/microvm/smb.nix).
+  programs.ssh.knownHosts.smb-vm = {
+    hostNames = [ "smb" "smb.home.garvey.sh" "10.28.12.110" "2001:470:482f::14" ];
+    publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBQ0IpUK4sXmibAkWlzcCgAZ4fwwhfLJ4cTpsRkbtV1T";
+  };
+
   services.xserver.enable = true;
 
   virtualisation.docker = {
     enable = true;
     autoPrune.enable = true;
     enableOnBoot = true;
+    # Docker's forward rules run before the NixOS firewall, so `-p 8000:80`
+    # publishes to the whole LAN; default to loopback unless an address is given.
+    daemon.settings.ip = "127.0.0.1";
   };
 
   services.kanata = {

@@ -21,9 +21,9 @@ data:
           "name": "s3",
           "rootdirectory": "/zot",
           "region": "garage",
-          "regionendpoint": "http://garage.home.garvey.sh:3900",
+          "regionendpoint": "https://garage.home.garvey.sh",
           "bucket": "zot",
-          "secure": false,
+          "secure": true,
           "forcepathstyle": true
         }
       },

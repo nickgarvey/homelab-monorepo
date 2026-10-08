@@ -136,10 +136,19 @@ in
       restartUnits = [ "smb-vm-accounts-stage.service" "microvm@smb.service" ];
     };
 
+    # The guest's SSH host key, staged beside the accounts file so it is the
+    # same on every boot (the public half is in programs.ssh.knownHosts on the
+    # workstations, modules/desktop/common-workstation.nix).
+    sops.secrets.smb-vm-ssh-host-key = {
+      sopsFile = ../../secrets/smb-vm-ssh-host-key.yaml;
+      key = "smb_vm_ssh_host_ed25519_key";
+      restartUnits = [ "smb-vm-accounts-stage.service" "microvm@smb.service" ];
+    };
+
     # sops renders templates as real files under /run/secrets/rendered, which
-    # also holds garage/frigate secrets. Copy just this one into a dedicated dir
-    # as a real file (a sops custom-path is a symlink the guest can't resolve)
-    # so it can be virtiofs-shared into the SMB VM in isolation.
+    # also holds garage/frigate secrets. Copy just these into a dedicated dir
+    # as real files (a sops custom-path is a symlink the guest can't resolve)
+    # so they can be virtiofs-shared into the SMB VM in isolation.
     systemd.services.smb-vm-accounts-stage = {
       description = "Stage SMB VM account credentials for virtiofs";
       before = [ "microvm-virtiofsd@smb.service" ];
@@ -151,6 +160,7 @@ in
       script = ''
         install -d -m 0700 /run/smb-vm-secrets
         install -m 0400 ${config.sops.templates."smb-vm-accounts".path} /run/smb-vm-secrets/accounts
+        install -m 0400 ${config.sops.secrets.smb-vm-ssh-host-key.path} /run/smb-vm-secrets/ssh_host_ed25519_key
       '';
     };
 
@@ -202,7 +212,8 @@ in
             proto = "virtiofs";
           }) cfg.shares
           ++ [{
-            # Host-rendered "user:password" lines consumed by smb-provision-accounts.
+            # Host-rendered "user:password" lines consumed by smb-provision-accounts,
+            # and the guest's SSH host key.
             source = "/run/smb-vm-secrets";
             mountPoint = "/run/smb-vm-secrets";
             tag = "smb-accounts";
@@ -313,7 +324,20 @@ in
           };
         };
 
-        services.openssh.enable = true;
+        # The guest does not import nixos-common, so it repeats its keys-only rule.
+        services.openssh = {
+          enable = true;
+          settings = {
+            PasswordAuthentication = false;
+            KbdInteractiveAuthentication = false;
+          };
+          # Staged by smb-vm-accounts-stage on lydia; without it every boot made
+          # a new key and host-key warnings became routine.
+          hostKeys = [{
+            path = "/run/smb-vm-secrets/ssh_host_ed25519_key";
+            type = "ed25519";
+          }];
+        };
 
         system.stateVersion = "25.05";
       };

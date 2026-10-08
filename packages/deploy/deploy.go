@@ -82,13 +82,8 @@ func Deploy(ctx *DeployContext, host Host, mode Mode, plan Plan) bool {
 	case ModeBoot:
 		ok = deployUnsafe(ctx, host, "boot")
 	}
-	if host.CephHealthCheck {
-		if ok {
-			ok = CephAfterDeploy(ctx.Runner, host, ctx.Sleeper)
-		}
-		if !ok {
-			ctx.appendWarning(cephNooutLeftSet(host))
-		}
+	if host.CephHealthCheck && ok {
+		ok = CephAfterDeploy(ctx.Runner, host, ctx.Sleeper)
 	}
 	return ok
 }

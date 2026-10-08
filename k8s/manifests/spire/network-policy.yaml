@@ -1,0 +1,25 @@
+# Anyone may reach the spire chart's spire-spiffe-oidc-discovery-provider
+# LoadBalancer on its target ports. Allow-only: the deny comes from
+# manifests/cilium/pod-ingress-default-deny.yaml.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: spire-oidc-discovery-lb-ingress
+  namespace: spire
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  description: "LoadBalancer target ports open to all"
+  enableDefaultDeny:
+    ingress: false
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/instance: spire
+      app.kubernetes.io/name: spiffe-oidc-discovery-provider
+  ingress:
+    - fromEntities:
+        - all
+      toPorts:
+        - ports:
+            - port: "8443"
+              protocol: TCP

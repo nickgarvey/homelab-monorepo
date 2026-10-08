@@ -116,20 +116,22 @@ every mode:
 - **Before:** refuse if an OSD on any *other* host is down. Taking a second
   node's OSD down would leave placement groups below `min_size` and stall I/O.
   The host's own OSD may already be down, since a deploy is often the fix.
-  Then `ceph osd set-group noout <host>`, so the OSD restarting (or a reboot)
-  does not start re-replication.
 - **After** (including any reboot): wait up to 5 min for every OSD up and every
-  PG `active+clean`, then clear the host's `noout`.
-- **On failure** `noout` stays set, and the run's warnings say how to clear it.
-  Left set, Ceph would not re-replicate if the node later died for real.
+  PG `active+clean` before moving on to the next host.
+
+The gate sets no `noout`: the cluster never marks a down OSD out
+(`mon osd down out interval = 0` in `modules/services/ceph.nix`), so an OSD
+restarting does not start re-replication however long it takes.
 
 The queries run over SSH on the host itself; each storage node holds the admin
 keyring. Serial activation (below) is what makes this a rolling gate.
 
 ### Printer pre-check (skyforge)
 
-During the precheck pass, any host in the `printer` group is queried via
-moonraker to check if a print is active — before anything is built. If the
+During the precheck pass, any host in the `printer` group is asked over SSH
+whether a print is active — `curl` against moonraker on the host's own
+loopback, since it is not reachable from the network — before anything is
+built. If the
 printer is busy, the host is **skipped** (not failed). Pass `--force` to
 override and deploy regardless.
 

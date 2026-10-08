@@ -37,10 +37,14 @@ data:
         discoverability: required
         user_verification: required
     access_control:
-      # Applies only to forward-auth requests, and nothing uses forward-auth yet:
-      # OIDC clients set their own authorization_policy. Authelia rejects 'deny'
-      # without rules; when adding forward-auth rules here, switch this to deny.
-      default_policy: one_factor
+      # Applies only to forward-auth requests; OIDC clients set their own
+      # authorization_policy. A forward-auth domain without a rule is denied.
+      default_policy: deny
+      rules:
+        # Mainsail/Moonraker on skyforge (hosts/skyforge/web-gate.nix). OrcaSlicer
+        # uses an API key that nginx checks and never reaches Authelia.
+        - domain: skyforge.home.garvey.sh
+          policy: two_factor
     session:
       cookies:
         - domain: home.garvey.sh

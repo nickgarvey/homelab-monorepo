@@ -69,7 +69,7 @@ metadata:
     heritage: Helm
 data:
   config.json: |-
-    [{"clusterID":"8d324da3-f3ab-40f8-aaa1-71ed33705f75","monitors":["[2001:470:482f::24]:6789","[2001:470:482f::25]:6789","[2001:470:482f::26]:6789"]}]
+    [{"clusterID":"8d324da3-f3ab-40f8-aaa1-71ed33705f75","monitors":["[2001:470:482f::24]:3300","[2001:470:482f::25]:3300","[2001:470:482f::26]:3300"]}]
   cluster-mapping.json: |-
     []
 

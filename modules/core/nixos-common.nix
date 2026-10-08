@@ -53,7 +53,18 @@
     lfs.enable = true;
   };
 
-  services.openssh.enable = true;
+  # Keys only: ngarvey has passwordless sudo, so a guessed password would be root.
+  services.openssh = {
+    enable = true;
+    settings = {
+      PasswordAuthentication = false;
+      KbdInteractiveAuthentication = false;
+    };
+  };
+
+  # No LLMNR responder or lookups: anyone on the LAN can answer a single-label
+  # query, and nothing here resolves single-label names.
+  services.resolved.settings.Resolve.LLMNR = "false";
 
   boot.supportedFilesystems.zfs = false;
 

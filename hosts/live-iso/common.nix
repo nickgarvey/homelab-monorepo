@@ -10,6 +10,10 @@
 
   networking.hostName = "nixos-live";
 
+  # Live media hold no secrets, so no Vector agent (it needs the remote-write
+  # password from sops).
+  homelab.metrics.enable = false;
+
   nixpkgs.config.allowUnfree = true;
 
   # Ensure sshd starts immediately (the media module may set startWhenNeeded)

@@ -30,11 +30,18 @@ in
     environment.systemPackages = with pkgs; [
       pciutils
       atop
-      nfs-utils  # Required by Longhorn for NFS backup targets
     ];
 
-    sops.defaultSopsFile = ../../secrets/k3s.yaml;
-    sops.secrets.cluster_token = { };
+    sops.secrets.k3s-server-token = lib.mkIf isServer {
+      sopsFile = ../../secrets/k3s-server.yaml;
+      key = "server_token";
+    };
+    # Servers accept agents with the agent token (secrets/k3s-server.yaml);
+    # agents join with it alone and never hold the server token.
+    sops.secrets.k3s-agent-token = {
+      sopsFile = if isServer then ../../secrets/k3s-server.yaml else ../../secrets/k3s-agent.yaml;
+      key = "agent_token";
+    };
 
     # KUBECONFIG only exists on server nodes
     environment.variables = lib.mkIf isServer {
@@ -55,7 +62,10 @@ in
 
     services.k3s = {
       enable = true;
-      tokenFile = "/run/secrets/cluster_token";
+      tokenFile =
+        if isServer then config.sops.secrets.k3s-server-token.path
+        else config.sops.secrets.k3s-agent-token.path;
+      agentTokenFile = lib.mkIf isServer config.sops.secrets.k3s-agent-token.path;
       role = lib.mkDefault "server";
       clusterInit = lib.mkIf isFirstNode true;
       serverAddr = lib.mkIf (!isFirstNode) "https://k3s-api.home.arpa:6443";
@@ -106,14 +116,15 @@ in
     # have, so load it at boot instead.
     boot.kernelModules = [ "rbd" ];
 
-    # Longhorn settings
-    services.openiscsi = {
+    # Longhorn attaches its volumes over iSCSI, and only fus/ro/dah run it
+    # (k8s/: system-managed-components-node-selector is control-plane).
+    services.openiscsi = lib.mkIf isServer {
       enable = true;
       name = "${config.networking.hostName}-initiatorhost";
     };
-    systemd.services.iscsid.serviceConfig = {
-      PrivateMounts = "yes";
-      BindPaths = "/run/current-system/sw/bin:/bin";
+    systemd.services.iscsid = lib.mkIf isServer {
+      serviceConfig.PrivateMounts = "yes";
+      serviceConfig.BindPaths = "/run/current-system/sw/bin:/bin";
     };
 
     system.stateVersion = "25.11";
