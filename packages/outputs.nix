@@ -8,7 +8,6 @@ let
   playwright-renderer = import ./playwright-renderer/outputs.nix { inherit nixpkgs system; };
   trmnl-display = import ./trmnl-display/outputs.nix { inherit nixpkgs system; };
   ninfer = import ./ninfer/outputs.nix { inherit nixpkgs system; };
-  thinkrail = import ./thinkrail/outputs.nix { inherit nixpkgs system; };
   lan-table = import ./lan-table/outputs.nix { inherit nixpkgs system; };
   openshell = import ./openshell/outputs.nix { inherit nixpkgs system; };
   celler-pkg = import ./celler/outputs.nix { inherit nixpkgs celler system; };
@@ -29,8 +28,6 @@ in
     inherit trmnl-display;
     ninfer = ninfer.ninfer;
     ninfer-image = ninfer.image;
-    thinkrail = thinkrail.thinkrail;
-    thinkrail-node-modules = thinkrail.node-modules;
     inherit lan-table;
     openshell = openshell.cli;
     openshell-gateway-image = openshell.gateway-image;

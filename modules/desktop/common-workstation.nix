@@ -8,7 +8,6 @@ let
   };
   claude-code = inputs.claude-code-nix.packages.${pkgs.stdenv.hostPlatform.system}.default;
   codex = inputs.codex-cli-nix.packages.${pkgs.stdenv.hostPlatform.system}.default;
-  thinkrail = inputs.self.packages.${pkgs.stdenv.hostPlatform.system}.thinkrail;
   agent-issue-tracker = pkgs.callPackage ../../packages/agent-issue-tracker { };
 
   # Waybar kanata button (modules/home/dotfiles/waybar/config.jsonc, custom/kanata). The
@@ -162,7 +161,6 @@ in
       parallel
       ripgrep
       spotify
-      thinkrail
       virt-viewer
       wl-clipboard
     ];
