@@ -15,32 +15,44 @@ spec:
         # DDNS automation (see the wan.dns group). When that breaks, renewal fails
         # silently and the only symptom is the clock running down -- these rules are
         # the backstop that turns that into a page.
+        #
+        # cert-manager's metrics carry the scrape target's namespace in `namespace`;
+        # the certificate's own namespace is `exported_namespace`.
         - alert: CertManagerCertNotReady
           expr: certmanager_certificate_ready_status{condition="True"} == 0
           for: 1h
           labels:
             severity: warning
           annotations:
-            summary: "cert-manager certificate {{ $labels.namespace }}/{{ $labels.name }} is not ready"
-            description: "Certificate {{ $labels.namespace }}/{{ $labels.name }} has been not-Ready for over an hour. Check `kubectl describe certificate,order,challenge -n {{ $labels.namespace }}`."
+            summary: "cert-manager certificate {{ $labels.exported_namespace }}/{{ $labels.name }} is not ready"
+            description: "Certificate {{ $labels.exported_namespace }}/{{ $labels.name }} has been not-Ready for over an hour. Check `kubectl describe certificate,order,challenge -n {{ $labels.exported_namespace }}`."
 
-        # cert-manager renews at 30 days remaining. Dropping under 21 means at least
-        # one renewal attempt has already failed, with ~3 weeks of runway left.
-        - alert: CertManagerCertExpiringSoon
-          expr: (certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 < 21
+        # The two rules below measure each certificate against its own schedule,
+        # because lifetimes range from 24h (the SPIFFE Postgres client certs, renewed
+        # 8h before expiry) to 90 days (Let's Encrypt, renewed at 30). The renewal
+        # timestamp only moves once a renewal succeeds, so expiry minus renewal
+        # timestamp is the certificate's renewBefore.
+
+        # An hour past the scheduled renewal: at least one attempt has failed.
+        - alert: CertManagerCertRenewalOverdue
+          expr: time() - certmanager_certificate_renewal_timestamp_seconds > 3600
           labels:
             severity: warning
           annotations:
-            summary: "Certificate {{ $labels.namespace }}/{{ $labels.name }} expires in under 21 days"
-            description: "{{ $labels.namespace }}/{{ $labels.name }} has {{ $value | printf \"%.1f\" }} days left and should already have renewed at 30. Renewal is failing."
+            summary: "Certificate {{ $labels.exported_namespace }}/{{ $labels.name }} is overdue for renewal"
+            description: "{{ $labels.exported_namespace }}/{{ $labels.name }} should have renewed {{ $value | humanizeDuration }} ago. Renewal is failing; check `kubectl describe certificate,certificaterequest -n {{ $labels.exported_namespace }}`."
 
+        # Half the renewal window gone without a renewal: 15 days left for Let's
+        # Encrypt, 4 hours for the 24h SPIFFE certs.
         - alert: CertManagerCertExpiringCritical
-          expr: (certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 < 7
+          expr: |
+            (certmanager_certificate_expiration_timestamp_seconds - time())
+              < (certmanager_certificate_expiration_timestamp_seconds - certmanager_certificate_renewal_timestamp_seconds) / 2
           labels:
             severity: critical
           annotations:
-            summary: "Certificate {{ $labels.namespace }}/{{ $labels.name }} expires in under 7 days"
-            description: "{{ $labels.namespace }}/{{ $labels.name }} has {{ $value | printf \"%.1f\" }} days left. Once it expires, clients that verify the chain -- including the ESP32 devices pinned to Home Assistant -- stop working."
+            summary: "Certificate {{ $labels.exported_namespace }}/{{ $labels.name }} is past half its renewal window"
+            description: "{{ $labels.exported_namespace }}/{{ $labels.name }} expires in {{ $value | humanizeDuration }} and has not renewed. Once it expires, clients that verify the chain -- including the ESP32 devices pinned to Home Assistant, and services authenticating to Postgres with SPIFFE client certs -- stop working."
 
         # Without this, cert-manager being down looks identical to "no certificates
         # have problems": the expiry series simply vanish and every rule above stops

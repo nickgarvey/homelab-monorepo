@@ -1,0 +1,43 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: storj-alerts
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+    prometheus: prometheus
+spec:
+  groups:
+    - name: storj.usage
+      rules:
+        # Fed by storj-usage.service on dragonsreach
+        # (modules/services/storj-usage.nix), which sums object sizes in every
+        # bucket hourly through the S3 gateway; vector pushes the results.
+        - alert: StorjUsageOver500GB
+          expr: sum(homelab_storj_bucket_bytes) > 500e9
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Storj holds {{ $value | humanize }}B, over the 500 GB budget"
+            description: "Per bucket: `sort_desc(homelab_storj_bucket_bytes)`. Find what grew before the bill does."
+
+        # Hourly job; three missed runs is a real failure, not a slow listing.
+        - alert: StorjUsageStale
+          expr: time() - homelab_storj_usage_last_success_timestamp_seconds > 3 * 3600
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Storj usage has not been measured for over 3 hours"
+            description: "The usage alert is running on old numbers. On dragonsreach: `journalctl -u storj-usage`; rerun with `sudo systemctl start storj-usage`."
+
+        # Pushed, not scraped: silence looks like health unless alerted on.
+        - alert: StorjUsageMetricsMissing
+          expr: absent(homelab_storj_usage_last_success_timestamp_seconds)
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: "No Storj usage metrics for an hour"
+            description: "dragonsreach or its vector agent is down, or storj-usage has never succeeded. Until this recovers the usage alert cannot fire."
