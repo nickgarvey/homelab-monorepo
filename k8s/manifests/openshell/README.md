@@ -5,12 +5,14 @@ NVIDIA OpenShell gateway. The chart render and its IPv6 patch are in
 The agents that run on it, and how to start them, are in the repo root's
 `agents/`.
 
-The gateway, supervisor and sandbox runtime images are pinned (by digest, in
-`vendor/openshell/values.yaml`) to the build of NVIDIA/OpenShell#3702, which
-is 0.1.2 plus IPv6 policy DNS egress. 0.1.2 answers every AAAA query in a
-sandbox with NODATA, so in this IPv6-only cluster no sandbox can resolve a
-name. Drop the pins when a release includes #3702 (nix-lNoiG; the agents/
-build fails after 2026-12-01 while they remain). With #3702 the supervisor
+The gateway, supervisor and sandbox runtime are our own builds of the chart's
+version with NVIDIA/OpenShell#3702 (IPv6 policy DNS egress) applied, from the
+repo root's `packages/openshell/` and `patches/openshell-ipv6-policy-dns.patch`,
+pushed to `oci.garvey.sh/openshell/` and pinned by digest in
+`vendor/openshell/values.yaml`. Upstream answers every AAAA query in a sandbox
+with NODATA, so in this IPv6-only cluster no sandbox could resolve a name. Go
+back to the chart's images when a release includes #3702 (nix-lNoiG; the
+agents/ build fails after 2026-12-01 while the patch remains). With #3702 the supervisor
 logs "Policy DNS IPv6 egress enabled (requested auto, route state
 ipv6_only)" at start. Still broken upstream: a policy endpoint given as an
 IPv6 literal fails (the supervisor writes the CONNECT host unbracketed), so
@@ -31,12 +33,26 @@ kubectl -n openshell rollout status deployment/openshell
 
 The gateway pod waits (CreateContainerConfigError, ContainerCreating) until
 `openshell-kek`, `openshell-jwt-keys` and the cert-manager Secrets exist, then
-starts on its own.
+starts on its own. The gateway's certificates come from the spiffe-ca
+ClusterIssuer, so `manifests/cert-manager/spiffe-policies.yaml` must be applied
+first (policies `spiffe-openshell-gateway` and `spiffe-openshell-client`).
 
 These Secrets exist nowhere else, or are costly to lose; nothing should delete
 them: `openshell-kek` (in sops here; losing it makes stored provider
-credentials unreadable), `openshell-jwt-keys`, `openshell-ca-tls`,
-`openshell-server-tls`, `openshell-client-tls`.
+credentials unreadable) and `openshell-jwt-keys`.
+
+## Certificates
+
+The gateway's server certificate (`openshell-server-tls`, the in-cluster
+Service names and the LAN name) and the chart's client certificate
+(`openshell-client-tls`, used by the CLI and the sandbox supervisors) are
+issued by the spiffe-ca ClusterIssuer, patched in
+`vendor/openshell/kustomization.yaml`. Each Secret's `ca.crt` is the spiffe-ca
+root, which the CLI, the supervisors, the gateway's peers and the agents worker
+all verify the gateway with, and which the gateway verifies client
+certificates with. The root is long-lived and replaced only by hand, so no copy
+of it goes stale. The chart also renders its own CA (`openshell-ca`, its
+self-signed and CA Issuers); the kustomization deletes it, since nothing uses it.
 
 ## Connecting the CLI
 
@@ -44,13 +60,12 @@ The `openshell` CLI is in the default dev shell (`nix develop`), built at the
 gateway's version by the repo root's `packages/openshell/`.
 
 People log in through Authelia (OIDC client `openshell-cli` in
-`manifests/authelia/configmap.yaml`). The client certificate only secures the
-connection: on Kubernetes it is not a login, and the same certificate is
-mounted into every sandbox supervisor. The gateway is on the LAN at
+`manifests/authelia/configmap.yaml`). The chart's client certificate
+(`openshell-client`) only secures the connection: it has no OU, so it carries
+no role (see "Certificate users"). Supervisors get only its CA. The gateway is on the LAN at
 `gateway.openshell.k8s.home.garvey.sh:443` (`service-lb.yaml`); that name is
-on its certificate (`certManager.serverDnsNames` in
-`vendor/openshell/values.yaml`). The CLI reads `mtls/ca.crt` to trust the
-gateway's certificate (issued by the chart's own CA).
+on its certificate. The CLI reads `mtls/ca.crt` to trust the gateway's
+certificate (the spiffe-ca root, "Certificates").
 
 ```sh
 d=~/.config/openshell/gateways/k8s/mtls; mkdir -p "$d"
@@ -71,6 +86,31 @@ k8s`) is only needed after a month without use. Running sandboxes never use
 this login: their supervisors authenticate with their own ServiceAccount
 tokens.
 
+## Certificate users
+
+Programs log in with a client certificate instead (`mtls_auth`, turned on in
+`vendor/openshell/kustomization.yaml`). A request without a bearer token
+becomes the user named by its certificate's CN, with the certificate's OU
+values as its roles. The gateway trusts client certificates under the
+spiffe-ca root.
+
+Only approver-policy decides who gets a role: a spiffe-ca certificate carrying
+`OU=openshell` or `OU=admins` is a gateway user or admin, so no policy in
+`manifests/cert-manager/spiffe-policies.yaml` may allow an OU other than its
+own exact identity's. Today one does: `spiffe-agents-worker`
+(`CN=agents-worker, OU=openshell`, `manifests/agents/`). The chart's
+`openshell-client` certificate has no OU, so it gets no role. A certificate
+from the SPIFFE CA must have no URI SAN: the gateway's TLS library
+(rustls-webpki) does not process the root's URI name constraint and refuses
+the handshake with `NameConstraintViolation`, which also keeps SPIRE's SVIDs
+out. A user role reaches only the workspaces the user is a member of, and
+profiles and providers belong to a workspace, so a new one has none:
+
+```sh
+openshell workspace create --name agents
+openshell workspace member add --workspace agents --subject agents-worker --role user
+```
+
 Every gateway RPC except `Health` refuses a call without a valid Authelia token,
 including with the client certificate alone or a forged token (checked
 2026-10-07, nix-yIyr3). `Health` and `/.well-known/openid-configuration`
@@ -78,11 +118,24 @@ answer anyone; they give the version and the public signing keys.
 
 ## Upgrading
 
-Bump `VERSION` in `vendor/openshell/chart.env`, re-render, and bump the image in
-`jwt-keys-job.yaml` and the CLI version and hashes in the repo root's
-`packages/openshell/outputs.nix` to match. Re-check the env patch in
+Bump `VERSION` in `vendor/openshell/chart.env` and the version and hashes in
+the repo root's `packages/openshell/outputs.nix` to match (rebasing
+`patches/openshell-ipv6-policy-dns.patch` while it is carried), and re-render.
+Then build and push the three images and pin their digests in
+`vendor/openshell/values.yaml`, and the gateway's in `jwt-keys-job.yaml`
+(from the repo root; `nix flake check` runs the image test):
+
+```sh
+for n in gateway supervisor sandbox; do
+  skopeo copy docker-archive:$(nix build --no-link --print-out-paths .#openshell-$n-image) \
+    docker://oci.garvey.sh/openshell/$n:$(nix eval --raw .#openshell-$n-image.imageTag)
+done
+```
+
+Re-check the env patches in
 `vendor/openshell/kustomization.yaml` against the new chart's
-`templates/gateway-config.yaml` and the gateway's bind options.
+`templates/gateway-config.yaml` and the gateway's bind, client-CA and
+`mtls_auth` options.
 
 ## Database
 
@@ -98,6 +151,7 @@ Apply `postgres-client-certificate.yaml` and `db-secret.yaml` before
 `kubectl apply -k vendor/openshell`, and the role and database (`manifests/postgres/`)
 before those. The gateway is a Deployment with no volume of its own.
 
-A fresh database starts empty. Re-create the provider and profile as in `agents/README.md`
-("Build and register"); sandboxes that existed before the move are unknown to the gateway
-and their pods and volumes have to be deleted by hand.
+A fresh database starts empty. `nix run .#agents-apply` re-creates the `agents` workspace,
+the worker's membership, profiles and providers (`agents/README.md`); sandboxes that existed
+before the move are unknown to the gateway and their pods and volumes have to be deleted by
+hand.

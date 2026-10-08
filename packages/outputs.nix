@@ -12,6 +12,7 @@ let
   lan-table = import ./lan-table/outputs.nix { inherit nixpkgs system; };
   openshell = import ./openshell/outputs.nix { inherit nixpkgs system; };
   celler-pkg = import ./celler/outputs.nix { inherit nixpkgs celler system; };
+  temporal-server = import ./temporal-server/outputs.nix { inherit nixpkgs system; };
 
   # The deploy binary, built from ./deploy. buildGoModule runs `go test`
   # as part of the build, so this derivation is also the test check.
@@ -31,11 +32,20 @@ in
     thinkrail = thinkrail.thinkrail;
     thinkrail-node-modules = thinkrail.node-modules;
     inherit lan-table;
-    inherit openshell;
+    openshell = openshell.cli;
+    openshell-gateway-image = openshell.gateway-image;
+    openshell-supervisor-image = openshell.supervisor-image;
+    openshell-sandbox-image = openshell.sandbox-image;
     celler = celler-pkg.package;
     celler-image = celler-pkg.image;
     inherit deploy;
+    temporal-server = temporal-server.package;
+    temporal-server-image = temporal-server.image;
   };
 
-  checks.${system}.deploy-tests = deploy;
+  checks.${system} = {
+    deploy-tests = deploy;
+    temporal-server-tests = temporal-server.package;
+    openshell-images-test = openshell.images-test;
+  };
 }

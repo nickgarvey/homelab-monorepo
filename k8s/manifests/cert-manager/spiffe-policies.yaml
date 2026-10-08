@@ -51,6 +51,41 @@ spec:
 apiVersion: policy.cert-manager.io/v1alpha1
 kind: CertificateRequestPolicy
 metadata:
+  name: spiffe-temporal-frontend
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  # The Temporal frontend's server certificate
+  # (manifests/temporal/frontend-certificate.yaml), for its ClusterIP Service.
+  allowed:
+    dnsNames:
+      values:
+        - temporal-frontend
+        - temporal-frontend.temporal
+        - temporal-frontend.temporal.svc
+        - temporal-frontend.temporal.svc.cluster.local
+    usages:
+      - server auth
+      - digital signature
+      - key encipherment
+    isCA: false
+  constraints:
+    privateKey:
+      algorithm: ECDSA
+      minSize: 256
+      maxSize: 521
+  selector:
+    issuerRef:
+      group: cert-manager.io
+      kind: ClusterIssuer
+      name: spiffe-ca
+    namespace:
+      matchNames:
+        - temporal
+---
+apiVersion: policy.cert-manager.io/v1alpha1
+kind: CertificateRequestPolicy
+metadata:
   name: spiffe-postgres-replication
   labels:
     app.kubernetes.io/managed-by: ngarvey-homelab
@@ -93,10 +128,15 @@ rules:
     verbs: [use]
     resourceNames:
       - spiffe-temporal
+      - spiffe-temporal-frontend
       - spiffe-postgres-replication
       - spiffe-postgres-server
       - spiffe-openshell
+      - spiffe-openshell-gateway
+      - spiffe-openshell-client
       - spiffe-celler
+      - spiffe-agents-worker
+      - spiffe-agents-postgres
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -194,6 +234,78 @@ spec:
 apiVersion: policy.cert-manager.io/v1alpha1
 kind: CertificateRequestPolicy
 metadata:
+  name: spiffe-openshell-gateway
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  # The OpenShell gateway's server certificate (Certificate openshell-server,
+  # patched in vendor/openshell/kustomization.yaml): its in-cluster Service
+  # names and the LAN LoadBalancer's (manifests/openshell/service-lb.yaml).
+  # No CN: CN=openshell is the subject postgres maps to the gateway's role.
+  allowed:
+    dnsNames:
+      values:
+        - openshell
+        - openshell.openshell
+        - openshell.openshell.svc
+        - openshell.openshell.svc.cluster.local
+        - gateway.openshell.k8s.home.garvey.sh
+    usages:
+      - server auth
+      - digital signature
+      - key encipherment
+    isCA: false
+  constraints:
+    privateKey:
+      algorithm: ECDSA
+      minSize: 256
+      maxSize: 521
+  selector:
+    issuerRef:
+      group: cert-manager.io
+      kind: ClusterIssuer
+      name: spiffe-ca
+    namespace:
+      matchNames:
+        - openshell
+---
+apiVersion: policy.cert-manager.io/v1alpha1
+kind: CertificateRequestPolicy
+metadata:
+  name: spiffe-openshell-client
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  # The OpenShell chart's client certificate (Certificate openshell-client),
+  # the transport certificate of the CLI and of sandbox supervisors. With
+  # mtls_auth the gateway reads it as user openshell-client with no role,
+  # which is why no OU is allowed (see spiffe-agents-worker).
+  allowed:
+    commonName:
+      value: openshell-client
+      required: true
+    usages:
+      - client auth
+      - digital signature
+      - key encipherment
+    isCA: false
+  constraints:
+    privateKey:
+      algorithm: ECDSA
+      minSize: 256
+      maxSize: 521
+  selector:
+    issuerRef:
+      group: cert-manager.io
+      kind: ClusterIssuer
+      name: spiffe-ca
+    namespace:
+      matchNames:
+        - openshell
+---
+apiVersion: policy.cert-manager.io/v1alpha1
+kind: CertificateRequestPolicy
+metadata:
   name: spiffe-celler
   labels:
     app.kubernetes.io/managed-by: ngarvey-homelab
@@ -225,6 +337,86 @@ spec:
     namespace:
       matchNames:
         - celler
+---
+apiVersion: policy.cert-manager.io/v1alpha1
+kind: CertificateRequestPolicy
+metadata:
+  name: spiffe-agents-worker
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  # The agents worker's login to the OpenShell gateway
+  # (manifests/agents/openshell-certificate.yaml). The gateway takes a client
+  # certificate's CN as the user and its OU values as the user's roles, so the
+  # subject must be exactly CN=agents-worker, OU=openshell: openshell is the
+  # gateway's user role (server.oidc.userRole in vendor/openshell/values.yaml).
+  # No other policy here allows an OU, and none may: any spiffe-ca certificate
+  # carrying OU=openshell or OU=admins gets that gateway role. No URI SAN:
+  # the gateway's TLS library (rustls-webpki) does not process the root's URI
+  # name constraint and refuses any client certificate with a URI under it
+  # (NameConstraintViolation).
+  allowed:
+    commonName:
+      value: agents-worker
+      required: true
+    subject:
+      organizationalUnits:
+        values: [openshell]
+        required: true
+    usages:
+      - client auth
+      - digital signature
+      - key encipherment
+    isCA: false
+  constraints:
+    privateKey:
+      algorithm: ECDSA
+      minSize: 256
+      maxSize: 521
+  selector:
+    issuerRef:
+      group: cert-manager.io
+      kind: ClusterIssuer
+      name: spiffe-ca
+    namespace:
+      matchNames:
+        - agents
+---
+apiVersion: policy.cert-manager.io/v1alpha1
+kind: CertificateRequestPolicy
+metadata:
+  name: spiffe-agents-postgres
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  # The agents worker's client certificate for postgres
+  # (manifests/agents/postgres-client-certificate.yaml): CN is the postgres
+  # role and no other subject field is allowed, so the subject is exactly
+  # CN=agents, the DN postgres maps to the role.
+  allowed:
+    commonName:
+      value: agents
+    uris:
+      values:
+        - spiffe://home.garvey.sh/ns/agents/sa/agents-worker
+    usages:
+      - client auth
+      - digital signature
+      - key encipherment
+    isCA: false
+  constraints:
+    privateKey:
+      algorithm: ECDSA
+      minSize: 256
+      maxSize: 521
+  selector:
+    issuerRef:
+      group: cert-manager.io
+      kind: ClusterIssuer
+      name: spiffe-ca
+    namespace:
+      matchNames:
+        - agents
 ---
 apiVersion: policy.cert-manager.io/v1alpha1
 kind: CertificateRequestPolicy

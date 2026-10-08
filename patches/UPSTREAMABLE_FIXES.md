@@ -295,3 +295,30 @@ patch sends the same parameters as a form body, enabling the crate's existing
 `form()` builder for `aws-base` too. Upstream object_store should send a form
 body like the SDKs do (AWS STS accepts both, so this is compatible); arguably
 RGW should also accept query parameters.
+
+---
+
+## OpenShell: policy DNS answers AAAA with NODATA, so IPv6-only sandboxes resolve nothing
+
+**Affected:** `NVIDIA/OpenShell` v0.1.3 (and 0.1.2),
+`crates/openshell-supervisor-network/src/policy_dns/runtime.rs`, which calls
+`handle_udp_query_with_ipv6(..., false)`.
+**Local workaround:** `patches/openshell-ipv6-policy-dns.patch`, applied by
+`packages/openshell/outputs.nix` to the CLI and to the gateway, supervisor and
+sandbox-runtime images that `k8s/vendor/openshell` runs. `agents/outputs.nix`
+fails the build after 2026-12-01 while the patch is carried (nix-lNoiG).
+
+A sandbox reaches the network only through its supervisor's policy DNS and
+proxy. Policy DNS answers every AAAA query with NODATA and resolves only A
+records upstream, so in an IPv6-only cluster every name fails
+(`policy_dns_upstream_no_data`). The upstream fix is NVIDIA/OpenShell#3702
+("IPv6 policy DNS egress", head `9ab8076a`): a `policy_dns_ipv6_egress` mode
+(`auto` answers AAAA when the supervisor's namespace has an IPv6 default route
+and no IPv4 one), NAT64-aware SSRF checks, and driver settings to pass both to
+the supervisor. As of 2026-10-10 it is open, in conflict, and the maintainers
+asked whether it is still needed. The patch is those six commits rebased onto
+v0.1.3: `architecture/sandbox.md`, deleted upstream, is dropped, and the docker
+and podman drivers keep both v0.1.3's `proxy_ca_bundle` and the PR's
+`ipv6_egress`, and the PR's two new `run_sandbox` arguments are carried
+through v0.1.3's `SandboxRunConfig`. Posting the rebase to the PR would answer the maintainers'
+question.

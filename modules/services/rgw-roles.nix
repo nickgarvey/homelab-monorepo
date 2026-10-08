@@ -143,6 +143,8 @@ in
     services.rgwRoles.apps = {
       # The celler Nix binary cache (k8s/manifests/celler).
       celler = { namespace = "celler"; serviceAccount = "celler"; bucketPrefix = "celler"; };
+      # The agents worker's archive of pi's session files (k8s/manifests/agents).
+      agents-worker = { namespace = "agents"; serviceAccount = "agents-worker"; bucketPrefix = "agent-sessions"; };
     };
 
     assertions = [{

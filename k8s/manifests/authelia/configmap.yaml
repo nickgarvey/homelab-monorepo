@@ -74,6 +74,33 @@ data:
           openshell-cli:
             access_token:
               - groups
+          # The Temporal frontend maps groups named temporal-<namespace>-<role>
+          # to Temporal roles, from the access token the UI forwards; the UI
+          # shows the user's name from the ID token.
+          temporal-ui:
+            access_token:
+              - groups
+            id_token:
+              - email
+              - name
+              - preferred_username
+        # The Temporal UI sends any 403 from Temporal back to its login, so a
+        # user with no temporal-* group would bounce between the UI and here.
+        # Refusing them at login shows Authelia's error page instead. Subjects
+        # are exact names, so a new Temporal namespace adds its groups here
+        # (temporal-<namespace>-<role>, manifests/temporal/README.md).
+        authorization_policies:
+          temporal:
+            default_policy: deny
+            rules:
+              - policy: two_factor
+                subject:
+                  - group:temporal-system-read
+                  - group:temporal-system-write
+                  - group:temporal-system-admin
+                  - group:temporal-default-read
+                  - group:temporal-default-write
+                  - group:temporal-default-admin
         lifespans:
           custom:
             # Refresh tokens slide: each refresh issues a new one valid this long
@@ -135,3 +162,31 @@ data:
             access_token_signed_response_alg: RS256
             userinfo_signed_response_alg: none
             token_endpoint_auth_method: none
+          # The Temporal UI (manifests/temporal). It forwards the user's access
+          # token to the Temporal frontend, which validates it against this JWKS
+          # and checks aud = temporal; implicit audience mode grants that audience
+          # without the UI asking for it (it cannot).
+          - client_id: temporal-ui
+            client_name: Temporal
+            claims_policy: temporal-ui
+            # pbkdf2 digest of the plaintext in manifests/temporal/ui-oidc-secret.yaml.
+            client_secret: '$pbkdf2-sha512$310000$SmCKEiCr/fjPZyyq3j2ZjA$7WyifDwJMfOXMH5XnuPzAcjJUcwExZ9xeBjmdeyExnjY09Iv.sNhhViDsZ.Ym6OaF4cl7U/Q2YpBd5VZnLADnQ'
+            public: false
+            authorization_policy: temporal
+            redirect_uris:
+              - https://temporal.garvey.sh/auth/sso/callback
+            audience:
+              - temporal
+            requested_audience_mode: implicit
+            scopes:
+              - openid
+              - profile
+              - email
+              - groups
+            response_types:
+              - code
+            grant_types:
+              - authorization_code
+            access_token_signed_response_alg: RS256
+            userinfo_signed_response_alg: none
+            token_endpoint_auth_method: client_secret_basic

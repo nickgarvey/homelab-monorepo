@@ -22,116 +22,84 @@ spec:
       securityContext:
         # Lets the temporal user (1000) read the client key from the Secret volume.
         fsGroup: 1000
-      containers:
-        - name: temporal
-          # Pin exact version: Temporal schema migrations are ordered, never
-          # use :latest. auto-setup runs frontend/history/matching/worker in one
-          # process and creates + migrates the Postgres schema on start, which
-          # is why there is no separate schema Job here.
-          image: temporalio/auto-setup:1.29.7
+      # Schema migrations, in order, before the server starts. The image is
+      # packages/temporal-server: temporal-sql-tool with the schemas of the same
+      # Temporal version embedded. A no-op when the schema is current. The
+      # operator creates the databases (postgres/databases.yaml), so there is no
+      # create-database or setup-schema step.
+      initContainers:
+        - name: schema
+          image: &image oci.garvey.sh/temporal-server:1.29.7-ijj8znd
           imagePullPolicy: IfNotPresent
-          envFrom:
-            # POSTGRES_USER + POSTGRES_PWD (note _PWD, not _PASSWORD -- that is
-            # what auto-setup.sh and the config template read).
-            - secretRef:
-                name: temporal-db
-          env:
-            # The shared postgres (manifests/postgres/). Everything below up to
-            # ENABLE_ES is the connection; there is no password, the role
-            # authenticates with the client certificate mounted at /etc/temporal-pg.
-            # auto-setup.sh only accepts mysql8/postgres12/postgres12_pgx/
-            # cassandra. postgres12 is the right driver for PostgreSQL 12+ (the cluster runs 17).
-            - name: DB
-              value: postgres12
-            # Default is 3306 (MySQL), so this must be set explicitly.
-            - name: DB_PORT
-              value: "5432"
-            - name: POSTGRES_SEEDS
-              value: postgres-rw.postgres.svc
-            - name: DBNAME
-              value: temporal
-            - name: VISIBILITY_DBNAME
-              value: temporal_visibility
-            # IPv6-only cluster. The config template defaults every service's
-            # bindOnIP to 127.0.0.1, which would make the pod unreachable.
-            # Deliberately NOT setting TEMPORAL_AUTH_AUTHORIZER or
-            # TEMPORAL_AUTH_CLAIM_MAPPER: with both unset the template omits the
-            # publicClient block, which would otherwise render hostPort as
-            # ":::7233" (it string-concatenates BIND_ON_IP + ":" + port) and
-            # fail to parse.
-            - name: BIND_ON_IP
-              value: "::"
-            # Ringpop membership address. Unset means the ring never forms.
-            - name: TEMPORAL_BROADCAST_ADDRESS
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.podIP
-            # The template only emits a metrics block `with env
-            # PROMETHEUS_ENDPOINT` -- no metrics at all without this.
-            - name: PROMETHEUS_ENDPOINT
-              value: "[::]:9090"
-            - name: DEFAULT_NAMESPACE
-              value: default
-            # Default is 24h.
-            - name: DEFAULT_NAMESPACE_RETENTION
-              value: 72h
-            # TLS to the database. The server config template reads SQL_* and
-            # the schema tool in auto-setup.sh reads POSTGRES_TLS_*: both sets are
-            # needed, and the second one has host verification inverted.
-            - name: SQL_TLS_ENABLED
-              value: "true"
-            - name: SQL_CA
-              value: /etc/temporal-pg/ca.crt
-            - name: SQL_CERT
-              value: /etc/temporal-pg/tls.crt
-            - name: SQL_CERT_KEY
-              value: /etc/temporal-pg/tls.key
-            - name: SQL_HOST_VERIFICATION
-              value: "true"
-            - name: SQL_HOST_NAME
-              value: postgres-rw.postgres.svc
-            - name: POSTGRES_TLS_ENABLED
-              value: "true"
-            - name: POSTGRES_TLS_DISABLE_HOST_VERIFICATION
-              value: "false"
-            - name: POSTGRES_TLS_CA_FILE
-              value: /etc/temporal-pg/ca.crt
-            - name: POSTGRES_TLS_CERT_FILE
-              value: /etc/temporal-pg/tls.crt
-            - name: POSTGRES_TLS_KEY_FILE
-              value: /etc/temporal-pg/tls.key
-            - name: POSTGRES_TLS_SERVER_NAME
-              value: postgres-rw.postgres.svc
-            # The databases are created by the operator (databases.yaml), and
-            # the temporal role cannot connect to the postgres database that
-            # auto-setup's CREATE DATABASE needs.
-            - name: SKIP_DB_CREATE
-              value: "true"
-            # No Elasticsearch in this cluster; visibility lives in Postgres.
-            - name: ENABLE_ES
-              value: "false"
+          command: [/bin/temporal-sql-tool]
+          args: [--db, temporal, update-schema, --schema-name, postgresql/v12/temporal]
+          env: &sqlTool
+            - { name: SQL_PLUGIN, value: postgres12 }
+            - { name: SQL_HOST, value: postgres-rw.postgres.svc }
+            - { name: SQL_PORT, value: "5432" }
+            - { name: SQL_USER, value: temporal }
+            - { name: SQL_TLS, value: "true" }
+            - { name: SQL_TLS_CA_FILE, value: /etc/temporal-pg/ca.crt }
+            - { name: SQL_TLS_CERT_FILE, value: /etc/temporal-pg/tls.crt }
+            - { name: SQL_TLS_KEY_FILE, value: /etc/temporal-pg/tls.key }
+            - { name: SQL_TLS_SERVER_NAME, value: postgres-rw.postgres.svc }
           volumeMounts:
-            - name: postgres-client
+            - &pgMount
+              name: postgres-client
               mountPath: /etc/temporal-pg
               readOnly: true
+        - name: visibility-schema
+          image: *image
+          imagePullPolicy: IfNotPresent
+          command: [/bin/temporal-sql-tool]
+          args: [--db, temporal_visibility, update-schema, --schema-name, postgresql/v12/visibility]
+          env: *sqlTool
+          volumeMounts: [*pgMount]
+      containers:
+        - name: temporal
+          image: *image
+          imagePullPolicy: IfNotPresent
+          # All five services in one process. internal-frontend is not in the
+          # default set, so the list is explicit. --authz-table turns on
+          # certificate-identity authorization (authz-configmap.yaml).
+          args:
+            - --root=/
+            - --config=etc/temporal/config
+            - --env=homelab
+            - --authz-table=/etc/temporal/authz/table.yaml
+            - start
+            - --service=frontend
+            - --service=internal-frontend
+            - --service=history
+            - --service=matching
+            - --service=worker
+          volumeMounts:
+            - name: config
+              mountPath: /etc/temporal/config
+              readOnly: true
+            - name: authz
+              mountPath: /etc/temporal/authz
+              readOnly: true
+            - name: frontend-tls
+              mountPath: /etc/temporal-frontend-tls
+              readOnly: true
+            - *pgMount
           ports:
-            - containerPort: 7233
-              name: grpc
             - containerPort: 9090
               name: metrics
-          # Membership ports 6933-6939 are same-pod only (all four services run
-          # in this one process), so they need no declarations.
+          # gRPC health of the internal frontend on loopback: the frontend
+          # requires a client certificate, which a kubelet gRPC probe cannot
+          # present (and kubelet probes dial the pod IP, never loopback).
           readinessProbe:
-            grpc:
-              port: 7233
-            initialDelaySeconds: 30
+            exec:
+              command: [/bin/temporal-server, healthcheck]
+            initialDelaySeconds: 15
             periodSeconds: 10
             timeoutSeconds: 5
-            # First boot runs setup-schema + update-schema and is slow.
             failureThreshold: 12
           livenessProbe:
-            grpc:
-              port: 7233
+            exec:
+              command: [/bin/temporal-server, healthcheck]
             initialDelaySeconds: 60
             periodSeconds: 30
             timeoutSeconds: 5
@@ -143,7 +111,42 @@ spec:
             limits:
               cpu: "2"
               memory: 2Gi
+        # The only listener on the pod IP besides metrics: forwards [::]:7233 to
+        # the frontend on 127.0.0.1:7233 (config-configmap.yaml says why the
+        # frontend is on loopback). Plain TCP, so TLS goes end to end to Temporal.
+        - name: frontend-forward
+          image: *image
+          imagePullPolicy: IfNotPresent
+          command: [/bin/socat]
+          args:
+            - TCP6-LISTEN:7233,ipv6only=1,fork,reuseaddr
+            - TCP4:127.0.0.1:7233
+          ports:
+            - containerPort: 7233
+              name: grpc
+          livenessProbe:
+            tcpSocket:
+              port: 7233
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 500m
+              memory: 64Mi
       volumes:
+        - name: config
+          configMap:
+            name: temporal-config
+        - name: authz
+          configMap:
+            name: temporal-authz
+        - name: frontend-tls
+          secret:
+            secretName: temporal-frontend-tls
+            # 0440, root:1000, like the postgres key.
+            defaultMode: 0440
         - name: postgres-client
           secret:
             secretName: temporal-postgres-client

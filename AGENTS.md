@@ -47,7 +47,7 @@ Everything under `packages/` is built from this repo. Two kinds live there:
 
 - Packages with an `outputs.nix` are flake outputs (`nix build .#<name>`);
   hosts use them as `inputs.self.packages.<system>.<name>`.
-- Packages with a `default.nix` (helium-browser, agent-issue-tracker,
+- Packages with a `default.nix` (helium-browser, agent-issue-tracker, agents,
   storj-gateway-st) are built by the module that uses them, with
   `pkgs.callPackage ../../packages/<name> { }`.
 

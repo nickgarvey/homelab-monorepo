@@ -18,6 +18,39 @@ spec:
         app: temporal-ui
         app.kubernetes.io/managed-by: ngarvey-homelab
     spec:
+      serviceAccountName: temporal-ui
+      initContainers:
+        # Native sidecar: starts before the UI and keeps its SVID files fresh.
+        - name: spiffe-helper
+          image: ghcr.io/spiffe/spiffe-helper:0.11.0
+          restartPolicy: Always
+          args: ["-config", "/etc/spiffe-helper/helper.conf"]
+          volumeMounts:
+            - name: spiffe-workload-api
+              mountPath: /spiffe-workload-api
+              readOnly: true
+            - name: spiffe-helper-config
+              mountPath: /etc/spiffe-helper
+              readOnly: true
+            - name: svid
+              mountPath: /run/spiffe
+          startupProbe:
+            httpGet:
+              path: /ready
+              port: 8081
+            periodSeconds: 2
+            failureThreshold: 60
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: 8081
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
       containers:
         # temporalio/ui has no TLS listener of its own, so Caddy terminates on
         # 443 in-pod and proxies to the UI on loopback:8080.
@@ -58,6 +91,36 @@ spec:
           env:
             - name: TEMPORAL_ADDRESS
               value: temporal-frontend.temporal.svc:7233
+            # mTLS to the frontend with the UI's SVID (spiffe-helper above).
+            - name: TEMPORAL_TLS_CERT
+              value: /run/spiffe/svid.pem
+            - name: TEMPORAL_TLS_KEY
+              value: /run/spiffe/svid_key.pem
+            - name: TEMPORAL_TLS_CA
+              value: /run/spiffe/bundle.pem
+            - name: TEMPORAL_TLS_SERVER_NAME
+              value: temporal-frontend.temporal.svc
+            - name: TEMPORAL_TLS_ENABLE_HOST_VERIFICATION
+              value: "true"
+            # Login through Authelia (client temporal-ui in
+            # manifests/authelia/configmap.yaml). The UI checks only that a
+            # request carries a token and forwards it; the Temporal frontend
+            # verifies it and takes the user's roles from its groups.
+            - name: TEMPORAL_AUTH_ENABLED
+              value: "true"
+            - name: TEMPORAL_AUTH_PROVIDER_URL
+              value: https://auth.home.garvey.sh
+            - name: TEMPORAL_AUTH_CLIENT_ID
+              value: temporal-ui
+            - name: TEMPORAL_AUTH_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: temporal-ui-oidc
+                  key: client-secret
+            - name: TEMPORAL_AUTH_CALLBACK_URL
+              value: https://temporal.garvey.sh/auth/sso/callback
+            - name: TEMPORAL_AUTH_SCOPES
+              value: openid,profile,email,groups
             # ui-server's config template has no bind-address knob; it listens
             # on ":8080", which Go opens as [::] -- IPv6-clean as-is.
             - name: TEMPORAL_UI_PORT
@@ -69,6 +132,10 @@ spec:
               value: "true"
             # TEMPORAL_CSRF_COOKIE_INSECURE is deliberately left at its false
             # default: Caddy serves real HTTPS, so the Secure cookie is correct.
+          volumeMounts:
+            - name: svid
+              mountPath: /run/spiffe
+              readOnly: true
           ports:
             - containerPort: 8080
               name: http
@@ -86,6 +153,16 @@ spec:
               cpu: 500m
               memory: 512Mi
       volumes:
+        - name: spiffe-workload-api
+          csi:
+            driver: csi.spiffe.io
+            readOnly: true
+        - name: spiffe-helper-config
+          configMap:
+            name: temporal-ui-spiffe-helper
+        - name: svid
+          emptyDir:
+            medium: Memory
         - name: caddy-config
           configMap:
             name: temporal-caddy

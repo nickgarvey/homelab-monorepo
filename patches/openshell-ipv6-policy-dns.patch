@@ -1,0 +1,3574 @@
+NVIDIA/OpenShell#3702 ("IPv6 policy DNS egress", head 9ab8076a) rebased onto
+v0.1.3. Policy DNS in v0.1.3 still answers every AAAA query with NODATA, so in
+an IPv6-only cluster no sandbox can resolve a name. Tracked in
+patches/UPSTREAMABLE_FIXES.md; applied by packages/openshell/outputs.nix.
+
+Rebase notes: architecture/sandbox.md was deleted upstream and is dropped; the
+docker and podman drivers keep both v0.1.3's proxy CA bundle and the PR's
+ipv6_egress settings; v0.1.3 moved run_sandbox's arguments into
+SandboxRunConfig, so the PR's two new ones are carried there too.
+
+diff --git a/crates/openshell-core/src/config.rs b/crates/openshell-core/src/config.rs
+index 56e314127..ee2b81cd5 100644
+--- a/crates/openshell-core/src/config.rs
++++ b/crates/openshell-core/src/config.rs
+@@ -813,6 +813,105 @@ impl UpstreamProxyConfig {
+     }
+ }
+ 
++/// AAAA handling for the supervisor's mediated policy DNS.
++#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash)]
++#[serde(rename_all = "lowercase")]
++pub enum PolicyDnsIpv6Egress {
++    /// Answer AAAA only when the supervisor network namespace has an IPv6
++    /// default route and no IPv4 default route.
++    #[default]
++    Auto,
++    /// Always resolve AAAA through the trusted resolver.
++    Enabled,
++    /// Never resolve AAAA; answer with NOERROR/NODATA.
++    Disabled,
++}
++
++impl PolicyDnsIpv6Egress {
++    /// The value used in configuration and on the supervisor command line.
++    #[must_use]
++    pub const fn as_str(self) -> &'static str {
++        match self {
++            Self::Auto => "auto",
++            Self::Enabled => "enabled",
++            Self::Disabled => "disabled",
++        }
++    }
++}
++
++impl fmt::Display for PolicyDnsIpv6Egress {
++    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
++        f.write_str(self.as_str())
++    }
++}
++
++impl FromStr for PolicyDnsIpv6Egress {
++    type Err = String;
++
++    fn from_str(value: &str) -> Result<Self, Self::Err> {
++        match value {
++            "auto" => Ok(Self::Auto),
++            "enabled" => Ok(Self::Enabled),
++            "disabled" => Ok(Self::Disabled),
++            other => Err(format!(
++                "unknown policy_dns_ipv6_egress '{other}'; expected 'auto', 'enabled' or 'disabled'"
++            )),
++        }
++    }
++}
++
++/// Supervisor IPv6 egress settings shared by compute drivers.
++///
++/// Like [`UpstreamProxyConfig`], this type is `flatten`ed by driver tables.
++/// The values travel to the supervisor on argv, which sandbox environment
++/// cannot influence.
++#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
++#[serde(default, deny_unknown_fields)]
++pub struct SupervisorIpv6EgressConfig {
++    /// AAAA handling for mediated policy DNS. Unset means the supervisor
++    /// default, `auto`.
++    pub policy_dns_ipv6_egress: Option<PolicyDnsIpv6Egress>,
++    /// NAT64 prefixes (RFC 6052) used by the sandbox network, for example
++    /// `64:ff9b:1::/96` or a network-specific `/96`. Addresses inside them
++    /// are classified by their embedded IPv4 address for SSRF checks. The
++    /// well-known prefix `64:ff9b::/96` is always recognized; the supervisor
++    /// also discovers the network's prefix through `ipv4only.arpa` (RFC 7050).
++    pub nat64_prefixes: Vec<String>,
++}
++
++impl SupervisorIpv6EgressConfig {
++    /// Validate prefix syntax and RFC 6052 lengths.
++    pub fn validate(&self) -> Result<(), String> {
++        self.parsed_nat64_prefixes().map(|_| ())
++    }
++
++    /// Parse the configured NAT64 prefixes.
++    pub fn parsed_nat64_prefixes(&self) -> Result<Vec<crate::net::nat64::Nat64Prefix>, String> {
++        self.nat64_prefixes
++            .iter()
++            .map(|raw| {
++                raw.parse::<crate::net::nat64::Nat64Prefix>()
++                    .map_err(|error| format!("nat64_prefixes: {error}"))
++            })
++            .collect()
++    }
++
++    /// Supervisor arguments for these settings. Call [`Self::validate`]
++    /// first; invalid prefixes are passed through for the supervisor to
++    /// reject.
++    #[must_use]
++    pub fn supervisor_args(&self) -> Vec<String> {
++        let mut args = Vec::new();
++        if let Some(mode) = self.policy_dns_ipv6_egress {
++            args.extend(["--policy-dns-ipv6-egress".to_string(), mode.to_string()]);
++        }
++        for prefix in &self.nat64_prefixes {
++            args.extend(["--nat64-prefix".to_string(), prefix.trim().to_string()]);
++        }
++        args
++    }
++}
++
+ /// Gateway-minted sandbox JWT configuration.
+ ///
+ /// Points the gateway at the Ed25519 signing key (produced by `certgen`)
+@@ -1147,8 +1246,9 @@ mod tests {
+     use super::{
+         AppArmorProfile, Config, DEFAULT_SERVICE_ROUTING_DOMAIN, GatewayInterceptorBindingPolicy,
+         GatewayInterceptorConfig, GatewayInterceptorFailurePolicy, GatewayJwtConfig,
+-        GatewayProviderProfileSourceConfig, ImagePullPolicy, PolicyValidationFailureMode,
+-        UpstreamProxyConfig, default_sandbox_pids_limit, normalize_compute_driver_name,
++        GatewayProviderProfileSourceConfig, ImagePullPolicy, PolicyDnsIpv6Egress,
++        PolicyValidationFailureMode, SupervisorIpv6EgressConfig, UpstreamProxyConfig,
++        default_sandbox_pids_limit, normalize_compute_driver_name,
+     };
+     use std::net::SocketAddr;
+     use std::time::Duration;
+@@ -1376,6 +1476,45 @@ mod tests {
+         }
+     }
+ 
++    #[test]
++    fn supervisor_ipv6_egress_config_parses_and_builds_supervisor_args() {
++        let config: SupervisorIpv6EgressConfig = serde_json::from_str(
++            r#"{"policy_dns_ipv6_egress":"enabled","nat64_prefixes":["64:ff9b:1::/96","2001:db8:122:344::/64"]}"#,
++        )
++        .unwrap();
++        config.validate().unwrap();
++        assert_eq!(
++            config.supervisor_args(),
++            [
++                "--policy-dns-ipv6-egress",
++                "enabled",
++                "--nat64-prefix",
++                "64:ff9b:1::/96",
++                "--nat64-prefix",
++                "2001:db8:122:344::/64",
++            ]
++        );
++        assert!(
++            SupervisorIpv6EgressConfig::default()
++                .supervisor_args()
++                .is_empty()
++        );
++        for bad in ["10.0.0.0/8", "2001:db8::/80", "nonsense"] {
++            let config = SupervisorIpv6EgressConfig {
++                nat64_prefixes: vec![bad.to_string()],
++                ..Default::default()
++            };
++            assert!(config.validate().is_err(), "{bad}");
++        }
++        assert!(
++            serde_json::from_str::<SupervisorIpv6EgressConfig>(
++                r#"{"policy_dns_ipv6_egress":"yes"}"#
++            )
++            .is_err()
++        );
++        assert_eq!("disabled".parse(), Ok(PolicyDnsIpv6Egress::Disabled));
++    }
++
+     #[test]
+     fn upstream_proxy_validation_enforces_cross_field_contract() {
+         let auth_file = Some("/run/secrets/proxy-auth".into());
+diff --git a/crates/openshell-core/src/lib.rs b/crates/openshell-core/src/lib.rs
+index 84d4f8ccf..ec5634a5a 100644
+--- a/crates/openshell-core/src/lib.rs
++++ b/crates/openshell-core/src/lib.rs
+@@ -67,8 +67,8 @@ pub use config::{
+     AppArmorProfile, Config, GatewayAuthConfig, GatewayInterceptorBindingOverride,
+     GatewayInterceptorBindingPolicy, GatewayInterceptorConfig, GatewayInterceptorFailurePolicy,
+     GatewayInterceptorPhaseConfig, GatewayJwtConfig, GatewayProviderProfileSourceConfig,
+-    ImagePullPolicy, MtlsAuthConfig, OidcConfig, PolicyValidationFailureMode, TlsConfig,
+-    UpstreamProxyConfig,
++    ImagePullPolicy, MtlsAuthConfig, OidcConfig, PolicyDnsIpv6Egress, PolicyValidationFailureMode,
++    SupervisorIpv6EgressConfig, TlsConfig, UpstreamProxyConfig,
+ };
+ pub use dynamic_string_allowlist::DynamicStringAllowlist;
+ pub use error::{ComputeDriverError, Error, Result};
+diff --git a/crates/openshell-core/src/net.rs b/crates/openshell-core/src/net.rs
+index a9bbc2321..da8d08633 100644
+--- a/crates/openshell-core/src/net.rs
++++ b/crates/openshell-core/src/net.rs
+@@ -19,6 +19,8 @@ use ipnet::{IpNet, Ipv4Net, Ipv6Net};
+ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+ use tokio::net::TcpStream;
+ 
++pub mod nat64;
++
+ /// Check if a hostname is a known cloud metadata hostname that resolves to an
+ /// always-blocked metadata service.
+ ///
+@@ -73,6 +75,10 @@ pub fn is_always_blocked_ip(ip: IpAddr) -> bool {
+             if let Some(v4) = v6.to_ipv4_mapped() {
+                 return v4.is_loopback() || v4.is_unspecified();
+             }
++            // A NAT64 address reaches its embedded IPv4 address.
++            if let Some(v4) = nat64::embedded_ipv4(v6) {
++                return is_always_blocked_ip(IpAddr::V4(v4));
++            }
+             false
+         }
+     }
+@@ -157,6 +163,24 @@ pub fn is_always_blocked_net(net: IpNet) -> bool {
+                 return true;
+             }
+ 
++            // The same ranges behind the NAT64 well-known prefix.
++            if nat64::WELL_KNOWN_PREFIX
++                .embedded_ipv4(network)
++                .is_some_and(|v4| is_always_blocked_ip(IpAddr::V4(v4)))
++            {
++                return true;
++            }
++            if [
++                Ipv4Net::new_assert(Ipv4Addr::new(127, 0, 0, 0), 8),
++                Ipv4Net::new_assert(Ipv4Addr::new(169, 254, 0, 0), 16),
++                Ipv4Net::new_assert(Ipv4Addr::UNSPECIFIED, 32),
++            ]
++            .into_iter()
++            .any(|blocked| ipv6_nets_intersect(v6net, ipv4_net_to_nat64_wkp(blocked)))
++            {
++                return true;
++            }
++
+             false
+         }
+     }
+@@ -199,6 +223,12 @@ fn ipv4_net_to_mapped_ipv6(net: Ipv4Net) -> Ipv6Net {
+     Ipv6Net::new_assert(net.network().to_ipv6_mapped(), 96_u8 + net.prefix_len())
+ }
+ 
++fn ipv4_net_to_nat64_wkp(net: Ipv4Net) -> Ipv6Net {
++    let mut octets = nat64::WELL_KNOWN_PREFIX.net().network().octets();
++    octets[12..].copy_from_slice(&net.network().octets());
++    Ipv6Net::new_assert(Ipv6Addr::from(octets), 96_u8 + net.prefix_len())
++}
++
+ /// Check if an IP address is internal (loopback, private RFC 1918, link-local,
+ /// or unspecified).
+ ///
+@@ -227,11 +257,33 @@ pub fn is_internal_ip(ip: IpAddr) -> bool {
+             if let Some(v4) = v6.to_ipv4_mapped() {
+                 return is_internal_v4(v4);
+             }
+-            false
++            // A NAT64 address reaches its embedded IPv4 address.
++            if let Some(v4) = nat64::embedded_ipv4(v6) {
++                return is_internal_v4(v4);
++            }
++            // 64:ff9b:1::/48 is local-use translation space (RFC 8215) and
++            // not globally reachable; without a registered prefix its
++            // embedding is unknown.
++            nat64::LOCAL_USE_NET.contains(&v6)
+         }
+     }
+ }
+ 
++/// Check whether an `allowed_ips` entry covers `ip`.
++///
++/// A NAT64 address also matches through the IPv4 address it embeds, so
++/// `10.0.0.0/8` covers the DNS64 answer `64:ff9b::a00:5` exactly as it covers
++/// `10.0.0.5`. Callers apply the always-blocked check first.
++pub fn allowed_net_contains(net: &IpNet, ip: IpAddr) -> bool {
++    if net.contains(&ip) {
++        return true;
++    }
++    match ip {
++        IpAddr::V6(v6) => nat64::embedded_ipv4(v6).is_some_and(|v4| net.contains(&IpAddr::V4(v4))),
++        IpAddr::V4(_) => false,
++    }
++}
++
+ /// Check if a CIDR network intersects any address range classified by
+ /// [`is_internal_ip`].
+ pub fn is_internal_net(net: IpNet) -> bool {
+@@ -245,9 +297,11 @@ pub fn is_internal_net(net: IpNet) -> bool {
+             .any(|internal| ipv4_nets_intersect(net, *internal)),
+         IpNet::V6(net) => {
+             ipv6_nets_intersect(net, IPV6_ULA_NET)
+-                || NON_HARD_INTERNAL_V4_NETS
+-                    .iter()
+-                    .any(|internal| ipv6_nets_intersect(net, ipv4_net_to_mapped_ipv6(*internal)))
++                || ipv6_nets_intersect(net, nat64::LOCAL_USE_NET)
++                || NON_HARD_INTERNAL_V4_NETS.iter().any(|internal| {
++                    ipv6_nets_intersect(net, ipv4_net_to_mapped_ipv6(*internal))
++                        || ipv6_nets_intersect(net, ipv4_net_to_nat64_wkp(*internal))
++                })
+         }
+     }
+ }
+@@ -753,4 +807,118 @@ mod tests {
+             .expect("connect");
+         assert!(stream.nodelay().expect("query TCP_NODELAY"));
+     }
++
++    // -- NAT64 --
++
++    #[test]
++    fn nat64_well_known_prefix_follows_ipv4_classification() {
++        let wkp = |v4: Ipv4Addr| {
++            let mut octets = nat64::WELL_KNOWN_PREFIX.net().network().octets();
++            octets[12..].copy_from_slice(&v4.octets());
++            IpAddr::V6(Ipv6Addr::from(octets))
++        };
++        for v4 in [
++            Ipv4Addr::LOCALHOST,
++            Ipv4Addr::new(169, 254, 169, 254),
++            Ipv4Addr::UNSPECIFIED,
++        ] {
++            assert!(is_always_blocked_ip(wkp(v4)), "{v4}");
++            assert!(is_internal_ip(wkp(v4)), "{v4}");
++        }
++        for v4 in [
++            Ipv4Addr::new(10, 0, 0, 1),
++            Ipv4Addr::new(172, 16, 0, 1),
++            Ipv4Addr::new(192, 168, 1, 1),
++            Ipv4Addr::new(100, 64, 0, 1),
++            Ipv4Addr::new(198, 18, 0, 1),
++            Ipv4Addr::new(192, 0, 2, 1),
++        ] {
++            assert!(is_internal_ip(wkp(v4)), "{v4}");
++            assert!(!is_always_blocked_ip(wkp(v4)), "{v4}");
++        }
++        let public = wkp(Ipv4Addr::new(140, 82, 112, 3));
++        assert!(!is_internal_ip(public));
++        assert!(!is_always_blocked_ip(public));
++    }
++
++    #[test]
++    fn nat64_registered_network_prefix_follows_ipv4_classification() {
++        // Only this test registers this documentation prefix.
++        let prefix = nat64::Nat64Prefix::new("2001:db8:6464::/48".parse().unwrap()).unwrap();
++        let loopback: IpAddr = "2001:db8:6464:7f00:1::".parse().unwrap();
++        let private: IpAddr = "2001:db8:6464:a00:1::".parse().unwrap();
++        let public: IpAddr = "2001:db8:6464:8c52:7003::".parse().unwrap();
++        assert!(
++            !is_internal_ip(private),
++            "unregistered prefixes are plain IPv6"
++        );
++        nat64::register_network_prefix(prefix);
++        assert!(is_always_blocked_ip(loopback));
++        assert!(is_internal_ip(private));
++        assert!(!is_always_blocked_ip(private));
++        assert!(!is_internal_ip(public));
++    }
++
++    #[test]
++    fn nat64_nested_prefix_registered_last_classifies_by_the_nested_prefix() {
++        // Only this test registers these documentation prefixes (RFC 9637).
++        // Under the broad /32 alone every address below embeds 140.82.112.3,
++        // which is public.
++        let broad = nat64::Nat64Prefix::new("3fff:6464::/32".parse().unwrap()).unwrap();
++        let nested = nat64::Nat64Prefix::new("3fff:6464:8c52:7003::/96".parse().unwrap()).unwrap();
++        let loopback: IpAddr = "3fff:6464:8c52:7003::7f00:1".parse().unwrap();
++        let metadata: IpAddr = "3fff:6464:8c52:7003::a9fe:a9fe".parse().unwrap();
++        let private: IpAddr = "3fff:6464:8c52:7003::a00:5".parse().unwrap();
++        nat64::register_network_prefix(broad);
++        assert!(!is_internal_ip(loopback), "only the /32 is known");
++        nat64::register_network_prefix(nested);
++        assert!(is_always_blocked_ip(loopback));
++        assert!(is_always_blocked_ip(metadata));
++        assert!(is_internal_ip(private));
++        assert!(!is_always_blocked_ip(private));
++        let public: IpNet = "140.82.112.0/20".parse().unwrap();
++        let rfc1918: IpNet = "10.0.0.0/8".parse().unwrap();
++        assert!(!allowed_net_contains(&public, private));
++        assert!(allowed_net_contains(&rfc1918, private));
++    }
++
++    #[test]
++    fn nat64_local_use_range_is_internal_without_a_registered_prefix() {
++        assert!(is_internal_ip("64:ff9b:1::8c52:7003".parse().unwrap()));
++        assert!(!is_always_blocked_ip(
++            "64:ff9b:1::8c52:7003".parse().unwrap()
++        ));
++    }
++
++    #[test]
++    fn nat64_well_known_cidrs_follow_ipv4_net_classification() {
++        let net = |raw: &str| raw.parse::<IpNet>().unwrap();
++        assert!(is_always_blocked_net(net("64:ff9b::/96")));
++        assert!(is_always_blocked_net(net("64:ff9b::7f00:0/104")));
++        assert!(is_always_blocked_net(net("64:ff9b::a9fe:a9fe/128")));
++        assert!(!is_always_blocked_net(net("64:ff9b::a00:0/104")));
++        assert!(is_internal_net(net("64:ff9b::a00:0/104")));
++        assert!(is_internal_net(net("64:ff9b:1::/64")));
++        assert!(!is_internal_net(net("64:ff9b::8c52:7000/120")));
++    }
++
++    #[test]
++    fn nat64_answers_match_allowed_ipv4_networks() {
++        let net: IpNet = "10.0.0.0/8".parse().unwrap();
++        assert!(allowed_net_contains(&net, "10.0.0.5".parse().unwrap()));
++        assert!(allowed_net_contains(
++            &net,
++            "64:ff9b::a00:5".parse().unwrap()
++        ));
++        assert!(!allowed_net_contains(
++            &net,
++            "64:ff9b::b00:5".parse().unwrap()
++        ));
++        assert!(!allowed_net_contains(
++            &net,
++            "2001:db8::a00:5".parse().unwrap()
++        ));
++        let v6: IpNet = "2001:db8::/32".parse().unwrap();
++        assert!(allowed_net_contains(&v6, "2001:db8::1".parse().unwrap()));
++    }
+ }
+diff --git a/crates/openshell-core/src/net/nat64.rs b/crates/openshell-core/src/net/nat64.rs
+new file mode 100644
+index 000000000..3b8d135fc
+--- /dev/null
++++ b/crates/openshell-core/src/net/nat64.rs
+@@ -0,0 +1,288 @@
++// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++// SPDX-License-Identifier: Apache-2.0
++
++//! NAT64 address handling for SSRF classification.
++//!
++//! A NAT64 translator forwards an IPv6 destination inside its prefix to the
++//! IPv4 address embedded in it (RFC 6052). On a DNS64 network an IPv4-only
++//! name resolves to such an address, so `10.0.0.5` can be reached as
++//! `64:ff9b::a00:5`, or as `<network-specific prefix>::a00:5`. The SSRF
++//! predicates in [`super`] classify these addresses by their embedded IPv4
++//! address so the IPv4 protections cannot be bypassed through the translator.
++//!
++//! The well-known prefix `64:ff9b::/96` is always recognized. Network-specific
++//! prefixes are learned at runtime (RFC 7050 discovery by the supervisor) and
++//! registered with [`register_network_prefix`].
++
++use ipnet::Ipv6Net;
++use std::net::{Ipv4Addr, Ipv6Addr};
++use std::sync::RwLock;
++
++/// The RFC 6052 well-known prefix, `64:ff9b::/96`.
++pub const WELL_KNOWN_PREFIX: Nat64Prefix = Nat64Prefix(Ipv6Net::new_assert(
++    Ipv6Addr::new(0x64, 0xff9b, 0, 0, 0, 0, 0, 0),
++    96,
++));
++
++/// The RFC 8215 local-use IPv4/IPv6 translation range, `64:ff9b:1::/48`.
++///
++/// The IANA special-purpose registry marks it as not globally reachable, and
++/// the embedding length inside it is chosen by the operator. Addresses in it
++/// that are not covered by a registered prefix are treated as internal.
++pub const LOCAL_USE_NET: Ipv6Net =
++    Ipv6Net::new_assert(Ipv6Addr::new(0x64, 0xff9b, 1, 0, 0, 0, 0, 0), 48);
++
++/// The well-known IPv4 addresses behind `ipv4only.arpa` (RFC 7050 §2.2).
++const IPV4ONLY_ARPA_ADDRESSES: [Ipv4Addr; 2] =
++    [Ipv4Addr::new(192, 0, 0, 170), Ipv4Addr::new(192, 0, 0, 171)];
++
++/// Prefix lengths RFC 6052 §2.2 allows, longest first so discovery prefers
++/// the common `/96` layout when an answer matches more than one.
++const PREFIX_LENGTHS: [u8; 6] = [96, 64, 56, 48, 40, 32];
++
++/// Index of the RFC 6052 "u" octet (bits 64..71), which never carries IPv4
++/// bits.
++const U_OCTET: usize = 8;
++
++static NETWORK_PREFIXES: RwLock<Vec<Nat64Prefix>> = RwLock::new(Vec::new());
++
++/// A NAT64 prefix with an RFC 6052 embedding length.
++#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
++pub struct Nat64Prefix(Ipv6Net);
++
++/// Why a prefix cannot be used as a NAT64 prefix.
++#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
++#[error("NAT64 prefix {0} must be /32, /40, /48, /56, /64 or /96 (RFC 6052)")]
++pub struct InvalidNat64Prefix(Ipv6Net);
++
++impl Nat64Prefix {
++    /// Build a prefix, truncating host bits.
++    pub fn new(net: Ipv6Net) -> Result<Self, InvalidNat64Prefix> {
++        if PREFIX_LENGTHS.contains(&net.prefix_len()) {
++            Ok(Self(net.trunc()))
++        } else {
++            Err(InvalidNat64Prefix(net))
++        }
++    }
++
++    /// The prefix as a network.
++    #[must_use]
++    pub const fn net(self) -> Ipv6Net {
++        self.0
++    }
++
++    /// The IPv4 address a translator using this prefix would forward `addr`
++    /// to, or `None` when `addr` is outside the prefix.
++    ///
++    /// The "u" octet and suffix are ignored rather than validated, so an
++    /// address with non-zero reserved bits is still classified by the IPv4
++    /// address a lenient translator would reach.
++    #[must_use]
++    pub fn embedded_ipv4(self, addr: Ipv6Addr) -> Option<Ipv4Addr> {
++        if !self.0.contains(&addr) {
++            return None;
++        }
++        let o = addr.octets();
++        let v4 = match self.0.prefix_len() {
++            32 => [o[4], o[5], o[6], o[7]],
++            40 => [o[5], o[6], o[7], o[9]],
++            48 => [o[6], o[7], o[9], o[10]],
++            56 => [o[7], o[9], o[10], o[11]],
++            64 => [o[9], o[10], o[11], o[12]],
++            _ => [o[12], o[13], o[14], o[15]],
++        };
++        Some(Ipv4Addr::from(v4))
++    }
++
++    /// Derive the prefix from one AAAA answer for `ipv4only.arpa`
++    /// (RFC 7050 §3). Returns `None` when the answer does not embed a
++    /// well-known `ipv4only.arpa` address at any RFC 6052 position.
++    #[must_use]
++    pub fn from_ipv4only_arpa_answer(addr: Ipv6Addr) -> Option<Self> {
++        PREFIX_LENGTHS.iter().find_map(|&len| {
++            if len < 96 && addr.octets()[U_OCTET] != 0 {
++                return None;
++            }
++            let prefix = Self(Ipv6Net::new(addr, len).ok()?.trunc());
++            prefix
++                .embedded_ipv4(addr)
++                .filter(|v4| IPV4ONLY_ARPA_ADDRESSES.contains(v4))
++                .map(|_| prefix)
++        })
++    }
++}
++
++impl std::str::FromStr for Nat64Prefix {
++    type Err = String;
++
++    fn from_str(raw: &str) -> Result<Self, Self::Err> {
++        let net = raw
++            .trim()
++            .parse::<Ipv6Net>()
++            .map_err(|_| format!("NAT64 prefix '{raw}' is not an IPv6 CIDR"))?;
++        Self::new(net).map_err(|error| error.to_string())
++    }
++}
++
++impl std::fmt::Display for Nat64Prefix {
++    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
++        self.0.fmt(f)
++    }
++}
++
++/// Register a network-specific prefix for this process.
++///
++/// Registration is append-only: a prefix can only make more addresses subject
++/// to IPv4 classification, never fewer. Returns `false` when the prefix was
++/// already known.
++pub fn register_network_prefix(prefix: Nat64Prefix) -> bool {
++    if prefix == WELL_KNOWN_PREFIX {
++        return false;
++    }
++    let mut prefixes = NETWORK_PREFIXES
++        .write()
++        .unwrap_or_else(std::sync::PoisonError::into_inner);
++    if prefixes.contains(&prefix) {
++        return false;
++    }
++    prefixes.push(prefix);
++    true
++}
++
++/// Network-specific prefixes registered in this process.
++#[must_use]
++pub fn network_prefixes() -> Vec<Nat64Prefix> {
++    NETWORK_PREFIXES
++        .read()
++        .unwrap_or_else(std::sync::PoisonError::into_inner)
++        .clone()
++}
++
++/// The IPv4 address `addr` translates to under the well-known prefix or any
++/// registered network-specific prefix.
++///
++/// When prefixes overlap, the longest matching prefix wins, as it does for
++/// the route that carries the packet: a `/96` discovered inside a configured
++/// `/32` embeds the IPv4 address in its last 32 bits, whatever order the two
++/// were registered in.
++#[must_use]
++pub fn embedded_ipv4(addr: Ipv6Addr) -> Option<Ipv4Addr> {
++    let prefixes = NETWORK_PREFIXES
++        .read()
++        .unwrap_or_else(std::sync::PoisonError::into_inner);
++    std::iter::once(&WELL_KNOWN_PREFIX)
++        .chain(prefixes.iter())
++        .filter(|prefix| prefix.0.contains(&addr))
++        .max_by_key(|prefix| prefix.0.prefix_len())
++        .and_then(|prefix| prefix.embedded_ipv4(addr))
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    fn prefix(raw: &str) -> Nat64Prefix {
++        Nat64Prefix::new(raw.parse().unwrap()).unwrap()
++    }
++
++    #[test]
++    fn rejects_non_rfc6052_lengths_and_truncates_host_bits() {
++        assert!(Nat64Prefix::new("2001:db8::/80".parse().unwrap()).is_err());
++        assert!(Nat64Prefix::new("2001:db8::/128".parse().unwrap()).is_err());
++        assert_eq!(
++            prefix("2001:db8::1/96").net(),
++            "2001:db8::/96".parse::<Ipv6Net>().unwrap()
++        );
++    }
++
++    #[test]
++    fn extracts_ipv4_at_every_rfc6052_length() {
++        // RFC 6052 §2.4 examples for 192.0.2.33.
++        let expected = Ipv4Addr::new(192, 0, 2, 33);
++        for (net, addr) in [
++            ("2001:db8::/32", "2001:db8:c000:221::"),
++            ("2001:db8:100::/40", "2001:db8:1c0:2:21::"),
++            ("2001:db8:122::/48", "2001:db8:122:c000:2:2100::"),
++            ("2001:db8:122:300::/56", "2001:db8:122:3c0:0:221::"),
++            ("2001:db8:122:344::/64", "2001:db8:122:344:c0:2:2100:0"),
++            ("2001:db8:122:344::/96", "2001:db8:122:344::192.0.2.33"),
++        ] {
++            let addr = addr.parse().unwrap();
++            assert_eq!(prefix(net).embedded_ipv4(addr), Some(expected), "{net}");
++            assert_eq!(
++                Nat64Prefix::from_ipv4only_arpa_answer(addr),
++                None,
++                "{net}: 192.0.2.33 is not an ipv4only.arpa address"
++            );
++        }
++        assert_eq!(
++            WELL_KNOWN_PREFIX.embedded_ipv4("64:ff9b::192.0.2.33".parse().unwrap()),
++            Some(expected)
++        );
++        assert_eq!(
++            WELL_KNOWN_PREFIX.embedded_ipv4("64:ff9c::192.0.2.33".parse().unwrap()),
++            None
++        );
++    }
++
++    #[test]
++    fn non_zero_u_octet_is_still_classified() {
++        let addr = "2001:db8:122:344:ff0a:0:100:0".parse().unwrap();
++        assert_eq!(
++            prefix("2001:db8:122:344::/64").embedded_ipv4(addr),
++            Some(Ipv4Addr::new(10, 0, 0, 1))
++        );
++    }
++
++    #[test]
++    fn discovers_prefix_from_ipv4only_arpa_answers() {
++        for (answer, expected) in [
++            ("64:ff9b::c000:aa", "64:ff9b::/96"),
++            (
++                "2600:1f18:4928:5601:d32b::c000:ab",
++                "2600:1f18:4928:5601:d32b::/96",
++            ),
++            ("2001:db8:122:344:c0:0:aa00:0", "2001:db8:122:344::/64"),
++            ("2001:db8:c000:aa::", "2001:db8::/32"),
++        ] {
++            assert_eq!(
++                Nat64Prefix::from_ipv4only_arpa_answer(answer.parse().unwrap()),
++                Some(prefix(expected)),
++                "{answer}"
++            );
++        }
++        assert_eq!(
++            Nat64Prefix::from_ipv4only_arpa_answer("2001:4860:4860::8888".parse().unwrap()),
++            None
++        );
++    }
++
++    #[test]
++    fn registry_is_append_only_and_ignores_the_well_known_prefix() {
++        let nsp = prefix("2001:db8:64:1::/96");
++        let addr = "2001:db8:64:1::a00:1".parse().unwrap();
++        assert!(!register_network_prefix(WELL_KNOWN_PREFIX));
++        register_network_prefix(nsp);
++        assert!(!register_network_prefix(nsp));
++        assert!(network_prefixes().contains(&nsp));
++        assert_eq!(embedded_ipv4(addr), Some(Ipv4Addr::new(10, 0, 0, 1)));
++    }
++
++    #[test]
++    fn overlapping_prefixes_use_the_longest_match() {
++        // Only this test registers these documentation prefixes (RFC 9637).
++        // The broad prefix goes in first, as a configured prefix would before
++        // RFC 7050 discovers the nested one.
++        register_network_prefix(prefix("3fff:64::/32"));
++        register_network_prefix(prefix("3fff:64:8c52:7003::/96"));
++        assert_eq!(
++            embedded_ipv4("3fff:64:8c52:7003::7f00:1".parse().unwrap()),
++            Some(Ipv4Addr::LOCALHOST)
++        );
++        // Outside the /96, the /32 still applies.
++        assert_eq!(
++            embedded_ipv4("3fff:64:a00:5::".parse().unwrap()),
++            Some(Ipv4Addr::new(10, 0, 0, 5))
++        );
++    }
++}
+diff --git a/crates/openshell-driver-docker/src/lib.rs b/crates/openshell-driver-docker/src/lib.rs
+index 7a8935ff2..b2d3ffbb6 100644
+--- a/crates/openshell-driver-docker/src/lib.rs
++++ b/crates/openshell-driver-docker/src/lib.rs
+@@ -56,7 +56,8 @@ use openshell_core::proto_struct::{
+     deserialize_optional_non_empty_string_list, struct_to_json_value,
+ };
+ use openshell_core::{
+-    AppArmorProfile, Error, ImagePullPolicy, Result as CoreResult, UpstreamProxyConfig,
++    AppArmorProfile, Error, ImagePullPolicy, Result as CoreResult, SupervisorIpv6EgressConfig,
++    UpstreamProxyConfig,
+ };
+ use openshell_isolation_interface::contract::ResolvedWorkloadIdentity;
+ use openshell_sandbox_backend::boundary_protocol::{
+@@ -231,6 +232,10 @@ pub struct DockerComputeConfig {
+     /// Gateway-host PEM CA bundle trusted for the corporate proxy and for
+     /// server certificates re-signed by a TLS-intercepting proxy.
+     pub proxy_ca_bundle: Option<PathBuf>,
++    /// Policy DNS IPv6 egress mode and NAT64 prefixes supplied to the
++    /// supervisor.
++    #[serde(flatten)]
++    pub ipv6_egress: SupervisorIpv6EgressConfig,
+ 
+     /// Host UNIX socket projected into the supervisor for provider identity.
+     pub provider_spiffe_workload_api_socket: Option<PathBuf>,
+@@ -257,6 +262,7 @@ impl DockerComputeConfig {
+         self.upstream_proxy.validate().map_err(Error::config)?;
+         validate_docker_proxy_auth_file(&self.upstream_proxy)?;
+         validate_docker_proxy_ca_bundle(self)?;
++        self.ipv6_egress.validate().map_err(Error::config)?;
+         if let Some(socket) = self.provider_spiffe_workload_api_socket.as_deref() {
+             openshell_core::driver_utils::validate_provider_spiffe_unix_socket(socket)
+                 .map_err(Error::config)?;
+@@ -293,6 +299,7 @@ impl Default for DockerComputeConfig {
+             enable_bind_mounts: false,
+             upstream_proxy: UpstreamProxyConfig::default(),
+             proxy_ca_bundle: None,
++            ipv6_egress: SupervisorIpv6EgressConfig::default(),
+             provider_spiffe_workload_api_socket: None,
+             app_armor_profile: None,
+         }
+@@ -324,6 +331,7 @@ struct DockerDriverRuntimeConfig {
+     enable_bind_mounts: bool,
+     upstream_proxy: UpstreamProxyConfig,
+     proxy_ca_bundle: Option<PathBuf>,
++    ipv6_egress: SupervisorIpv6EgressConfig,
+     provider_spiffe_workload_api_socket: Option<PathBuf>,
+     app_armor_profile: Option<AppArmorProfile>,
+ }
+@@ -956,6 +964,7 @@ impl DockerComputeDriver {
+                 resource_admission: docker_config.resource_admission.clone(),
+                 upstream_proxy: docker_config.upstream_proxy.clone(),
+                 proxy_ca_bundle: docker_config.proxy_ca_bundle.clone(),
++                ipv6_egress: docker_config.ipv6_egress.clone(),
+                 provider_spiffe_workload_api_socket: docker_config
+                     .provider_spiffe_workload_api_socket
+                     .clone(),
+@@ -5144,6 +5153,7 @@ async fn spawn_docker_control_process(
+         &config.upstream_proxy,
+         config.proxy_ca_bundle.is_some(),
+     ));
++    command.extend(config.ipv6_egress.supervisor_args());
+     let mut supervisor_mounts = vec![
+         Mount {
+             target: Some(BOUNDARY_MOUNT_PATH.to_string()),
+diff --git a/crates/openshell-driver-docker/src/tests.rs b/crates/openshell-driver-docker/src/tests.rs
+index 3d8968f2d..4bcedbbe1 100644
+--- a/crates/openshell-driver-docker/src/tests.rs
++++ b/crates/openshell-driver-docker/src/tests.rs
+@@ -224,6 +224,7 @@ fn runtime_config() -> DockerDriverRuntimeConfig {
+         enable_bind_mounts: false,
+         upstream_proxy: UpstreamProxyConfig::default(),
+         proxy_ca_bundle: None,
++        ipv6_egress: SupervisorIpv6EgressConfig::default(),
+         provider_spiffe_workload_api_socket: None,
+         app_armor_profile: Some(AppArmorProfile::Unconfined),
+     }
+@@ -1355,6 +1356,37 @@ fn repository_e2e_docker_configuration_uses_the_supported_schema() {
+     assert_eq!(config.sandbox_label, "openshell-e2e");
+ }
+ 
++#[test]
++fn docker_config_passes_ipv6_egress_settings_to_the_supervisor() {
++    let config: DockerComputeConfig = toml::from_str(
++        r#"
++https_proxy = "http://proxy.example:3128"
++policy_dns_ipv6_egress = "enabled"
++nat64_prefixes = ["2001:db8:64::/96"]
++"#,
++    )
++    .expect("Docker driver config parses");
++    assert_eq!(
++        config.upstream_proxy.https_proxy.as_deref(),
++        Some("http://proxy.example:3128")
++    );
++    assert_eq!(
++        config.ipv6_egress.supervisor_args(),
++        [
++            "--policy-dns-ipv6-egress",
++            "enabled",
++            "--nat64-prefix",
++            "2001:db8:64::/96"
++        ]
++    );
++    let bind: SocketAddr = "127.0.0.1:8080".parse().unwrap();
++    config.validate_configuration(bind).unwrap();
++
++    let invalid: DockerComputeConfig =
++        toml::from_str(r#"nat64_prefixes = ["2001:db8::/80"]"#).unwrap();
++    assert!(invalid.validate_configuration(bind).is_err());
++}
++
+ #[test]
+ fn container_create_body_sets_driver_owned_pids_limit() {
+     let body = build_container_create_body(&test_sandbox(), &runtime_config()).unwrap();
+diff --git a/crates/openshell-driver-kubernetes/src/config.rs b/crates/openshell-driver-kubernetes/src/config.rs
+index 6bd7d93af..c0a23585f 100644
+--- a/crates/openshell-driver-kubernetes/src/config.rs
++++ b/crates/openshell-driver-kubernetes/src/config.rs
+@@ -243,6 +243,12 @@ pub struct KubernetesComputeConfig {
+     /// Only meaningful with `https_proxy` set; the bundle must exist and
+     /// contain at least one usable trust anchor.
+     pub proxy_ca_bundle: Option<String>,
++    /// AAAA handling for the supervisor's mediated policy DNS (`auto`,
++    /// `enabled` or `disabled`). Unset means the supervisor default, `auto`.
++    pub policy_dns_ipv6_egress: Option<openshell_core::PolicyDnsIpv6Egress>,
++    /// NAT64 prefixes (RFC 6052) of the cluster network. The supervisor
++    /// classifies addresses inside them by their embedded IPv4 address.
++    pub nat64_prefixes: Vec<String>,
+     pub grpc_endpoint: String,
+     /// OTLP/gRPC collector endpoint passed to supervisor pods. The gateway
+     /// supplies its own export endpoint; driver TOML cannot set it.
+@@ -355,6 +361,8 @@ impl Default for KubernetesComputeConfig {
+             proxy_auth_allow_insecure: None,
+             proxy_connect_by_hostname: None,
+             proxy_ca_bundle: None,
++            policy_dns_ipv6_egress: None,
++            nat64_prefixes: Vec::new(),
+             grpc_endpoint: String::new(),
+             supervisor_otlp_endpoint: None,
+             ssh_socket_path: openshell_core::container_paths::SSH_SOCKET_PATH.to_string(),
+@@ -379,7 +387,17 @@ impl KubernetesComputeConfig {
+         self.validate_provider_spiffe_workload_api_socket_path()?;
+         self.validate_sandbox_identity_config()?;
+         self.validate_proxy_uid()?;
+-        self.validate_upstream_proxy_config()
++        self.validate_upstream_proxy_config()?;
++        self.ipv6_egress_config().validate()
++    }
++
++    /// Supervisor IPv6 egress settings in their shared form.
++    #[must_use]
++    pub fn ipv6_egress_config(&self) -> openshell_core::SupervisorIpv6EgressConfig {
++        openshell_core::SupervisorIpv6EgressConfig {
++            policy_dns_ipv6_egress: self.policy_dns_ipv6_egress,
++            nat64_prefixes: self.nat64_prefixes.clone(),
++        }
+     }
+ 
+     /// Clamp `sa_token_ttl_secs` into the `[MIN_SA_TOKEN_TTL_SECS,
+@@ -1211,6 +1229,32 @@ mod tests {
+         assert!(cfg.validate_upstream_proxy_config().is_ok());
+     }
+ 
++    #[test]
++    fn toml_deserializes_and_validates_ipv6_egress_settings() {
++        let cfg: KubernetesComputeConfig = toml::from_str(
++            r#"
++                policy_dns_ipv6_egress = "enabled"
++                nat64_prefixes = ["64:ff9b:1::/96"]
++            "#,
++        )
++        .expect("config parses");
++        assert_eq!(
++            cfg.ipv6_egress_config().supervisor_args(),
++            [
++                "--policy-dns-ipv6-egress",
++                "enabled",
++                "--nat64-prefix",
++                "64:ff9b:1::/96"
++            ]
++        );
++        assert!(cfg.ipv6_egress_config().validate().is_ok());
++        let bad = KubernetesComputeConfig {
++            nat64_prefixes: vec!["64:ff9b:1::/100".to_string()],
++            ..KubernetesComputeConfig::default()
++        };
++        assert!(bad.validate_configuration().is_err());
++    }
++
+     #[test]
+     fn toml_deserializes_upstream_proxy_settings() {
+         let cfg: KubernetesComputeConfig = toml::from_str(
+diff --git a/crates/openshell-driver-kubernetes/src/driver.rs b/crates/openshell-driver-kubernetes/src/driver.rs
+index 42f75abaa..551d408ad 100644
+--- a/crates/openshell-driver-kubernetes/src/driver.rs
++++ b/crates/openshell-driver-kubernetes/src/driver.rs
+@@ -2449,6 +2449,7 @@ impl KubernetesComputeDriver {
+                     self.config.proxy_auth_allow_insecure == Some(true),
+                     self.config.proxy_connect_by_hostname == Some(true),
+                     upstream_proxy_ca_bundle.is_some(),
++                    &self.config.ipv6_egress_config().supervisor_args(),
+                     self.config.provider_spiffe_enabled().then_some(
+                         self.config
+                             .provider_spiffe_workload_api_socket_path
+@@ -3251,6 +3252,7 @@ impl KubernetesComputeDriver {
+                     self.config.proxy_auth_allow_insecure == Some(true),
+                     self.config.proxy_connect_by_hostname == Some(true),
+                     upstream_proxy_ca_bundle.is_some(),
++                    &self.config.ipv6_egress_config().supervisor_args(),
+                     self.config.provider_spiffe_enabled().then_some(
+                         self.config
+                             .provider_spiffe_workload_api_socket_path
+diff --git a/crates/openshell-driver-kubernetes/src/main.rs b/crates/openshell-driver-kubernetes/src/main.rs
+index d70f706f5..c3aac1dd7 100644
+--- a/crates/openshell-driver-kubernetes/src/main.rs
++++ b/crates/openshell-driver-kubernetes/src/main.rs
+@@ -166,6 +166,15 @@ struct Args {
+     #[arg(long, env = "OPENSHELL_UPSTREAM_PROXY_CA_BUNDLE")]
+     proxy_ca_bundle: Option<String>,
+ 
++    /// AAAA handling for the supervisor's mediated policy DNS: `auto`,
++    /// `enabled` or `disabled`.
++    #[arg(long, env = "OPENSHELL_POLICY_DNS_IPV6_EGRESS")]
++    policy_dns_ipv6_egress: Option<openshell_core::PolicyDnsIpv6Egress>,
++
++    /// NAT64 prefixes (RFC 6052 CIDRs) of the cluster network.
++    #[arg(long, env = "OPENSHELL_NAT64_PREFIXES", value_delimiter = ',')]
++    nat64_prefixes: Vec<String>,
++
+     #[arg(long, env = "OPENSHELL_ENABLE_USER_NAMESPACES")]
+     enable_user_namespaces: bool,
+ 
+@@ -272,6 +281,8 @@ async fn main() -> Result<()> {
+             proxy_auth_allow_insecure: args.proxy_auth_allow_insecure.then_some(true),
+             proxy_connect_by_hostname: args.proxy_connect_by_hostname.then_some(true),
+             proxy_ca_bundle: args.proxy_ca_bundle,
++            policy_dns_ipv6_egress: args.policy_dns_ipv6_egress,
++            nat64_prefixes: args.nat64_prefixes,
+             grpc_endpoint: args.grpc_endpoint.unwrap_or_default(),
+             supervisor_otlp_endpoint: args.otlp_endpoint.clone(),
+             ssh_socket_path: args.sandbox_ssh_socket_path,
+diff --git a/crates/openshell-driver-kubernetes/src/sandbox_runtime.rs b/crates/openshell-driver-kubernetes/src/sandbox_runtime.rs
+index d3bc1b27e..aa0abf2b4 100644
+--- a/crates/openshell-driver-kubernetes/src/sandbox_runtime.rs
++++ b/crates/openshell-driver-kubernetes/src/sandbox_runtime.rs
+@@ -231,6 +231,7 @@ pub fn supervisor_pod(
+     proxy_auth_allow_insecure: bool,
+     proxy_connect_by_hostname: bool,
+     upstream_proxy_ca_bundle_staged: bool,
++    ipv6_egress_args: &[String],
+     provider_spiffe_socket_path: Option<&str>,
+     owner: OwnerReference,
+     tracing_environment: &[(&str, String)],
+@@ -372,6 +373,7 @@ pub fn supervisor_pod(
+             UPSTREAM_PROXY_CA_BUNDLE_PATH.to_string(),
+         ]);
+     }
++    command.extend(ipv6_egress_args.iter().cloned());
+     if let Some((secret_name, secret_key)) = proxy_auth_secret {
+         let auth_path = Path::new(openshell_core::container_paths::UPSTREAM_PROXY_AUTH_MOUNT_PATH);
+         let mount_path = auth_path
+@@ -833,6 +835,7 @@ mod tests {
+             false,
+             false,
+             false,
++            &[],
+             None,
+             owner(),
+             &[],
+@@ -1018,6 +1021,7 @@ mod tests {
+             false,
+             false,
+             false,
++            &[],
+             None,
+             owner(),
+             &[],
+@@ -1276,6 +1280,7 @@ mod tests {
+             false,
+             false,
+             staged,
++            &[],
+             None,
+             owner(),
+             &[],
+@@ -1283,6 +1288,59 @@ mod tests {
+         .expect("render supervisor Pod")
+     }
+ 
++    #[test]
++    fn supervisor_pod_passes_ipv6_egress_arguments() {
++        let args = openshell_core::SupervisorIpv6EgressConfig {
++            policy_dns_ipv6_egress: Some(openshell_core::PolicyDnsIpv6Egress::Disabled),
++            nat64_prefixes: vec!["2001:db8:64::/96".to_string()],
++        }
++        .supervisor_args();
++        let pod = supervisor_pod(
++            "sandbox",
++            &SandboxRuntimeNames::new("pair"),
++            "pair",
++            "demo",
++            "gateway",
++            "supervisor:latest",
++            None,
++            "sandbox-sa",
++            1000,
++            1000,
++            &[],
++            "https://gateway:8080",
++            SupervisorClientTls::Secret("client-tls"),
++            "{}",
++            "info",
++            600,
++            None,
++            None,
++            None,
++            false,
++            false,
++            false,
++            &args,
++            None,
++            owner(),
++        )
++        .expect("render supervisor Pod");
++        let command = pod.spec.as_ref().expect("Pod spec").containers[0]
++            .command
++            .as_ref()
++            .expect("supervisor command");
++        assert!(
++            command
++                .windows(2)
++                .any(|pair| pair == ["--policy-dns-ipv6-egress", "disabled"]),
++            "{command:?}"
++        );
++        assert!(
++            command
++                .windows(2)
++                .any(|pair| pair == ["--nat64-prefix", "2001:db8:64::/96"]),
++            "{command:?}"
++        );
++    }
++
+     #[test]
+     fn supervisor_pod_passes_upstream_proxy_ca_bundle_argument() {
+         let pod = supervisor_pod_with_staged_proxy_ca(true);
+diff --git a/crates/openshell-driver-podman/src/config.rs b/crates/openshell-driver-podman/src/config.rs
+index 9e4e9b571..2ef08142c 100644
+--- a/crates/openshell-driver-podman/src/config.rs
++++ b/crates/openshell-driver-podman/src/config.rs
+@@ -178,6 +178,13 @@ pub struct PodmanComputeConfig {
+     /// and upstream verification. Only meaningful with `https_proxy` set; the
+     /// bundle must exist and contain at least one certificate.
+     pub proxy_ca_bundle: Option<String>,
++    /// AAAA handling for the supervisor's mediated policy DNS (`auto`,
++    /// `enabled` or `disabled`). Unset means the supervisor default, `auto`.
++    pub policy_dns_ipv6_egress: Option<openshell_core::PolicyDnsIpv6Egress>,
++    /// NAT64 prefixes (RFC 6052) of the sandbox network. The supervisor
++    /// classifies addresses inside them by their embedded IPv4 address.
++    #[serde(default)]
++    pub nat64_prefixes: Vec<String>,
+     /// User namespace mode for sandbox containers (e.g. `auto`, `private`).
+     /// When unset, containers use the default user namespace.
+     pub userns: Option<String>,
+@@ -237,6 +244,9 @@ impl PodmanComputeConfig {
+         self.validate_runtime_limits()?;
+         self.validate_host_gateway_ip()?;
+         self.validate_proxy_config()?;
++        self.ipv6_egress_config()
++            .validate()
++            .map_err(crate::client::PodmanApiError::InvalidInput)?;
+         self.validate_app_armor_profile()?;
+         if let Some(socket) = self.provider_spiffe_workload_api_socket.as_deref() {
+             let raw = socket.to_str().ok_or_else(|| {
+@@ -255,6 +265,15 @@ impl PodmanComputeConfig {
+         self.validate_userns_mappings()
+     }
+ 
++    /// Supervisor IPv6 egress settings in their shared form.
++    #[must_use]
++    pub fn ipv6_egress_config(&self) -> openshell_core::SupervisorIpv6EgressConfig {
++        openshell_core::SupervisorIpv6EgressConfig {
++            policy_dns_ipv6_egress: self.policy_dns_ipv6_egress,
++            nat64_prefixes: self.nat64_prefixes.clone(),
++        }
++    }
++
+     /// Returns `true` when the gateway CA is configured.
+     #[must_use]
+     pub fn tls_enabled(&self) -> bool {
+@@ -519,6 +538,8 @@ impl Default for PodmanComputeConfig {
+             proxy_auth_allow_insecure: None,
+             proxy_connect_by_hostname: None,
+             proxy_ca_bundle: None,
++            policy_dns_ipv6_egress: None,
++            nat64_prefixes: Vec::new(),
+             userns: None,
+             uidmap: Vec::new(),
+             gidmap: Vec::new(),
+@@ -561,6 +582,8 @@ impl std::fmt::Debug for PodmanComputeConfig {
+             .field("proxy_auth_allow_insecure", &self.proxy_auth_allow_insecure)
+             .field("proxy_connect_by_hostname", &self.proxy_connect_by_hostname)
+             .field("proxy_ca_bundle", &self.proxy_ca_bundle)
++            .field("policy_dns_ipv6_egress", &self.policy_dns_ipv6_egress)
++            .field("nat64_prefixes", &self.nat64_prefixes)
+             .field("userns", &self.userns)
+             .field("uidmap", &self.uidmap)
+             .field("gidmap", &self.gidmap)
+@@ -1004,6 +1027,22 @@ mod tests {
+         }
+     }
+ 
++    #[test]
++    fn validate_configuration_checks_nat64_prefixes() {
++        let mut config: PodmanComputeConfig = serde_json::from_str(
++            r#"{"policy_dns_ipv6_egress":"enabled","nat64_prefixes":["2001:db8:64::/96"]}"#,
++        )
++        .expect("podman config parses");
++        assert_eq!(
++            config.policy_dns_ipv6_egress,
++            Some(openshell_core::PolicyDnsIpv6Egress::Enabled)
++        );
++        config.validate_configuration().unwrap();
++
++        config.nat64_prefixes = vec!["10.0.0.0/8".to_string()];
++        assert!(config.validate_configuration().is_err());
++    }
++
+     #[test]
+     fn validate_proxy_config_rejects_auth_file_without_proxy() {
+         let cfg = PodmanComputeConfig {
+diff --git a/crates/openshell-driver-podman/src/container.rs b/crates/openshell-driver-podman/src/container.rs
+index 3091ac978..d7d5fd844 100644
+--- a/crates/openshell-driver-podman/src/container.rs
++++ b/crates/openshell-driver-podman/src/container.rs
+@@ -1272,6 +1272,7 @@ fn build_base_spec(
+     image_volumes.extend(user_mounts.image_volumes);
+     let mut command = vec!["--workdir".to_string(), image.workspace_root.clone()];
+     command.extend(upstream_proxy_cli_args(config));
++    command.extend(config.ipv6_egress_config().supervisor_args());
+ 
+     let container_spec = ContainerSpec {
+         name,
+@@ -2803,6 +2804,36 @@ mod tests {
+         }
+     }
+ 
++    #[test]
++    fn container_spec_passes_ipv6_egress_settings_on_supervisor_argv() {
++        let sandbox = test_sandbox("test-id", "test-name");
++        let mut config = test_config();
++        let command = spec_command(&build_container_spec(&sandbox, &config));
++        assert!(
++            !command
++                .iter()
++                .any(|a| a == "--policy-dns-ipv6-egress" || a == "--nat64-prefix"),
++            "no IPv6 egress flags without operator config: {command:?}"
++        );
++
++        config.policy_dns_ipv6_egress = Some(openshell_core::PolicyDnsIpv6Egress::Disabled);
++        config.nat64_prefixes = vec!["64:ff9b:1::/96".to_string()];
++        let command = spec_command(&build_container_spec(&sandbox, &config));
++        let idx = command
++            .iter()
++            .position(|a| a == "--policy-dns-ipv6-egress")
++            .expect("IPv6 egress flag present");
++        assert_eq!(command.get(idx + 1).map(String::as_str), Some("disabled"));
++        let idx = command
++            .iter()
++            .position(|a| a == "--nat64-prefix")
++            .expect("NAT64 prefix flag present");
++        assert_eq!(
++            command.get(idx + 1).map(String::as_str),
++            Some("64:ff9b:1::/96")
++        );
++    }
++
+     #[test]
+     fn container_spec_omits_proxy_argv_when_unconfigured() {
+         let sandbox = test_sandbox("test-id", "test-name");
+diff --git a/crates/openshell-driver-podman/src/main.rs b/crates/openshell-driver-podman/src/main.rs
+index 4fe83e0c8..bf0a45791 100644
+--- a/crates/openshell-driver-podman/src/main.rs
++++ b/crates/openshell-driver-podman/src/main.rs
+@@ -174,6 +174,15 @@ struct Args {
+     #[arg(long, env = "OPENSHELL_SANDBOX_PROXY_CA_BUNDLE")]
+     sandbox_proxy_ca_bundle: Option<String>,
+ 
++    /// AAAA handling for the supervisor's mediated policy DNS: `auto`,
++    /// `enabled` or `disabled`.
++    #[arg(long, env = "OPENSHELL_SANDBOX_POLICY_DNS_IPV6_EGRESS")]
++    sandbox_policy_dns_ipv6_egress: Option<openshell_core::PolicyDnsIpv6Egress>,
++
++    /// NAT64 prefixes (RFC 6052 CIDRs) of the sandbox network.
++    #[arg(long, env = "OPENSHELL_SANDBOX_NAT64_PREFIXES", value_delimiter = ',')]
++    sandbox_nat64_prefixes: Vec<String>,
++
+     /// User namespace mode for sandbox containers (e.g. `auto`).
+     /// When unset, containers use the default user namespace.
+     #[arg(long, env = "OPENSHELL_PODMAN_USERNS")]
+@@ -241,6 +250,8 @@ async fn main() -> Result<()> {
+         proxy_auth_allow_insecure: args.sandbox_proxy_auth_allow_insecure,
+         proxy_connect_by_hostname: args.sandbox_proxy_connect_by_hostname,
+         proxy_ca_bundle: args.sandbox_proxy_ca_bundle,
++        policy_dns_ipv6_egress: args.sandbox_policy_dns_ipv6_egress,
++        nat64_prefixes: args.sandbox_nat64_prefixes,
+         userns: args.userns,
+         uidmap: args.uidmap,
+         gidmap: args.gidmap,
+diff --git a/crates/openshell-driver-vm/src/driver.rs b/crates/openshell-driver-vm/src/driver.rs
+index ab1aca902..9a4a83035 100644
+--- a/crates/openshell-driver-vm/src/driver.rs
++++ b/crates/openshell-driver-vm/src/driver.rs
+@@ -273,6 +273,9 @@ pub struct VmDriverConfig {
+     /// Corporate forward proxy settings delivered to the guest init script.
+     #[serde(flatten)]
+     pub upstream_proxy: UpstreamProxyConfig,
++    /// Policy DNS IPv6 egress mode and NAT64 prefixes for host control.
++    #[serde(flatten)]
++    pub ipv6_egress: openshell_core::SupervisorIpv6EgressConfig,
+     /// Gateway-host PEM CA bundle staged into the guest overlay for the
+     /// corporate proxy and TLS-intercepted server certificates.
+     pub proxy_ca_bundle: Option<PathBuf>,
+@@ -353,6 +356,7 @@ impl std::fmt::Debug for VmDriverConfig {
+                 "proxy_ca_bundle_configured",
+                 &self.proxy_ca_bundle.is_some(),
+             )
++            .field("ipv6_egress", &self.ipv6_egress)
+             .field(
+                 "provider_spiffe_workload_api_tcp_endpoint_configured",
+                 &self.provider_spiffe_workload_api_tcp_endpoint.is_some(),
+@@ -392,6 +396,7 @@ impl Default for VmDriverConfig {
+             guest_tls_cert: None,
+             guest_tls_key: None,
+             upstream_proxy: UpstreamProxyConfig::default(),
++            ipv6_egress: openshell_core::SupervisorIpv6EgressConfig::default(),
+             proxy_ca_bundle: None,
+             provider_spiffe_workload_api_tcp_endpoint: None,
+             provider_spiffe_allow_guest_tcp: false,
+@@ -419,6 +424,7 @@ impl VmDriverConfig {
+ 
+     pub fn validate_runtime_security_config(&self) -> Result<(), String> {
+         self.upstream_proxy.validate()?;
++        self.ipv6_egress.validate()?;
+         if let Some(path) = self.proxy_ca_bundle.as_ref() {
+             if path.as_os_str().is_empty() {
+                 return Err("proxy_ca_bundle must not be empty when set".to_string());
+@@ -942,6 +948,7 @@ impl VmDriver {
+             .arg("--workdir")
+             .arg("/sandbox")
+             .args(upstream_proxy_args)
++            .args(self.config.ipv6_egress.supervisor_args())
+             .env(
+                 openshell_core::sandbox_env::ADMITTED_ISOLATION_BACKEND,
+                 DRIVER_ADMITTED_BACKEND,
+@@ -12425,6 +12432,33 @@ mod tests {
+         );
+     }
+ 
++    #[test]
++    fn ipv6_egress_settings_parse_validate_and_render_supervisor_args() {
++        let mut value = serde_json::to_value(proxy_config(None, None, None)).unwrap();
++        value["policy_dns_ipv6_egress"] = "enabled".into();
++        value["nat64_prefixes"] = serde_json::json!(["2001:db8:64::/96"]);
++        let config: VmDriverConfig =
++            serde_json::from_value(value).expect("VM driver config parses flattened keys");
++        config.validate_runtime_security_config().unwrap();
++        assert_eq!(
++            config.ipv6_egress.supervisor_args(),
++            [
++                "--policy-dns-ipv6-egress",
++                "enabled",
++                "--nat64-prefix",
++                "2001:db8:64::/96"
++            ]
++        );
++        let invalid = VmDriverConfig {
++            ipv6_egress: openshell_core::SupervisorIpv6EgressConfig {
++                nat64_prefixes: vec!["2001:db8::/33".to_string()],
++                ..Default::default()
++            },
++            ..proxy_config(None, None, None)
++        };
++        assert!(invalid.validate_runtime_security_config().is_err());
++    }
++
+     #[test]
+     fn upstream_proxy_args_are_empty_without_a_configured_proxy() {
+         assert!(
+diff --git a/crates/openshell-driver-vm/src/main.rs b/crates/openshell-driver-vm/src/main.rs
+index 0fbaf7b2f..593543fe9 100644
+--- a/crates/openshell-driver-vm/src/main.rs
++++ b/crates/openshell-driver-vm/src/main.rs
+@@ -161,6 +161,19 @@ struct Args {
+     #[arg(long, env = "OPENSHELL_VM_UPSTREAM_PROXY_CA_BUNDLE")]
+     upstream_proxy_ca_bundle: Option<PathBuf>,
+ 
++    /// AAAA handling for the host supervisors' mediated policy DNS: `auto`,
++    /// `enabled` or `disabled`.
++    #[arg(long, env = "OPENSHELL_VM_POLICY_DNS_IPV6_EGRESS")]
++    policy_dns_ipv6_egress: Option<openshell_core::PolicyDnsIpv6Egress>,
++
++    /// NAT64 prefix (RFC 6052 CIDR) of the host network. Repeatable.
++    #[arg(
++        long = "nat64-prefix",
++        env = "OPENSHELL_VM_NAT64_PREFIXES",
++        value_delimiter = ','
++    )]
++    nat64_prefixes: Vec<String>,
++
+     /// Guest-reachable SPIFFE Workload API endpoint (`tcp:IP:port`).
+     #[arg(
+         long = "provider-spiffe-workload-api-tcp-endpoint",
+@@ -318,6 +331,10 @@ async fn main() -> Result<()> {
+             proxy_connect_by_hostname: args.upstream_proxy_connect_by_hostname.then_some(true),
+         },
+         proxy_ca_bundle: args.upstream_proxy_ca_bundle.clone(),
++        ipv6_egress: openshell_core::SupervisorIpv6EgressConfig {
++            policy_dns_ipv6_egress: args.policy_dns_ipv6_egress,
++            nat64_prefixes: args.nat64_prefixes.clone(),
++        },
+         provider_spiffe_workload_api_tcp_endpoint: args
+             .provider_spiffe_workload_api_tcp_endpoint
+             .clone(),
+@@ -751,6 +768,29 @@ mod tests {
+         );
+     }
+ 
++    #[test]
++    fn ipv6_egress_flags_parse_with_supervisor_names() {
++        let args = Args::parse_from([
++            "openshell-driver-vm",
++            "--policy-dns-ipv6-egress",
++            "enabled",
++            "--nat64-prefix",
++            "64:ff9b:1::/96",
++            "--nat64-prefix",
++            "2001:db8:64::/96",
++        ]);
++        assert_eq!(
++            args.policy_dns_ipv6_egress,
++            Some(openshell_core::PolicyDnsIpv6Egress::Enabled)
++        );
++        assert_eq!(args.nat64_prefixes, ["64:ff9b:1::/96", "2001:db8:64::/96"]);
++        assert!(
++            Args::parse_from(["openshell-driver-vm"])
++                .nat64_prefixes
++                .is_empty()
++        );
++    }
++
+     #[test]
+     fn corporate_proxy_settings_default_to_unset() {
+         let args = Args::parse_from(["openshell-driver-vm"]);
+diff --git a/crates/openshell-gateway/src/vm.rs b/crates/openshell-gateway/src/vm.rs
+index d0c00cd78..a271012a2 100644
+--- a/crates/openshell-gateway/src/vm.rs
++++ b/crates/openshell-gateway/src/vm.rs
+@@ -113,6 +113,11 @@ pub struct VmComputeConfig {
+     #[serde(flatten)]
+     pub upstream_proxy: UpstreamProxyConfig,
+ 
++    /// Policy DNS IPv6 egress mode and NAT64 prefixes passed to the VM
++    /// driver for its host-side supervisors.
++    #[serde(flatten)]
++    pub ipv6_egress: openshell_core::SupervisorIpv6EgressConfig,
++
+     /// Path on the gateway host to a PEM CA bundle trusted for the corporate
+     /// proxy and for server certificates re-signed by a TLS-intercepting proxy.
+     pub proxy_ca_bundle: Option<PathBuf>,
+@@ -204,6 +209,7 @@ impl VmComputeConfig {
+ 
+     fn validate_proxy_config(&self) -> Result<()> {
+         self.upstream_proxy.validate().map_err(Error::config)?;
++        self.ipv6_egress.validate().map_err(Error::config)?;
+         if let Some(path) = self.proxy_ca_bundle.as_ref() {
+             if path.as_os_str().is_empty() {
+                 return Err(Error::config("proxy_ca_bundle must not be empty when set"));
+@@ -251,6 +257,7 @@ impl Default for VmComputeConfig {
+             rootfs_tar_max_bytes: None,
+             guest_tls_ca: None,
+             upstream_proxy: UpstreamProxyConfig::default(),
++            ipv6_egress: openshell_core::SupervisorIpv6EgressConfig::default(),
+             proxy_ca_bundle: None,
+             provider_spiffe_workload_api_tcp_endpoint: None,
+             provider_spiffe_allow_guest_tcp: false,
+@@ -651,6 +658,8 @@ fn append_vm_proxy_and_spiffe_args(command: &mut Command, config: &VmComputeConf
+     if let Some(path) = config.proxy_ca_bundle.as_ref() {
+         command.arg("--upstream-proxy-ca-bundle").arg(path);
+     }
++    // The VM driver accepts the supervisor's flag names and forwards them.
++    command.args(config.ipv6_egress.supervisor_args());
+     if let Some(endpoint) = config.provider_spiffe_workload_api_tcp_endpoint.as_ref() {
+         command
+             .arg("--provider-spiffe-workload-api-tcp-endpoint")
+@@ -830,6 +839,33 @@ mod tests {
+         );
+     }
+ 
++    #[test]
++    fn vm_driver_command_forwards_ipv6_egress_settings() {
++        let config: VmComputeConfig = toml::from_str(
++            r#"
++policy_dns_ipv6_egress = "disabled"
++nat64_prefixes = ["2001:db8:64::/96"]
++"#,
++        )
++        .expect("VM driver config parses");
++        let mut command = tokio::process::Command::new("openshell-driver-vm");
++        append_vm_proxy_and_spiffe_args(&mut command, &config);
++        let args = command
++            .as_std()
++            .get_args()
++            .map(|arg| arg.to_string_lossy().into_owned())
++            .collect::<Vec<_>>();
++        assert_eq!(
++            args,
++            [
++                "--policy-dns-ipv6-egress",
++                "disabled",
++                "--nat64-prefix",
++                "2001:db8:64::/96"
++            ]
++        );
++    }
++
+     #[test]
+     fn vm_driver_command_forwards_corporate_proxy_settings() {
+         let mut command = tokio::process::Command::new("openshell-driver-vm");
+diff --git a/crates/openshell-supervisor-network/src/policy_dns/egress.rs b/crates/openshell-supervisor-network/src/policy_dns/egress.rs
+new file mode 100644
+index 000000000..95d440362
+--- /dev/null
++++ b/crates/openshell-supervisor-network/src/policy_dns/egress.rs
+@@ -0,0 +1,551 @@
++// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++// SPDX-License-Identifier: Apache-2.0
++
++//! IPv6 egress selection and NAT64 prefix setup for the supervisor.
++//!
++//! Mediated policy DNS answers AAAA queries only when IPv6 egress is enabled.
++//! `auto` enables it when the supervisor network namespace is IPv6-only, the
++//! case where the IPv4 fallback cannot work (for example NAT64/DNS64 hosts).
++//! NAT64 prefixes are registered with [`openshell_core::net::nat64`] so every
++//! SSRF check classifies translated addresses by their embedded IPv4 address.
++
++use crate::policy_dns::NormalizedName;
++use crate::policy_dns::resolver::{AddressFamily, ResolveError, TrustedResolver};
++use openshell_core::PolicyDnsIpv6Egress;
++use openshell_core::net::nat64::{self, Nat64Prefix};
++use openshell_ocsf::{ConfigStateChangeBuilder, OcsfEvent, SeverityId, StateId, StatusId};
++use std::net::IpAddr;
++
++const RTF_UP: u32 = 0x0001;
++const RTF_REJECT: u32 = 0x0200;
++
++/// Default-route state of the supervisor network namespace.
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub(crate) enum RouteState {
++    Ipv6Only,
++    DualStack,
++    Ipv4Only,
++    NoDefaultRoute,
++    RouteTableUnavailable,
++}
++
++impl RouteState {
++    pub(crate) const fn as_str(self) -> &'static str {
++        match self {
++            Self::Ipv6Only => "ipv6_only",
++            Self::DualStack => "dual_stack",
++            Self::Ipv4Only => "ipv4_only",
++            Self::NoDefaultRoute => "no_default_route",
++            Self::RouteTableUnavailable => "route_table_unavailable",
++        }
++    }
++}
++
++/// Usable default routes found in the kernel routing tables. `None` means the
++/// table could not be read.
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub(crate) struct DefaultRoutes {
++    pub(crate) ipv4: Option<bool>,
++    pub(crate) ipv6: Option<bool>,
++}
++
++impl DefaultRoutes {
++    /// Parse `/proc/net/route` and `/proc/net/ipv6_route` contents.
++    pub(crate) fn from_tables(ipv4_routes: Option<&str>, ipv6_routes: Option<&str>) -> Self {
++        Self {
++            ipv4: ipv4_routes.map(has_ipv4_default_route),
++            ipv6: ipv6_routes.map(has_ipv6_default_route),
++        }
++    }
++
++    /// Read the routing tables of the current network namespace.
++    pub(crate) fn read() -> Self {
++        Self::from_tables(
++            std::fs::read_to_string("/proc/net/route").ok().as_deref(),
++            std::fs::read_to_string("/proc/net/ipv6_route")
++                .ok()
++                .as_deref(),
++        )
++    }
++
++    pub(crate) fn state(self) -> RouteState {
++        match (self.ipv4, self.ipv6) {
++            (Some(false), Some(true)) => RouteState::Ipv6Only,
++            (Some(true), Some(true)) => RouteState::DualStack,
++            (Some(true), Some(false)) => RouteState::Ipv4Only,
++            (Some(false), Some(false)) => RouteState::NoDefaultRoute,
++            _ => RouteState::RouteTableUnavailable,
++        }
++    }
++}
++
++/// The resolved IPv6 egress decision and the evidence behind it.
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub(crate) struct Ipv6EgressDecision {
++    pub(crate) requested: PolicyDnsIpv6Egress,
++    pub(crate) enabled: bool,
++    pub(crate) routes: DefaultRoutes,
++}
++
++impl Ipv6EgressDecision {
++    /// Resolve `requested` against the detected routes. Explicit modes are
++    /// honored as-is; routes are still recorded for the audit event.
++    pub(crate) fn resolve(requested: PolicyDnsIpv6Egress, routes: DefaultRoutes) -> Self {
++        let enabled = match requested {
++            PolicyDnsIpv6Egress::Enabled => true,
++            PolicyDnsIpv6Egress::Disabled => false,
++            PolicyDnsIpv6Egress::Auto => routes.state() == RouteState::Ipv6Only,
++        };
++        Self {
++            requested,
++            enabled,
++            routes,
++        }
++    }
++
++    /// OCSF configuration event describing this decision.
++    pub(crate) fn event(self) -> OcsfEvent {
++        let state = self.routes.state();
++        // Enabling IPv6 answers without an IPv6 route, or keeping them off on
++        // an IPv6-only host, breaks allowed destinations: make it visible.
++        let mismatch = (self.enabled && self.routes.ipv6 != Some(true))
++            || (!self.enabled && state == RouteState::Ipv6Only);
++        let unavailable = state == RouteState::RouteTableUnavailable;
++        ConfigStateChangeBuilder::new(openshell_ocsf::ctx::ctx())
++            .severity(if mismatch || unavailable {
++                SeverityId::Medium
++            } else {
++                SeverityId::Informational
++            })
++            .status(StatusId::Success)
++            .state(
++                if self.enabled {
++                    StateId::Enabled
++                } else {
++                    StateId::Disabled
++                },
++                if self.enabled { "enabled" } else { "disabled" },
++            )
++            .unmapped("requested_mode", self.requested.as_str())
++            .unmapped("ipv6_egress", self.enabled)
++            .unmapped("ipv4_default_route", route_value(self.routes.ipv4))
++            .unmapped("ipv6_default_route", route_value(self.routes.ipv6))
++            .unmapped("route_state", state.as_str())
++            .message(format!(
++                "Policy DNS IPv6 egress {} (requested {}, route state {})",
++                if self.enabled { "enabled" } else { "disabled" },
++                self.requested.as_str(),
++                state.as_str(),
++            ))
++            .build()
++    }
++}
++
++fn route_value(value: Option<bool>) -> serde_json::Value {
++    value.map_or(serde_json::Value::Null, serde_json::Value::Bool)
++}
++
++/// Parse `/proc/net/route` for a usable `0.0.0.0/0` route.
++fn has_ipv4_default_route(table: &str) -> bool {
++    table.lines().skip(1).any(|line| {
++        let fields = line.split_whitespace().collect::<Vec<_>>();
++        fields.len() >= 8
++            && fields[1] == "00000000"
++            && fields[7] == "00000000"
++            && route_flags_usable(fields[3])
++    })
++}
++
++/// Parse `/proc/net/ipv6_route` for a usable `::/0` route. The kernel lists
++/// an unreachable `::/0` entry on `lo`, which is not an uplink.
++fn has_ipv6_default_route(table: &str) -> bool {
++    table.lines().any(|line| {
++        let fields = line.split_whitespace().collect::<Vec<_>>();
++        fields.len() >= 10
++            && fields[0].len() == 32
++            && fields[0].bytes().all(|byte| byte == b'0')
++            && fields[1] == "00"
++            && fields[9] != "lo"
++            && route_flags_usable(fields[8])
++    })
++}
++
++fn route_flags_usable(flags: &str) -> bool {
++    u32::from_str_radix(flags, 16).is_ok_and(|flags| flags & RTF_UP != 0 && flags & RTF_REJECT == 0)
++}
++
++/// Where the NAT64 prefixes in effect came from.
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub(crate) struct Nat64Setup {
++    pub(crate) configured: Vec<Nat64Prefix>,
++    pub(crate) discovered: Vec<Nat64Prefix>,
++    pub(crate) discovery_error: Option<String>,
++}
++
++impl Nat64Setup {
++    /// Register operator-configured prefixes, then discover the network's
++    /// prefix through `ipv4only.arpa` (RFC 7050) and register it too.
++    ///
++    /// Registration only ever adds prefixes, so a discovered prefix cannot
++    /// weaken an operator-configured one. A failed discovery leaves the
++    /// well-known prefix and the configured prefixes in effect.
++    pub(crate) async fn apply<R: TrustedResolver>(
++        configured: Vec<Nat64Prefix>,
++        resolver: &R,
++    ) -> Self {
++        for prefix in &configured {
++            nat64::register_network_prefix(*prefix);
++        }
++        let name = NormalizedName::parse("ipv4only.arpa").expect("static name is valid");
++        let (discovered, discovery_error) = match resolver.resolve(&name, AddressFamily::Ipv6).await
++        {
++            Ok(answer) => {
++                let mut discovered = Vec::new();
++                for address in answer.addresses {
++                    if let IpAddr::V6(v6) = address
++                        && let Some(prefix) = Nat64Prefix::from_ipv4only_arpa_answer(v6)
++                        && !discovered.contains(&prefix)
++                    {
++                        nat64::register_network_prefix(prefix);
++                        discovered.push(prefix);
++                    }
++                }
++                (discovered, None)
++            }
++            // No AAAA for ipv4only.arpa: the resolver does not synthesize, so
++            // there is no DNS64 on this network.
++            Err(ResolveError::NoData | ResolveError::NxDomain) => (Vec::new(), None),
++            Err(error) => (Vec::new(), Some(error.to_string())),
++        };
++        Self {
++            configured,
++            discovered,
++            discovery_error,
++        }
++    }
++
++    /// OCSF configuration event describing the prefixes in effect.
++    pub(crate) fn event(&self) -> OcsfEvent {
++        let list = |prefixes: &[Nat64Prefix]| {
++            serde_json::Value::from(prefixes.iter().map(ToString::to_string).collect::<Vec<_>>())
++        };
++        let mut builder = ConfigStateChangeBuilder::new(openshell_ocsf::ctx::ctx())
++            .severity(SeverityId::Informational)
++            .status(StatusId::Success)
++            .state(StateId::Enabled, "nat64_prefixes")
++            .unmapped(
++                "nat64_well_known_prefix",
++                nat64::WELL_KNOWN_PREFIX.to_string(),
++            )
++            .unmapped("nat64_configured_prefixes", list(&self.configured))
++            .unmapped("nat64_discovered_prefixes", list(&self.discovered));
++        if let Some(error) = &self.discovery_error {
++            builder = builder.unmapped("nat64_discovery_error", error.as_str());
++        }
++        builder
++            .message(format!(
++                "NAT64 prefixes for SSRF classification: {} configured, {} discovered",
++                self.configured.len(),
++                self.discovered.len()
++            ))
++            .build()
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::policy_dns::TrustedAnswer;
++    use std::time::Duration;
++
++    const V4_HEADER: &str =
++        "Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT";
++    // Entries every Linux network namespace with IPv6 carries on `lo`,
++    // including the kernel's unreachable `::/0`, which is not an uplink.
++    const V6_LOOPBACK: [&str; 2] = [
++        "00000000000000000000000000000001 80 00000000000000000000000000000000 00 00000000000000000000000000000000 00000000 00000002 00000000 80200001       lo",
++        "00000000000000000000000000000000 00 00000000000000000000000000000000 00 00000000000000000000000000000000 ffffffff 00000001 00000000 00200200       lo",
++    ];
++
++    fn v4(rows: &[&str]) -> String {
++        std::iter::once(V4_HEADER)
++            .chain(rows.iter().copied())
++            .collect::<Vec<_>>()
++            .join("\n")
++    }
++
++    fn v6(rows: &[&str]) -> String {
++        rows.iter()
++            .copied()
++            .chain(V6_LOOPBACK)
++            .collect::<Vec<_>>()
++            .join("\n")
++    }
++
++    struct Case {
++        backend: &'static str,
++        ipv4: Option<String>,
++        ipv6: Option<String>,
++        expected: RouteState,
++    }
++
++    /// Supervisor network namespace layouts per backend, for IPv4-only,
++    /// dual-stack and IPv6-only networks. The Blaxel rows are captured
++    /// verbatim from a host; the others follow each runtime's default
++    /// addressing (`/proc/net/route` gateways are little-endian hex).
++    fn backend_cases() -> Vec<Case> {
++        // Docker bridge: 172.17.0.0/16 via 172.17.0.1; IPv6 network fd00:1::/64.
++        let docker_v4 = [
++            "eth0\t00000000\t010011AC\t0003\t0\t0\t0\t00000000\t0\t0\t0",
++            "eth0\t000011AC\t00000000\t0001\t0\t0\t0\t0000FFFF\t0\t0\t0",
++        ];
++        let docker_v6 = [
++            "fd000001000000000000000000000000 40 00000000000000000000000000000000 00 00000000000000000000000000000000 00000100 00000001 00000000 00000001     eth0",
++            "00000000000000000000000000000000 00 00000000000000000000000000000000 00 fd000001000000000000000000000001 00000400 00000001 00000000 00000003     eth0",
++        ];
++        // Podman: netavark bridge 10.88.0.0/16; rootless pasta copies the host
++        // routes, including an RA-learned IPv6 default (ADDRCONF|DEFAULT|EXPIRES).
++        let netavark_v4 = [
++            "eth0\t00000000\t0100580A\t0003\t0\t0\t0\t00000000\t0\t0\t0",
++            "eth0\t0000580A\t00000000\t0001\t0\t0\t0\t0000FFFF\t0\t0\t0",
++        ];
++        let pasta_v4 = [
++            "enp1s0\t00000000\t0101A8C0\t0003\t0\t0\t100\t00000000\t0\t0\t0",
++            "enp1s0\t0001A8C0\t00000000\t0001\t0\t0\t100\t00FFFFFF\t0\t0\t0",
++        ];
++        let pasta_v6 = [
++            "20010db8000100000000000000000000 40 00000000000000000000000000000000 00 00000000000000000000000000000000 00000100 00000001 00000000 00000001   enp1s0",
++            "00000000000000000000000000000000 00 00000000000000000000000000000000 00 fe800000000000000000000000000001 00000400 00000001 00000000 00450003   enp1s0",
++        ];
++        // Kubernetes (Calico): default via 169.254.1.1 and
++        // fe80::ecee:eeff:feee:eeee, both on-link host routes.
++        let calico_v4 = [
++            "eth0\t00000000\t0101FEA9\t0003\t0\t0\t0\t00000000\t0\t0\t0",
++            "eth0\t0101FEA9\t00000000\t0005\t0\t0\t0\tFFFFFFFF\t0\t0\t0",
++        ];
++        let calico_v6 = [
++            "fd000000000000000000000000000a2b 80 00000000000000000000000000000000 00 00000000000000000000000000000000 00000100 00000001 00000000 00000001     eth0",
++            "00000000000000000000000000000000 00 00000000000000000000000000000000 00 fe80000000000000eceeeefffeeeeeee 00000400 00000001 00000000 00000003     eth0",
++        ];
++        // VM driver guest (libkrun + gvproxy): 192.168.127.0/24 via .1.
++        let vm_v4 = [
++            "eth0\t00000000\t017FA8C0\t0003\t0\t0\t0\t00000000\t0\t0\t0",
++            "eth0\t007FA8C0\t00000000\t0001\t0\t0\t0\t00FFFFFF\t0\t0\t0",
++        ];
++        let vm_v6 = [
++            "00000000000000000000000000000000 00 00000000000000000000000000000000 00 fe800000000000000000000000000001 00000400 00000001 00000000 00450003     eth0",
++        ];
++        // Blaxel microVM, captured: IPv6-only behind NAT64 (/128 on eth0,
++        // default via fe80::1). With a 464XLAT CLAT the IPv4 default is a
++        // gatewayless route on the `clat` tun device.
++        let blaxel_v6 = [
++            "26056440d00002110a8000040000041a 80 00000000000000000000000000000000 00 00000000000000000000000000000000 00000100 00000001 00000000 00000001     eth0",
++            "00000000000000000000000000000000 00 00000000000000000000000000000000 00 fe800000000000000000000000000001 00000064 00000003 00000000 00000003     eth0",
++            "26056440d00002110a8000040000041a 80 00000000000000000000000000000000 00 00000000000000000000000000000000 00000000 00000004 00000000 80200001     eth0",
++            "ff000000000000000000000000000000 08 00000000000000000000000000000000 00 00000000000000000000000000000000 00000100 00000002 00000000 00000001     eth0",
++        ];
++        let blaxel_clat_v4 = [
++            "clat\t00000000\t00000000\t0001\t0\t0\t0\t00000000\t0\t0\t0",
++            "clat\t010000C0\t00000000\t0005\t0\t0\t0\tFFFFFFFF\t0\t0\t0",
++        ];
++
++        let dual = |a: &[&str], b: &[&str]| (Some(v4(a)), Some(v6(b)));
++        let only4 = |a: &[&str]| (Some(v4(a)), Some(v6(&[])));
++        let only6 = |b: &[&str]| (Some(v4(&[])), Some(v6(b)));
++        [
++            ("docker bridge", only4(&docker_v4), RouteState::Ipv4Only),
++            (
++                "docker dual-stack network",
++                dual(&docker_v4, &docker_v6),
++                RouteState::DualStack,
++            ),
++            (
++                "docker IPv6-only network",
++                only6(&docker_v6),
++                RouteState::Ipv6Only,
++            ),
++            ("podman netavark", only4(&netavark_v4), RouteState::Ipv4Only),
++            (
++                "podman pasta, dual-stack host",
++                dual(&pasta_v4, &pasta_v6),
++                RouteState::DualStack,
++            ),
++            (
++                "podman pasta, IPv6-only host",
++                only6(&pasta_v6),
++                RouteState::Ipv6Only,
++            ),
++            (
++                "kubernetes calico IPv4",
++                only4(&calico_v4),
++                RouteState::Ipv4Only,
++            ),
++            (
++                "kubernetes calico dual-stack",
++                dual(&calico_v4, &calico_v6),
++                RouteState::DualStack,
++            ),
++            (
++                "kubernetes calico IPv6 single-stack",
++                only6(&calico_v6),
++                RouteState::Ipv6Only,
++            ),
++            ("vm gvproxy", only4(&vm_v4), RouteState::Ipv4Only),
++            ("vm dual-stack", dual(&vm_v4, &vm_v6), RouteState::DualStack),
++            ("vm IPv6-only", only6(&vm_v6), RouteState::Ipv6Only),
++            ("blaxel IPv6-only", only6(&blaxel_v6), RouteState::Ipv6Only),
++            (
++                "blaxel with CLAT",
++                dual(&blaxel_clat_v4, &blaxel_v6),
++                RouteState::DualStack,
++            ),
++            (
++                "isolated namespace",
++                (Some(v4(&[])), Some(v6(&[]))),
++                RouteState::NoDefaultRoute,
++            ),
++            (
++                "kernel without IPv6",
++                (Some(v4(&docker_v4)), None),
++                RouteState::RouteTableUnavailable,
++            ),
++            ("no procfs", (None, None), RouteState::RouteTableUnavailable),
++        ]
++        .into_iter()
++        .map(|(backend, (ipv4, ipv6), expected)| Case {
++            backend,
++            ipv4,
++            ipv6,
++            expected,
++        })
++        .collect()
++    }
++
++    #[test]
++    fn auto_mode_enables_ipv6_egress_only_on_ipv6_only_backends() {
++        for case in backend_cases() {
++            let routes = DefaultRoutes::from_tables(case.ipv4.as_deref(), case.ipv6.as_deref());
++            assert_eq!(routes.state(), case.expected, "{}", case.backend);
++            let decision = Ipv6EgressDecision::resolve(PolicyDnsIpv6Egress::Auto, routes);
++            assert_eq!(
++                decision.enabled,
++                case.expected == RouteState::Ipv6Only,
++                "{}",
++                case.backend
++            );
++        }
++    }
++
++    #[test]
++    fn explicit_modes_ignore_routes() {
++        for case in backend_cases() {
++            let routes = DefaultRoutes::from_tables(case.ipv4.as_deref(), case.ipv6.as_deref());
++            assert!(Ipv6EgressDecision::resolve(PolicyDnsIpv6Egress::Enabled, routes).enabled);
++            assert!(!Ipv6EgressDecision::resolve(PolicyDnsIpv6Egress::Disabled, routes).enabled);
++        }
++    }
++
++    #[test]
++    fn down_or_reject_default_routes_are_not_uplinks() {
++        let down = v4(&["eth0\t00000000\t0100A8C0\t0002\t0\t0\t100\t00000000\t0\t0\t0"]);
++        assert!(!has_ipv4_default_route(&down));
++        let reject = "00000000000000000000000000000000 00 00000000000000000000000000000000 00 fe800000000000000000000000000001 00000400 00000001 00000000 00000201     eth0";
++        assert!(!has_ipv6_default_route(reject));
++    }
++
++    fn unmapped(event: &OcsfEvent) -> serde_json::Value {
++        serde_json::to_value(event).unwrap()["unmapped"].clone()
++    }
++
++    #[test]
++    fn decision_event_reports_mode_result_and_route_state() {
++        let routes = DefaultRoutes {
++            ipv4: Some(false),
++            ipv6: Some(true),
++        };
++        let fields =
++            unmapped(&Ipv6EgressDecision::resolve(PolicyDnsIpv6Egress::Auto, routes).event());
++        assert_eq!(fields["requested_mode"], "auto");
++        assert_eq!(fields["ipv6_egress"], true);
++        assert_eq!(fields["ipv4_default_route"], false);
++        assert_eq!(fields["ipv6_default_route"], true);
++        assert_eq!(fields["route_state"], "ipv6_only");
++
++        let unavailable = DefaultRoutes {
++            ipv4: Some(true),
++            ipv6: None,
++        };
++        let event = Ipv6EgressDecision::resolve(PolicyDnsIpv6Egress::Disabled, unavailable).event();
++        let fields = unmapped(&event);
++        assert_eq!(fields["requested_mode"], "disabled");
++        assert_eq!(fields["ipv6_egress"], false);
++        assert_eq!(fields["ipv6_default_route"], serde_json::Value::Null);
++        assert_eq!(fields["route_state"], "route_table_unavailable");
++        assert_eq!(
++            serde_json::to_value(&event).unwrap()["severity_id"],
++            SeverityId::Medium as u8
++        );
++    }
++
++    struct FakeResolver(Result<Vec<IpAddr>, fn() -> ResolveError>);
++
++    impl TrustedResolver for FakeResolver {
++        async fn resolve(
++            &self,
++            name: &NormalizedName,
++            family: AddressFamily,
++        ) -> Result<TrustedAnswer, ResolveError> {
++            assert_eq!(name.as_str(), "ipv4only.arpa");
++            assert_eq!(family, AddressFamily::Ipv6);
++            match &self.0 {
++                Ok(addresses) => Ok(TrustedAnswer {
++                    addresses: addresses.clone(),
++                    ttl: Duration::from_mins(1),
++                }),
++                Err(error) => Err(error()),
++            }
++        }
++    }
++
++    #[tokio::test]
++    async fn nat64_setup_registers_configured_and_discovered_prefixes() {
++        let configured: Nat64Prefix = "2001:db8:5001::/48".parse().unwrap();
++        let resolver = FakeResolver(Ok(vec![
++            "2001:db8:5002:64::c000:aa".parse().unwrap(),
++            "2001:db8:5002:64::c000:ab".parse().unwrap(),
++        ]));
++        let setup = Nat64Setup::apply(vec![configured], &resolver).await;
++        let discovered: Nat64Prefix = "2001:db8:5002:64::/96".parse().unwrap();
++        assert_eq!(setup.configured, [configured]);
++        assert_eq!(setup.discovered, [discovered]);
++        assert_eq!(setup.discovery_error, None);
++        // Both now classify translated private addresses as internal.
++        for internal in ["2001:db8:5001:a00:1::", "2001:db8:5002:64::a00:1"] {
++            assert!(
++                openshell_core::net::is_internal_ip(internal.parse().unwrap()),
++                "{internal}"
++            );
++        }
++        let fields = unmapped(&setup.event());
++        assert_eq!(fields["nat64_configured_prefixes"][0], "2001:db8:5001::/48");
++        assert_eq!(
++            fields["nat64_discovered_prefixes"][0],
++            "2001:db8:5002:64::/96"
++        );
++    }
++
++    #[tokio::test]
++    async fn nat64_setup_without_dns64_is_not_an_error() {
++        let setup =
++            Nat64Setup::apply(Vec::new(), &FakeResolver(Err(|| ResolveError::NoData))).await;
++        assert!(setup.discovered.is_empty());
++        assert_eq!(setup.discovery_error, None);
++        let setup =
++            Nat64Setup::apply(Vec::new(), &FakeResolver(Err(|| ResolveError::Timeout))).await;
++        assert!(setup.discovery_error.is_some());
++        assert_eq!(
++            unmapped(&setup.event())["nat64_discovery_error"],
++            "trusted DNS exchange timed out"
++        );
++    }
++}
+diff --git a/crates/openshell-supervisor-network/src/policy_dns/mod.rs b/crates/openshell-supervisor-network/src/policy_dns/mod.rs
+index ee1a5cc12..35cb6aa91 100644
+--- a/crates/openshell-supervisor-network/src/policy_dns/mod.rs
++++ b/crates/openshell-supervisor-network/src/policy_dns/mod.rs
+@@ -17,15 +17,19 @@
+     reason = "the policy DNS boundary retains metrics and helpers for later runtime integrations"
+ )]
+ 
++mod egress;
+ mod name;
+ mod resolver;
+ mod runtime;
+ mod store;
+ mod wire;
+ 
++pub(crate) use egress::{DefaultRoutes, Ipv6EgressDecision, Nat64Setup};
+ pub(crate) use name::NormalizedName;
+ pub(crate) use resolver::{AddressFamily, SocketTrustedResolver, TrustedAnswer, TrustedResolver};
+-pub(crate) use runtime::{PolicyDnsRuntime, PolicyDnsRuntimeConfig};
++pub(crate) use runtime::{
++    PolicyDnsRuntime, PolicyDnsRuntimeConfig, trusted_resolver_from_resolv_conf,
++};
+ pub(crate) use store::{
+     MappingLookup, MappingLookupError, PolicyEndpointId, PublishError, PublishRequest,
+     ResolvedEndpointRecord, ResolvedEndpointStore, ResolvedPortContract, StoreConfig,
+diff --git a/crates/openshell-supervisor-network/src/policy_dns/runtime.rs b/crates/openshell-supervisor-network/src/policy_dns/runtime.rs
+index 6463792a1..f4fda0ad5 100644
+--- a/crates/openshell-supervisor-network/src/policy_dns/runtime.rs
++++ b/crates/openshell-supervisor-network/src/policy_dns/runtime.rs
+@@ -47,6 +47,8 @@ pub(crate) struct PolicyDnsRuntimeConfig {
+     pub(crate) ipv4_cidr: ipnet::Ipv4Net,
+     pub(crate) ipv6_cidr: ipnet::Ipv6Net,
+     pools: SyntheticPools,
++    ipv6_egress: bool,
++    trusted_resolver: Option<SocketAddr>,
+ }
+ 
+ impl PolicyDnsRuntimeConfig {
+@@ -80,8 +82,30 @@ impl PolicyDnsRuntimeConfig {
+             ipv4_cidr,
+             ipv6_cidr,
+             pools,
++            ipv6_egress: false,
++            trusted_resolver: None,
+         })
+     }
++
++    /// Answer AAAA queries from the synthetic IPv6 pool instead of returning
++    /// NOERROR/NODATA.
++    #[must_use]
++    pub(crate) fn with_ipv6_egress(mut self, enabled: bool) -> Self {
++        self.ipv6_egress = enabled;
++        self
++    }
++
++    /// Use `server` instead of the first `/etc/resolv.conf` nameserver.
++    #[cfg(test)]
++    pub(crate) fn with_trusted_resolver(mut self, server: SocketAddr) -> Self {
++        self.trusted_resolver = Some(server);
++        self
++    }
++
++    fn upstream(&self) -> Result<SocketAddr> {
++        self.trusted_resolver
++            .map_or_else(trusted_resolver_from_resolv_conf, Ok)
++    }
+ }
+ 
+ pub(crate) struct PolicyDnsRuntime {
+@@ -99,7 +123,8 @@ impl PolicyDnsRuntime {
+         config: PolicyDnsRuntimeConfig,
+         mut engine_ready: tokio::sync::watch::Receiver<bool>,
+     ) -> Result<Self> {
+-        let upstream = trusted_resolver_from_resolv_conf()?;
++        let upstream = config.upstream()?;
++        let ipv6_egress = config.ipv6_egress;
+         let store = Arc::new(ResolvedEndpointStore::new(
+             StoreConfig::new(config.pools, MAX_MAPPINGS)
+                 .map_err(|error| miette::miette!(error.to_string()))?,
+@@ -130,10 +155,12 @@ impl PolicyDnsRuntime {
+                     let timing = query.timing.clone();
+                     let response = match query.transport {
+                         DnsTransport::Udp => {
+-                            wire::handle_udp_query_with_ipv6(&service, &query.message, false).await
++                            wire::handle_udp_query_with_ipv6(&service, &query.message, ipv6_egress)
++                                .await
+                         }
+                         DnsTransport::Tcp => {
+-                            wire::handle_tcp_query_with_ipv6(&service, &query.message, false).await
++                            wire::handle_tcp_query_with_ipv6(&service, &query.message, ipv6_egress)
++                                .await
+                         }
+                     }
+                     .map_err(|error| {
+@@ -172,7 +199,11 @@ impl PolicyDnsRuntime {
+                 .severity(SeverityId::Informational)
+                 .status(StatusId::Success)
+                 .state(StateId::Enabled, "ready")
+-                .message("Policy DNS connected to isolation boundary")
++                .unmapped("ipv6_egress", ipv6_egress)
++                .message(format!(
++                    "Policy DNS connected to isolation boundary (IPv6 egress {})",
++                    if ipv6_egress { "enabled" } else { "disabled" }
++                ))
+                 .build()
+         );
+         Ok(Self {
+@@ -189,7 +220,8 @@ impl PolicyDnsRuntime {
+         config: PolicyDnsRuntimeConfig,
+         engine_ready: tokio::sync::watch::Receiver<bool>,
+     ) -> Result<Self> {
+-        let upstream = trusted_resolver_from_resolv_conf()?;
++        let upstream = config.upstream()?;
++        let ipv6_egress = config.ipv6_egress;
+         let store = Arc::new(ResolvedEndpointStore::new(
+             StoreConfig::new(config.pools, MAX_MAPPINGS)
+                 .map_err(|error| miette::miette!(error.to_string()))?,
+@@ -223,11 +255,10 @@ impl PolicyDnsRuntime {
+                 let udp = udp.clone();
+                 tokio::spawn(async move {
+                     let _permit = permit;
+-                    // Docker and Podman do not currently prove usable IPv6
+-                    // egress. Return NOERROR/NODATA for AAAA so dual-stack
+-                    // clients can fall back to the usable IPv4 path.
++                    // Without IPv6 egress, AAAA receives NOERROR/NODATA so
++                    // dual-stack clients fall back to the usable IPv4 path.
+                     if let Ok(response) =
+-                        wire::handle_udp_query_with_ipv6(&service, &request, false).await
++                        wire::handle_udp_query_with_ipv6(&service, &request, ipv6_egress).await
+                     {
+                         let _ = udp.send_to(&response, peer).await;
+                     }
+@@ -262,7 +293,7 @@ impl PolicyDnsRuntime {
+                             return;
+                         }
+                         let Ok(response) =
+-                            wire::handle_tcp_query_with_ipv6(&service, &frame, false).await
++                            wire::handle_tcp_query_with_ipv6(&service, &frame, ipv6_egress).await
+                         else {
+                             return;
+                         };
+@@ -287,6 +318,7 @@ impl PolicyDnsRuntime {
+                 .severity(SeverityId::Informational)
+                 .status(StatusId::Success)
+                 .state(StateId::Enabled, "ready")
++                .unmapped("ipv6_egress", ipv6_egress)
+                 .message(format!("Policy DNS listening on {address}"))
+                 .build()
+         );
+@@ -305,7 +337,7 @@ impl Drop for PolicyDnsRuntime {
+     }
+ }
+ 
+-fn trusted_resolver_from_resolv_conf() -> Result<SocketAddr> {
++pub(crate) fn trusted_resolver_from_resolv_conf() -> Result<SocketAddr> {
+     let contents = std::fs::read_to_string("/etc/resolv.conf")
+         .into_diagnostic()
+         .wrap_err("failed to read trusted supervisor resolver configuration")?;
+@@ -405,6 +437,13 @@ mod tests {
+         }
+     }
+ 
++    #[test]
++    fn runtime_config_keeps_ipv6_egress_disabled_by_default() {
++        let config = PolicyDnsRuntimeConfig::for_epoch(3).unwrap();
++        assert!(!config.ipv6_egress);
++        assert!(config.with_ipv6_egress(true).ipv6_egress);
++    }
++
+     #[test]
+     fn production_pools_and_store_capacity_expand_together() {
+         let config = PolicyDnsRuntimeConfig::for_epoch(7).unwrap();
+diff --git a/crates/openshell-supervisor-network/src/policy_dns/store.rs b/crates/openshell-supervisor-network/src/policy_dns/store.rs
+index eeb5d4b85..d688376b2 100644
+--- a/crates/openshell-supervisor-network/src/policy_dns/store.rs
++++ b/crates/openshell-supervisor-network/src/policy_dns/store.rs
+@@ -816,6 +816,57 @@ mod tests {
+         ));
+     }
+ 
++    #[test]
++    fn ipv6_wrong_port_stale_generation_and_expiry_fail_closed() {
++        let store = store(2);
++        let now = Instant::now();
++        let mut ipv6 = request("db.example", 4, Duration::from_secs(2));
++        ipv6.family = AddressFamily::Ipv6;
++        ipv6.contracts[0].pinned_addresses = vec!["2001:db8::8".parse().unwrap()];
++        let record = store.publish(ipv6, 4, now).unwrap();
++        assert!(record.synthetic_address.is_ipv6());
++        assert_eq!(
++            store
++                .lookup(record.synthetic_address, 5432, 4, now)
++                .unwrap()
++                .pinned_addresses(),
++            ["2001:db8::8".parse::<IpAddr>().unwrap()]
++        );
++        assert!(matches!(
++            store.lookup(record.synthetic_address, 3306, 4, now),
++            Err(MappingLookupError::PortMismatch)
++        ));
++        assert!(matches!(
++            store.lookup(record.synthetic_address, 5432, 5, now),
++            Err(MappingLookupError::StalePolicy)
++        ));
++        assert!(matches!(
++            store.lookup(
++                record.synthetic_address,
++                5432,
++                4,
++                now + Duration::from_secs(2)
++            ),
++            Err(MappingLookupError::Expired)
++        ));
++        // An unallocated address in the IPv6 pool, and the real upstream
++        // address, have no mapping.
++        for unmapped in ["fd00:1::2", "2001:db8::8"] {
++            assert!(matches!(
++                store.lookup(unmapped.parse().unwrap(), 5432, 4, now),
++                Err(MappingLookupError::Missing)
++            ));
++        }
++    }
++
++    #[test]
++    fn ipv6_answers_cannot_publish_ipv4_pins() {
++        let store = store(2);
++        let mut mixed = request("db.example", 1, Duration::from_secs(2));
++        mixed.family = AddressFamily::Ipv6;
++        assert!(store.publish(mixed, 1, Instant::now()).is_err());
++    }
++
+     #[test]
+     fn expiry_never_reassigns_synthetic_address_to_another_name() {
+         let store = store(2);
+diff --git a/crates/openshell-supervisor-network/src/policy_dns/wire.rs b/crates/openshell-supervisor-network/src/policy_dns/wire.rs
+index fe6a01c3a..1fb15a115 100644
+--- a/crates/openshell-supervisor-network/src/policy_dns/wire.rs
++++ b/crates/openshell-supervisor-network/src/policy_dns/wire.rs
+@@ -340,6 +340,47 @@ process: { run_as_user: sandbox, run_as_group: sandbox }
+         assert_eq!(service.resolver.calls.load(Ordering::SeqCst), 0);
+     }
+ 
++    #[tokio::test]
++    async fn runtime_with_ipv6_egress_resolves_aaaa_to_synthetic_ipv6() {
++        let service = service();
++        let query = request("db.example.", RecordType::AAAA);
++        let mut frame = Vec::with_capacity(query.len() + 2);
++        frame.extend_from_slice(&u16::try_from(query.len()).unwrap().to_be_bytes());
++        frame.extend_from_slice(&query);
++        for wire in [
++            handle_udp_query_with_ipv6(&service, &query, true)
++                .await
++                .unwrap(),
++            handle_tcp_query_with_ipv6(&service, &frame, true)
++                .await
++                .unwrap()[2..]
++                .to_vec(),
++        ] {
++            let response = Message::from_vec(&wire).unwrap();
++            assert_eq!(response.metadata.response_code, ResponseCode::NoError);
++            let RData::AAAA(AAAA(address)) = response.answers[0].data else {
++                panic!("expected an AAAA answer");
++            };
++            let pool =
++                "fd00:1::1".parse::<Ipv6Addr>().unwrap()..="fd00:1::4".parse::<Ipv6Addr>().unwrap();
++            assert!(pool.contains(&address));
++            let mapping = service
++                .store()
++                .lookup(
++                    IpAddr::V6(address),
++                    5432,
++                    service.policy.current_generation(),
++                    Instant::now(),
++                )
++                .unwrap();
++            assert_eq!(
++                mapping.pinned_addresses(),
++                ["2001:4860:4860::8888".parse::<IpAddr>().unwrap()]
++            );
++        }
++        assert_eq!(service.resolver.calls.load(Ordering::SeqCst), 2);
++    }
++
+     #[tokio::test]
+     async fn unsupported_type_is_not_implemented_and_malformed_tcp_is_rejected() {
+         let service = service();
+diff --git a/crates/openshell-supervisor-network/src/proxy.rs b/crates/openshell-supervisor-network/src/proxy.rs
+index d44e04497..553d26559 100644
+--- a/crates/openshell-supervisor-network/src/proxy.rs
++++ b/crates/openshell-supervisor-network/src/proxy.rs
+@@ -4105,14 +4105,16 @@ pub(crate) fn is_host_gateway_alias(host: &str) -> bool {
+ /// Returns `true` if `ip` is a known cloud instance metadata endpoint that
+ /// must never be exempted from SSRF blocking.
+ ///
+-/// IPv4-mapped IPv6 addresses (e.g. `::ffff:169.254.169.254`) are normalized
+-/// to their embedded IPv4 representation before comparison, so the invariant
+-/// holds regardless of how the address is represented.
++/// IPv4-mapped IPv6 addresses (e.g. `::ffff:169.254.169.254`) and NAT64
++/// addresses (e.g. `64:ff9b::a9fe:a9fe`) are normalized to their embedded IPv4
++/// representation before comparison, so the invariant holds regardless of how
++/// the address is represented.
+ fn is_cloud_metadata_ip(ip: IpAddr) -> bool {
+     match ip {
+         IpAddr::V4(_) => CLOUD_METADATA_IPS.contains(&ip),
+         IpAddr::V6(v6) => v6
+             .to_ipv4_mapped()
++            .or_else(|| openshell_core::net::nat64::embedded_ipv4(v6))
+             .is_some_and(|v4| CLOUD_METADATA_IPS.contains(&IpAddr::V4(v4))),
+     }
+ }
+@@ -4404,7 +4406,9 @@ fn validate_allowed_ips_for_resolved_addrs(
+         }
+ 
+         // Check resolved IP against the allowlist
+-        let ip_allowed = allowed_ips.iter().any(|net| net.contains(&addr.ip()));
++        let ip_allowed = allowed_ips
++            .iter()
++            .any(|net| openshell_core::net::allowed_net_contains(net, addr.ip()));
+         if !ip_allowed {
+             return Err(format!(
+                 "{host} resolves to {} which is not in allowed_ips, connection rejected",
+@@ -8206,6 +8210,567 @@ network_policies:
+         }
+     }
+ 
++    #[tokio::test]
++    async fn staged_transparent_open_dials_pinned_ipv6_for_synthetic_ipv6() {
++        use crate::policy_dns::{
++            AddressFamily, NormalizedName, PolicyEndpointId, PublishRequest, ResolvedEndpointStore,
++            ResolvedPortContract, StoreConfig, SyntheticPools,
++        };
++
++        let engine = OpaEngine::from_strings(
++            include_str!("../data/sandbox-policy.rego"),
++            r#"
++network_policies:
++  allowed:
++    name: allowed
++    endpoints:
++      - host: api.example.com
++        port: 443
++    binaries:
++      - path: /usr/bin/curl
++filesystem_policy:
++  include_workdir: true
++  read_only: []
++  read_write: []
++landlock:
++  compatibility: best_effort
++process:
++  run_as_user: sandbox
++  run_as_group: sandbox
++"#,
++        )
++        .unwrap();
++        let pools = SyntheticPools::new(
++            Ipv4Addr::new(198, 18, 0, 1)..=Ipv4Addr::new(198, 18, 0, 1),
++            "fd00:1::1".parse::<Ipv6Addr>().unwrap()..="fd00:1::1".parse::<Ipv6Addr>().unwrap(),
++        )
++        .unwrap();
++        let store = Arc::new(ResolvedEndpointStore::new(
++            StoreConfig::new(pools, 2).unwrap(),
++        ));
++        // A NAT64/DNS64 answer for an IPv4-only upstream.
++        let upstream: IpAddr = "64:ff9b::cb00:7107".parse().unwrap();
++        let record = store
++            .publish(
++                PublishRequest {
++                    normalized_name: NormalizedName::parse("api.example.com").unwrap(),
++                    family: AddressFamily::Ipv6,
++                    allocation_identity: [7; 32],
++                    policy_generation: engine.current_generation(),
++                    ttl: std::time::Duration::from_secs(30),
++                    contracts: vec![ResolvedPortContract {
++                        endpoint_id: PolicyEndpointId {
++                            policy_name: "allowed".to_string(),
++                            endpoint_index: 0,
++                        },
++                        port: 443,
++                        destination_plan: build_pinned_validation_plan(vec![upstream]).unwrap(),
++                        pinned_addresses: vec![upstream],
++                    }],
++                },
++                engine.current_generation(),
++                std::time::Instant::now(),
++            )
++            .unwrap();
++        assert!(record.synthetic_address.is_ipv6());
++
++        let (stream, _peer) = tokio::io::duplex(64);
++        let (decision, completion) = tokio::sync::oneshot::channel();
++        let pending = PendingTcpOpen {
++            stream: Box::new(stream),
++            binary_identity: Ok(ContractBinaryIdentity {
++                executable: ContractExecutableIdentity {
++                    path: PathBuf::from("/usr/bin/curl"),
++                    digest: Some("00".repeat(32).parse().unwrap()),
++                },
++                ancestors: Vec::new(),
++                cmdline_paths: Vec::new(),
++            }),
++            destination: SocketAddr::new(record.synthetic_address, 443),
++            socket: openshell_isolation_interface::contract::NetworkSocketMetadata {
++                socket_cookie: 7,
++                nonblocking: false,
++                process_generation: 1,
++            },
++            policy_generation: engine.current_generation(),
++            timing: MediationTiming::default(),
++            decision,
++        };
++
++        let accepted = preauthorize_transparent_open(
++            pending,
++            Some(&store),
++            &engine,
++            &BinaryIdentityCache::new(),
++            None,
++            None,
++            false,
++            None,
++        )
++        .await
++        .expect("synthetic IPv6 destination is authorized");
++        assert_eq!(completion.await.unwrap(), TcpOpenDecision::RelayReady);
++        let (_, connector) = accepted
++            .3
++            .and_then(|open| open.authorization)
++            .expect("transparent authorization");
++        assert_eq!(connector.addrs(), [SocketAddr::new(upstream, 443)]);
++    }
++
++    const MEDIATED_IPV6_POLICY: &str = r#"
++network_policies:
++  allowed:
++    name: allowed
++    endpoints:
++      - host: v6.example
++        port: 443
++      - host: dns64.example
++        port: 443
++      - host: metadata.example
++        port: 443
++      - host: "*.wild.example"
++        port: 443
++      - host: "*.allowed.example"
++        port: 443
++        allowed_ips: ["10.0.0.0/8"]
++    binaries:
++      - path: /usr/bin/curl
++filesystem_policy:
++  include_workdir: true
++  read_only: []
++  read_write: []
++landlock:
++  compatibility: best_effort
++process:
++  run_as_user: sandbox
++  run_as_group: sandbox
++"#;
++
++    /// Mediation source fed by the test: DNS queries and TCP opens are handed
++    /// to the runtime exactly as an isolation backend would stage them.
++    struct ChannelMediationSource {
++        dns: tokio::sync::Mutex<
++            mpsc::UnboundedReceiver<openshell_isolation_interface::contract::PendingDnsQuery>,
++        >,
++    }
++
++    #[async_trait::async_trait]
++    impl NetworkMediationSource for ChannelMediationSource {
++        async fn accept_tcp(
++            &self,
++        ) -> std::result::Result<
++            PendingTcpOpen,
++            openshell_isolation_interface::contract::BackendError,
++        > {
++            std::future::pending().await
++        }
++
++        async fn accept_dns(
++            &self,
++        ) -> std::result::Result<
++            openshell_isolation_interface::contract::PendingDnsQuery,
++            openshell_isolation_interface::contract::BackendError,
++        > {
++            self.dns.lock().await.recv().await.ok_or_else(|| {
++                openshell_isolation_interface::contract::BackendError::Unavailable(
++                    "test source closed".to_string(),
++                )
++            })
++        }
++    }
++
++    /// Trusted upstream DNS on 127.0.0.1 answering like a DNS64 resolver:
++    /// `v6.example` has native AAAA; the other names are IPv4-only and get
++    /// answers synthesized under the well-known NAT64 prefix, wrapping
++    /// 10.0.0.5 or the cloud metadata address.
++    async fn spawn_dns64_upstream() -> SocketAddr {
++        use hickory_proto::op::{Message, MessageType, ResponseCode};
++        use hickory_proto::rr::rdata::{A, AAAA};
++        use hickory_proto::rr::{RData, Record, RecordType};
++
++        let socket = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
++        let address = socket.local_addr().unwrap();
++        tokio::spawn(async move {
++            let mut buffer = vec![0_u8; 4096];
++            loop {
++                let Ok((length, peer)) = socket.recv_from(&mut buffer).await else {
++                    return;
++                };
++                let request = Message::from_vec(&buffer[..length]).unwrap();
++                let query = request.queries[0].clone();
++                let name = query.name().to_ascii();
++                let data = match (name.as_str(), query.query_type()) {
++                    ("v6.example.", RecordType::AAAA) => {
++                        Some(RData::AAAA(AAAA("2606:4700::6810:84e5".parse().unwrap())))
++                    }
++                    (
++                        "dns64.example." | "private.wild.example." | "private.allowed.example.",
++                        RecordType::AAAA,
++                    ) => Some(RData::AAAA(AAAA("64:ff9b::a00:5".parse().unwrap()))),
++                    ("nsp.wild.example.", RecordType::AAAA) => {
++                        Some(RData::AAAA(AAAA("2001:db8:7777::a00:5".parse().unwrap())))
++                    }
++                    ("metadata.example.", RecordType::AAAA) => {
++                        Some(RData::AAAA(AAAA("64:ff9b::a9fe:a9fe".parse().unwrap())))
++                    }
++                    (_, RecordType::A) => Some(RData::A(A("104.16.132.229".parse().unwrap()))),
++                    _ => None,
++                };
++                let mut response = Message::new(
++                    request.metadata.id,
++                    MessageType::Response,
++                    request.metadata.op_code,
++                );
++                response.metadata.recursion_desired = request.metadata.recursion_desired;
++                response.metadata.recursion_available = true;
++                response.metadata.response_code = ResponseCode::NoError;
++                response.add_query(query.clone());
++                if let Some(data) = data {
++                    response.add_answer(Record::from_rdata(query.name().clone(), 30, data));
++                }
++                let _ = socket.send_to(&response.to_vec().unwrap(), peer).await;
++            }
++        });
++        address
++    }
++
++    fn dns_query(name: &str, record_type: hickory_proto::rr::RecordType) -> Vec<u8> {
++        use hickory_proto::op::{Message, MessageType, OpCode, Query};
++        let mut message = Message::new(0x5151, MessageType::Query, OpCode::Query);
++        message.metadata.recursion_desired = true;
++        message.add_query(Query::query(
++            hickory_proto::rr::Name::from_ascii(name).unwrap(),
++            record_type,
++        ));
++        message.to_vec().unwrap()
++    }
++
++    fn curl_identity() -> ContractBinaryIdentity {
++        ContractBinaryIdentity {
++            executable: ContractExecutableIdentity {
++                path: PathBuf::from("/usr/bin/curl"),
++                digest: Some("00".repeat(32).parse().unwrap()),
++            },
++            ancestors: Vec::new(),
++            cmdline_paths: Vec::new(),
++        }
++    }
++
++    #[tokio::test]
++    async fn mediated_policy_dns_ipv6_end_to_end() {
++        use crate::policy_dns::{PolicyDnsRuntime, PolicyDnsRuntimeConfig};
++        use hickory_proto::op::{Message, ResponseCode};
++        use hickory_proto::rr::{RData, RecordType};
++        use openshell_isolation_interface::contract::{DnsTransport, PendingDnsQuery};
++
++        let engine = Arc::new(
++            OpaEngine::from_strings(
++                include_str!("../data/sandbox-policy.rego"),
++                MEDIATED_IPV6_POLICY,
++            )
++            .unwrap(),
++        );
++        let upstream = spawn_dns64_upstream().await;
++        let (dns_tx, dns_rx) = mpsc::unbounded_channel();
++        let source = Arc::new(ChannelMediationSource {
++            dns: tokio::sync::Mutex::new(dns_rx),
++        });
++        let (ready_tx, ready_rx) = tokio::sync::watch::channel(true);
++        let runtime = PolicyDnsRuntime::start_mediated(
++            engine.clone(),
++            source,
++            None,
++            PolicyDnsRuntimeConfig::for_epoch(7)
++                .unwrap()
++                .with_ipv6_egress(true)
++                .with_trusted_resolver(upstream),
++            ready_rx,
++        )
++        .unwrap();
++        let _ready_tx = ready_tx;
++
++        // The sandbox broker keeps DNS-over-TCP framing on TCP queries and
++        // expects it on the response.
++        let ask = |name: &str, transport: DnsTransport| {
++            let (response, reply) = tokio::sync::oneshot::channel();
++            let mut message = dns_query(name, RecordType::AAAA);
++            if transport == DnsTransport::Tcp {
++                let length = u16::try_from(message.len()).unwrap().to_be_bytes();
++                message.splice(0..0, length);
++            }
++            dns_tx
++                .send(PendingDnsQuery {
++                    message,
++                    transport,
++                    binary_identity: Ok(curl_identity()),
++                    timing: MediationTiming::default(),
++                    response,
++                })
++                .unwrap();
++            async move {
++                let wire = reply.await.unwrap().unwrap();
++                let wire = if transport == DnsTransport::Tcp {
++                    let length = usize::from(u16::from_be_bytes([wire[0], wire[1]]));
++                    assert_eq!(wire.len(), length + 2, "framed TCP response");
++                    wire[2..].to_vec()
++                } else {
++                    wire
++                };
++                Message::from_vec(&wire).unwrap()
++            }
++        };
++
++        // AAAA over both mediated transports maps to one synthetic IPv6
++        // address pinned to the upstream IPv6 answer.
++        let mut synthetic = Vec::new();
++        for transport in [DnsTransport::Udp, DnsTransport::Tcp] {
++            let response = ask("v6.example.", transport).await;
++            assert_eq!(response.metadata.response_code, ResponseCode::NoError);
++            let RData::AAAA(address) = &response.answers[0].data else {
++                panic!("expected an AAAA answer over {transport:?}");
++            };
++            let address = IpAddr::V6(address.0);
++            let pool = PolicyDnsRuntimeConfig::for_epoch(7).unwrap().ipv6_cidr;
++            assert!(pool.contains(&address.to_string().parse::<Ipv6Addr>().unwrap()));
++            synthetic.push(address);
++        }
++        assert_eq!(synthetic[0], synthetic[1]);
++
++        // A TCP open to the synthetic address is authorized by policy and
++        // dials only the pinned upstream IPv6 address.
++        let open = |binary_identity, destination| {
++            let (stream, _peer) = tokio::io::duplex(64);
++            let (decision, completion) = tokio::sync::oneshot::channel();
++            (
++                PendingTcpOpen {
++                    stream: Box::new(stream),
++                    binary_identity,
++                    destination,
++                    socket: openshell_isolation_interface::contract::NetworkSocketMetadata {
++                        socket_cookie: 11,
++                        nonblocking: false,
++                        process_generation: 1,
++                    },
++                    policy_generation: engine.current_generation(),
++                    timing: MediationTiming::default(),
++                    decision,
++                },
++                completion,
++            )
++        };
++        let (pending, completion) = open(Ok(curl_identity()), SocketAddr::new(synthetic[0], 443));
++        let accepted = preauthorize_transparent_open(
++            pending,
++            Some(&runtime.store),
++            &engine,
++            &BinaryIdentityCache::new(),
++            None,
++            None,
++            false,
++            None,
++        )
++        .await
++        .expect("allowed binary reaches the synthetic IPv6 destination");
++        assert_eq!(completion.await.unwrap(), TcpOpenDecision::RelayReady);
++        let (_, connector) = accepted
++            .3
++            .and_then(|open| open.authorization)
++            .expect("transparent authorization");
++        assert_eq!(
++            connector.addrs(),
++            [SocketAddr::new(
++                "2606:4700::6810:84e5".parse().unwrap(),
++                443
++            )]
++        );
++
++        // The same destination is denied to a binary the policy does not name.
++        let mut wget = curl_identity();
++        wget.executable.path = PathBuf::from("/usr/bin/wget");
++        assert_denied(
++            &runtime.store,
++            &engine,
++            open(Ok(wget), SocketAddr::new(synthetic[0], 443)),
++            "unlisted binary",
++        )
++        .await;
++
++        // Everything that is not the live mapping fails closed: the real
++        // upstream address, an unallocated address in the synthetic pool, and
++        // the mapped address on a port the policy does not allow.
++        let IpAddr::V6(mapped) = synthetic[0] else {
++            unreachable!("AAAA answers are IPv6")
++        };
++        let unallocated = IpAddr::V6(Ipv6Addr::from(u128::from(mapped) + 1));
++        for (destination, case) in [
++            (
++                SocketAddr::new("2606:4700::6810:84e5".parse().unwrap(), 443),
++                "direct real IPv6",
++            ),
++            (SocketAddr::new(unallocated, 443), "unknown synthetic IPv6"),
++            (SocketAddr::new(synthetic[0], 8443), "wrong port"),
++        ] {
++            assert_denied(
++                &runtime.store,
++                &engine,
++                open(Ok(curl_identity()), destination),
++                case,
++            )
++            .await;
++        }
++        // Without an attributable binary identity there is no grant either.
++        assert_denied(
++            &runtime.store,
++            &engine,
++            open(
++                Err(ResolveError::Failed("unknown sender".into())),
++                SocketAddr::new(synthetic[0], 443),
++            ),
++            "unavailable identity",
++        )
++        .await;
++
++        // DNS64 answers follow the IPv4 SSRF tiers of the address they embed.
++        for transport in [DnsTransport::Udp, DnsTransport::Tcp] {
++            // An exact declared host may resolve to a private address, as it
++            // may over IPv4.
++            let response = ask("dns64.example.", transport).await;
++            assert_eq!(response.answers.len(), 1, "exact host over {transport:?}");
++            // Metadata is always blocked, even for an exact declared host.
++            let response = ask("metadata.example.", transport).await;
++            assert!(
++                response.answers.is_empty(),
++                "NAT64-embedded metadata address mapped over {transport:?}"
++            );
++            // allowed_ips written for IPv4 cover the translated address.
++            let response = ask("private.allowed.example.", transport).await;
++            assert_eq!(
++                response.answers.len(),
++                1,
++                "allowed_ips host over {transport:?}"
++            );
++            // A wildcard host is public-only: a wrapped private address is
++            // internal and gets no synthetic address.
++            let response = ask("private.wild.example.", transport).await;
++            assert!(
++                response.answers.is_empty(),
++                "NAT64-embedded private address mapped for a wildcard host over {transport:?}"
++            );
++        }
++
++        // An operator-chosen network-specific prefix gets the same treatment
++        // once configured. Only this test uses 2001:db8:7777::/96.
++        openshell_core::net::nat64::register_network_prefix("2001:db8:7777::/96".parse().unwrap());
++        for transport in [DnsTransport::Udp, DnsTransport::Tcp] {
++            let response = ask("nsp.wild.example.", transport).await;
++            assert!(
++                response.answers.is_empty(),
++                "configured NAT64 prefix not classified over {transport:?}"
++            );
++        }
++
++        // A policy reload starts a new generation; the old IPv6 mapping is
++        // stale and no longer authorizes a connection.
++        engine
++            .reload(
++                include_str!("../data/sandbox-policy.rego"),
++                MEDIATED_IPV6_POLICY,
++            )
++            .unwrap();
++        assert_denied(
++            &runtime.store,
++            &engine,
++            open(Ok(curl_identity()), SocketAddr::new(synthetic[0], 443)),
++            "stale policy generation",
++        )
++        .await;
++    }
++
++    async fn assert_denied(
++        store: &Arc<ResolvedEndpointStore>,
++        engine: &OpaEngine,
++        (pending, completion): (
++            PendingTcpOpen,
++            tokio::sync::oneshot::Receiver<TcpOpenDecision>,
++        ),
++        case: &str,
++    ) {
++        assert!(
++            preauthorize_transparent_open(
++                pending,
++                Some(store),
++                engine,
++                &BinaryIdentityCache::new(),
++                None,
++                None,
++                false,
++                None,
++            )
++            .await
++            .is_none(),
++            "{case} must not be authorized"
++        );
++        assert!(
++            matches!(completion.await.unwrap(), TcpOpenDecision::Denied(_)),
++            "{case} must be denied"
++        );
++    }
++
++    #[tokio::test]
++    async fn mediated_policy_dns_ipv6_fails_closed_without_trusted_resolver() {
++        use crate::policy_dns::{PolicyDnsRuntime, PolicyDnsRuntimeConfig};
++        use hickory_proto::op::Message;
++        use hickory_proto::rr::RecordType;
++        use openshell_isolation_interface::contract::{DnsTransport, PendingDnsQuery};
++
++        // Nothing listens here, so every upstream exchange fails.
++        let closed = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
++        let unreachable = closed.local_addr().unwrap();
++        drop(closed);
++        let engine = Arc::new(
++            OpaEngine::from_strings(
++                include_str!("../data/sandbox-policy.rego"),
++                MEDIATED_IPV6_POLICY,
++            )
++            .unwrap(),
++        );
++        let (dns_tx, dns_rx) = mpsc::unbounded_channel();
++        let (ready_tx, ready_rx) = tokio::sync::watch::channel(true);
++        let _runtime = PolicyDnsRuntime::start_mediated(
++            engine,
++            Arc::new(ChannelMediationSource {
++                dns: tokio::sync::Mutex::new(dns_rx),
++            }),
++            None,
++            PolicyDnsRuntimeConfig::for_epoch(9)
++                .unwrap()
++                .with_ipv6_egress(true)
++                .with_trusted_resolver(unreachable),
++            ready_rx,
++        )
++        .unwrap();
++        let _ready_tx = ready_tx;
++        let (response, reply) = tokio::sync::oneshot::channel();
++        dns_tx
++            .send(PendingDnsQuery {
++                message: dns_query("v6.example.", RecordType::AAAA),
++                transport: DnsTransport::Udp,
++                binary_identity: Ok(curl_identity()),
++                timing: MediationTiming::default(),
++                response,
++            })
++            .unwrap();
++        // Either an error to the backend or a response without answers.
++        let answer = reply.await.unwrap().map_or_else(
++            |_| Vec::new(),
++            |wire| Message::from_vec(&wire).unwrap().answers,
++        );
++        assert!(
++            answer.is_empty(),
++            "no AAAA without a trusted upstream answer"
++        );
++    }
++
+     #[tokio::test]
+     async fn staged_transparent_open_reports_invalid_identity_as_unavailable() {
+         let engine = OpaEngine::from_strings(
+@@ -11950,6 +12515,63 @@ network_policies:
+         );
+     }
+ 
++    #[test]
++    fn test_is_cloud_metadata_ip_blocks_nat64_metadata() {
++        assert!(is_cloud_metadata_ip("64:ff9b::a9fe:a9fe".parse().unwrap()));
++        assert!(!is_cloud_metadata_ip("64:ff9b::a9fe:102".parse().unwrap()));
++    }
++
++    #[test]
++    fn test_nat64_answers_follow_ipv4_ssrf_tiers() {
++        let addr = |raw: &str| vec![SocketAddr::new(raw.parse().unwrap(), 443)];
++        // DNS64 answer wrapping 10.1.2.3: internal without allowed_ips.
++        assert!(
++            reject_internal_resolved_addrs("dns64.example", &addr("64:ff9b::a01:203")).is_err()
++        );
++        // Wrapping a public IPv4 address: allowed.
++        assert!(
++            reject_internal_resolved_addrs("dns64.example", &addr("64:ff9b::8c52:7003")).is_ok()
++        );
++        // Wrapping loopback or metadata: blocked even for declared hosts and
++        // allowed_ips that cover the translated address.
++        // allowed_ips written for IPv4 cover the translated addresses too.
++        let v4_nets = vec!["10.0.0.0/8".parse().unwrap()];
++        assert!(
++            validate_allowed_ips_for_resolved_addrs(
++                "dns64.example",
++                443,
++                &addr("64:ff9b::a01:203"),
++                &v4_nets
++            )
++            .is_ok()
++        );
++        assert!(
++            validate_allowed_ips_for_resolved_addrs(
++                "dns64.example",
++                443,
++                &addr("64:ff9b::b01:203"),
++                &v4_nets
++            )
++            .is_err()
++        );
++        for blocked in ["64:ff9b::7f00:1", "64:ff9b::a9fe:a9fe"] {
++            assert!(
++                validate_declared_endpoint_resolved_addrs("dns64.example", 443, &addr(blocked))
++                    .is_err()
++            );
++            let nets = vec!["64:ff9b::/96".parse().unwrap()];
++            assert!(
++                validate_allowed_ips_for_resolved_addrs(
++                    "dns64.example",
++                    443,
++                    &addr(blocked),
++                    &nets
++                )
++                .is_err()
++            );
++        }
++    }
++
+     #[test]
+     fn test_is_cloud_metadata_ip_allows_other_ipv4_mapped_link_local() {
+         // Other IPv4-mapped link-local addresses are NOT metadata.
+diff --git a/crates/openshell-supervisor-network/src/proxy/destination.rs b/crates/openshell-supervisor-network/src/proxy/destination.rs
+index 9b53fe154..ef4bef7c7 100644
+--- a/crates/openshell-supervisor-network/src/proxy/destination.rs
++++ b/crates/openshell-supervisor-network/src/proxy/destination.rs
+@@ -189,7 +189,10 @@ pub(crate) fn filter_resolved_addresses(
+                     Some(format!(
+                         "{host} resolves to always-blocked address {ip}, connection rejected"
+                     ))
+-                } else if !networks.iter().any(|network| network.contains(&ip)) {
++                } else if !networks
++                    .iter()
++                    .any(|network| openshell_core::net::allowed_net_contains(network, ip))
++                {
+                     Some(format!(
+                         "{host} resolves to {ip} which is not in allowed_ips, connection rejected"
+                     ))
+@@ -517,6 +520,47 @@ mod tests {
+         assert_eq!(allowed, vec![public]);
+     }
+ 
++    #[test]
++    fn address_filter_drops_nat64_answers_wrapping_internal_ipv4() {
++        let plan = DestinationValidationPlan {
++            address_authorization: AddressAuthorization::DefaultPublicOnly,
++        };
++        let public: IpAddr = "64:ff9b::8c52:7003".parse().unwrap();
++        let private: IpAddr = "64:ff9b::a01:203".parse().unwrap();
++        let metadata: IpAddr = "64:ff9b::a9fe:a9fe".parse().unwrap();
++
++        let allowed =
++            filter_resolved_addresses(&plan, "dns64.example", 443, &[private, metadata, public])
++                .unwrap();
++        assert_eq!(allowed, vec![public]);
++
++        let exact = DestinationValidationPlan {
++            address_authorization: AddressAuthorization::ExactDeclaredHost,
++        };
++        let allowed =
++            filter_resolved_addresses(&exact, "dns64.example", 443, &[metadata, private]).unwrap();
++        assert_eq!(allowed, vec![private]);
++    }
++
++    #[test]
++    fn address_filter_matches_nat64_answers_against_allowed_ipv4_networks() {
++        let plan = DestinationValidationPlan {
++            address_authorization: AddressAuthorization::ExplicitAllowedIps(vec![
++                "10.0.0.0/8".parse().unwrap(),
++                "127.0.0.0/8".parse().unwrap(),
++            ]),
++        };
++        let inside: IpAddr = "64:ff9b::a00:5".parse().unwrap();
++        let outside: IpAddr = "64:ff9b::b00:5".parse().unwrap();
++        let loopback: IpAddr = "64:ff9b::7f00:1".parse().unwrap();
++
++        let allowed =
++            filter_resolved_addresses(&plan, "dns64.example", 443, &[outside, loopback, inside])
++                .unwrap();
++        // Same result as the IPv4 answers 11.0.0.5, 127.0.0.1 and 10.0.0.5.
++        assert_eq!(allowed, vec![inside]);
++    }
++
+     #[test]
+     fn address_filter_exact_host_allows_private_but_not_always_blocked() {
+         let plan = DestinationValidationPlan {
+diff --git a/crates/openshell-supervisor-network/src/run.rs b/crates/openshell-supervisor-network/src/run.rs
+index 1eba8a074..2e281fac8 100644
+--- a/crates/openshell-supervisor-network/src/run.rs
++++ b/crates/openshell-supervisor-network/src/run.rs
+@@ -40,6 +40,9 @@ use crate::proxy::ProxyHandle;
+ use openshell_core::endpoint_status::EndpointObservationSender;
+ use openshell_isolation_interface::contract::NetworkMediationSource;
+ 
++pub use openshell_core::PolicyDnsIpv6Egress;
++pub use openshell_core::net::nat64::Nat64Prefix;
++
+ #[cfg(target_os = "linux")]
+ pub struct TransparentRuntimeSetup {
+     pub listeners: Vec<tokio::net::TcpListener>,
+@@ -197,6 +200,8 @@ pub async fn run_networking(
+     agent_proposals: AgentProposals,
+     workspace_rx: tokio::sync::watch::Receiver<String>,
+     upstream_proxy_args: &crate::upstream_proxy::UpstreamProxyArgs,
++    policy_dns_ipv6_egress: PolicyDnsIpv6Egress,
++    nat64_prefixes: Vec<Nat64Prefix>,
+     proxy_tls_dir: Option<&std::path::Path>,
+     host_gateway_ip: Option<IpAddr>,
+     #[cfg(target_os = "linux")] transparent_runtime: Option<TransparentRuntimeSetup>,
+@@ -434,6 +439,23 @@ pub async fn run_networking(
+         (None, None)
+     };
+ 
++    // Register NAT64 prefixes before any egress path starts, so SSRF checks
++    // classify translated addresses by their embedded IPv4 address.
++    configure_nat64(nat64_prefixes).await;
++
++    // One decision for every policy DNS runtime this supervisor starts.
++    let ipv6_egress = crate::policy_dns::Ipv6EgressDecision::resolve(
++        policy_dns_ipv6_egress,
++        crate::policy_dns::DefaultRoutes::read(),
++    );
++    #[cfg(target_os = "linux")]
++    let policy_dns_active = network_mediation_source.is_some() || transparent_runtime.is_some();
++    #[cfg(not(target_os = "linux"))]
++    let policy_dns_active = network_mediation_source.is_some();
++    if policy_dns_active {
++        ocsf_emit!(ipv6_egress.event());
++    }
++
+     let mediated_policy_dns = if let Some(source) = network_mediation_source.clone() {
+         let engine = opa_engine
+             .cloned()
+@@ -442,7 +464,8 @@ pub async fn run_networking(
+             engine,
+             source,
+             host_gateway_ip,
+-            crate::policy_dns::PolicyDnsRuntimeConfig::for_epoch(0)?,
++            crate::policy_dns::PolicyDnsRuntimeConfig::for_epoch(0)?
++                .with_ipv6_egress(ipv6_egress.enabled),
+             engine_ready_rx.clone(),
+         )?)
+     } else {
+@@ -513,7 +536,7 @@ pub async fn run_networking(
+             runtime.dns_udp,
+             runtime.dns_tcp,
+             trusted_gateway,
+-            runtime.config,
++            runtime.config.with_ipv6_egress(ipv6_egress.enabled),
+             policy_dns_engine_ready_rx,
+         )?;
+         let transparent = crate::proxy::TransparentTcpHandle::start(
+@@ -567,3 +590,28 @@ mod transparent_runtime_tests {
+         assert!(error.to_string().contains("allocation epoch is invalid"));
+     }
+ }
++
++/// Register configured NAT64 prefixes and discover the network's prefix
++/// through the trusted resolver, then report the prefixes in effect.
++async fn configure_nat64(configured: Vec<Nat64Prefix>) {
++    let setup = match crate::policy_dns::trusted_resolver_from_resolv_conf() {
++        Ok(server) => {
++            crate::policy_dns::Nat64Setup::apply(
++                configured,
++                &crate::policy_dns::SocketTrustedResolver::new(server),
++            )
++            .await
++        }
++        Err(error) => {
++            for prefix in &configured {
++                openshell_core::net::nat64::register_network_prefix(*prefix);
++            }
++            crate::policy_dns::Nat64Setup {
++                configured,
++                discovered: Vec::new(),
++                discovery_error: Some(error.to_string()),
++            }
++        }
++    };
++    ocsf_emit!(setup.event());
++}
+diff --git a/crates/openshell-supervisor/src/backend_setup/tests.rs b/crates/openshell-supervisor/src/backend_setup/tests.rs
+index 52bf73e15..9863c46ba 100644
+--- a/crates/openshell-supervisor/src/backend_setup/tests.rs
++++ b/crates/openshell-supervisor/src/backend_setup/tests.rs
+@@ -694,6 +694,8 @@ async fn shared_startup_uses_selected_backend_through_readiness_and_shutdown() {
+                 ocsf_enabled: Arc::new(AtomicBool::new(false)),
+                 ocsf_schema_version: Arc::new(Mutex::new(String::new())),
+                 upstream_proxy_args: UpstreamProxyArgs::default(),
++                policy_dns_ipv6_egress: Default::default(),
++                nat64_prefixes: Vec::new(),
+                 backend_descriptor: TestSetup::descriptor(),
+                 auth_bundle: setup.auth.clone(),
+                 admitted_isolation_backend: Some(TEST_BACKEND.into()),
+diff --git a/crates/openshell-supervisor/src/lib.rs b/crates/openshell-supervisor/src/lib.rs
+index 8d498e162..9382276ca 100644
+--- a/crates/openshell-supervisor/src/lib.rs
++++ b/crates/openshell-supervisor/src/lib.rs
+@@ -501,6 +501,7 @@ pub async fn run_network_proxy(
+     policy_data: String,
+     tls_dir: Option<std::path::PathBuf>,
+     upstream_proxy_args: openshell_supervisor_network::upstream_proxy::UpstreamProxyArgs,
++    nat64_prefixes: Vec<openshell_supervisor_network::run::Nat64Prefix>,
+ ) -> Result<i32> {
+     if !listen.ip().is_loopback() {
+         return Err(miette::miette!(
+@@ -568,6 +569,9 @@ pub async fn run_network_proxy(
+         AgentProposals::new(initial_agent_proposals_enabled),
+         workspace_rx,
+         &upstream_proxy_args,
++        // No isolation boundary is attached, so mediated policy DNS is off.
++        openshell_supervisor_network::run::PolicyDnsIpv6Egress::Disabled,
++        nat64_prefixes,
+         Some(&tls_dir.path),
+         None,
+         #[cfg(target_os = "linux")]
+@@ -633,6 +637,8 @@ pub async fn run_sandbox(
+     ocsf_enabled: Arc<AtomicBool>,
+     ocsf_schema_version: Arc<std::sync::Mutex<String>>,
+     upstream_proxy_args: openshell_supervisor_network::upstream_proxy::UpstreamProxyArgs,
++    policy_dns_ipv6_egress: openshell_supervisor_network::run::PolicyDnsIpv6Egress,
++    nat64_prefixes: Vec<openshell_supervisor_network::run::Nat64Prefix>,
+     backend_descriptor: openshell_isolation_interface::contract::BackendDescriptor,
+     auth_bundle: openshell_core::jwt::SupervisorAuthBundle,
+     admitted_isolation_backend: Option<String>,
+@@ -658,6 +664,8 @@ pub async fn run_sandbox(
+             ocsf_enabled,
+             ocsf_schema_version,
+             upstream_proxy_args,
++            policy_dns_ipv6_egress,
++            nat64_prefixes,
+             backend_descriptor,
+             auth_bundle,
+             admitted_isolation_backend,
+@@ -684,6 +692,8 @@ struct SandboxRunConfig {
+     ocsf_enabled: Arc<AtomicBool>,
+     ocsf_schema_version: Arc<std::sync::Mutex<String>>,
+     upstream_proxy_args: openshell_supervisor_network::upstream_proxy::UpstreamProxyArgs,
++    policy_dns_ipv6_egress: openshell_supervisor_network::run::PolicyDnsIpv6Egress,
++    nat64_prefixes: Vec<openshell_supervisor_network::run::Nat64Prefix>,
+     backend_descriptor: openshell_isolation_interface::contract::BackendDescriptor,
+     auth_bundle: openshell_core::jwt::SupervisorAuthBundle,
+     admitted_isolation_backend: Option<String>,
+@@ -714,6 +724,8 @@ async fn run_sandbox_with_backend(
+         ocsf_enabled,
+         ocsf_schema_version,
+         upstream_proxy_args,
++        policy_dns_ipv6_egress,
++        nat64_prefixes,
+         backend_descriptor,
+         auth_bundle,
+         admitted_isolation_backend,
+@@ -1039,6 +1051,8 @@ async fn run_sandbox_with_backend(
+             agent_proposals.clone(),
+             workspace_rx.clone(),
+             &upstream_proxy_args,
++            policy_dns_ipv6_egress,
++            nat64_prefixes,
+             None,
+             remote_host_gateway_ip,
+             #[cfg(target_os = "linux")]
+@@ -5121,6 +5135,8 @@ mod tests {
+             Arc::new(AtomicBool::new(false)),
+             Arc::new(std::sync::Mutex::new(String::new())),
+             openshell_supervisor_network::upstream_proxy::UpstreamProxyArgs::default(),
++            openshell_supervisor_network::run::PolicyDnsIpv6Egress::default(),
++            Vec::new(),
+             openshell_isolation_interface::contract::BackendDescriptor {
+                 backend_name: "in-process-test".to_string(),
+                 payload: b"in-process-only-launch-data".to_vec(),
+diff --git a/crates/openshell-supervisor/src/main.rs b/crates/openshell-supervisor/src/main.rs
+index 0d8696482..c8bc1192a 100644
+--- a/crates/openshell-supervisor/src/main.rs
++++ b/crates/openshell-supervisor/src/main.rs
+@@ -30,6 +30,33 @@ enum SupervisorRole {
+     NetworkProxy,
+ }
+ 
++/// AAAA handling for mediated policy DNS.
++#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum)]
++enum PolicyDnsIpv6EgressArg {
++    /// Answer AAAA only when the supervisor has an IPv6 default route and no
++    /// IPv4 default route.
++    #[default]
++    Auto,
++    /// Always answer AAAA from the synthetic IPv6 pool.
++    Enabled,
++    /// Always answer AAAA with an empty NOERROR response.
++    Disabled,
++}
++
++impl From<PolicyDnsIpv6EgressArg> for openshell_supervisor_network::run::PolicyDnsIpv6Egress {
++    fn from(value: PolicyDnsIpv6EgressArg) -> Self {
++        match value {
++            PolicyDnsIpv6EgressArg::Auto => Self::Auto,
++            PolicyDnsIpv6EgressArg::Enabled => Self::Enabled,
++            PolicyDnsIpv6EgressArg::Disabled => Self::Disabled,
++        }
++    }
++}
++
++fn parse_nat64_prefix(raw: &str) -> Result<openshell_supervisor_network::run::Nat64Prefix, String> {
++    raw.parse()
++}
++
+ #[derive(Parser, Debug)]
+ #[command(name = "openshell-supervisor health")]
+ struct HealthArgs {
+@@ -116,6 +143,17 @@ struct Args {
+     #[arg(long)]
+     upstream_proxy_ca_bundle: Option<String>,
+ 
++    /// Driver-selected AAAA handling for mediated policy DNS.
++    #[arg(long, value_enum, default_value_t)]
++    policy_dns_ipv6_egress: PolicyDnsIpv6EgressArg,
++
++    /// NAT64 prefix (RFC 6052) used by the sandbox network. Repeatable.
++    /// Addresses inside it are classified by their embedded IPv4 address for
++    /// SSRF checks, in addition to `64:ff9b::/96` and the prefix discovered
++    /// through `ipv4only.arpa`.
++    #[arg(long = "nat64-prefix", value_parser = parse_nat64_prefix)]
++    nat64_prefixes: Vec<openshell_supervisor_network::run::Nat64Prefix>,
++
+     #[arg(long)]
+     backend_descriptor_file: Option<PathBuf>,
+ 
+@@ -440,6 +478,8 @@ fn main() -> Result<()> {
+                     ocsf_enabled,
+                     ocsf_schema_version,
+                     upstream_proxy_args,
++                    args.policy_dns_ipv6_egress.into(),
++                    args.nat64_prefixes,
+                     backend_descriptor,
+                     auth_bundle,
+                     admitted_isolation_backend,
+@@ -461,6 +501,7 @@ fn main() -> Result<()> {
+                     policy_data,
+                     args.tls_dir,
+                     upstream_proxy_args,
++                    args.nat64_prefixes,
+                 )
+                 .await
+             }
+@@ -548,6 +589,67 @@ mod tests {
+         assert!(validate_role_arguments(&args).is_ok());
+     }
+ 
++    #[test]
++    fn policy_dns_ipv6_egress_defaults_to_auto_and_accepts_overrides() {
++        let args = Args::try_parse_from(["openshell-supervisor"]).expect("parse defaults");
++        assert_eq!(args.policy_dns_ipv6_egress, PolicyDnsIpv6EgressArg::Auto);
++        for (value, expected) in [
++            (
++                "enabled",
++                openshell_supervisor_network::run::PolicyDnsIpv6Egress::Enabled,
++            ),
++            (
++                "disabled",
++                openshell_supervisor_network::run::PolicyDnsIpv6Egress::Disabled,
++            ),
++        ] {
++            let args =
++                Args::try_parse_from(["openshell-supervisor", "--policy-dns-ipv6-egress", value])
++                    .expect("policy DNS IPv6 egress argument");
++            assert_eq!(
++                openshell_supervisor_network::run::PolicyDnsIpv6Egress::from(
++                    args.policy_dns_ipv6_egress
++                ),
++                expected
++            );
++        }
++        assert!(
++            Args::try_parse_from(["openshell-supervisor", "--policy-dns-ipv6-egress", "yes"])
++                .is_err()
++        );
++    }
++
++    #[test]
++    fn nat64_prefixes_are_repeatable_and_validated() {
++        let args = Args::try_parse_from([
++            "openshell-supervisor",
++            "--nat64-prefix",
++            "64:ff9b:1::/96",
++            "--nat64-prefix",
++            "2001:db8:122:344::/64",
++        ])
++        .expect("NAT64 prefixes");
++        assert_eq!(
++            args.nat64_prefixes
++                .iter()
++                .map(ToString::to_string)
++                .collect::<Vec<_>>(),
++            ["64:ff9b:1::/96", "2001:db8:122:344::/64"]
++        );
++        assert!(
++            Args::try_parse_from(["openshell-supervisor"])
++                .unwrap()
++                .nat64_prefixes
++                .is_empty()
++        );
++        for bad in ["2001:db8::/80", "10.0.0.0/8", "nope"] {
++            assert!(
++                Args::try_parse_from(["openshell-supervisor", "--nat64-prefix", bad]).is_err(),
++                "{bad}"
++            );
++        }
++    }
++
+     #[test]
+     fn network_proxy_rejects_isolation_inputs() {
+         let args = Args::try_parse_from([
+diff --git a/docs/how-it-works/gateways/configuration.mdx b/docs/how-it-works/gateways/configuration.mdx
+index f7f1df8b5..62c41f460 100644
+--- a/docs/how-it-works/gateways/configuration.mdx
++++ b/docs/how-it-works/gateways/configuration.mdx
+@@ -746,6 +746,20 @@ Each example is a complete TOML file for one compute driver. The examples repeat
+ 
+ Kubernetes configurations set `namespace`, `service_account_name`, and `enable_user_namespaces` in `[openshell.drivers.kubernetes]`. Docker configurations use `sandbox_label`; the legacy `sandbox_namespace` key is rejected.
+ 
++### IPv6 Egress and NAT64
++
++The Kubernetes, Docker, Podman, and MicroVM driver tables accept two keys that the driver passes to each supervisor on its command line:
++
++- `policy_dns_ipv6_egress` sets how mediated policy DNS answers AAAA queries: `auto` (default), `enabled`, or `disabled`. `auto` answers AAAA only when the supervisor network namespace has an IPv6 default route and no IPv4 default route. `disabled` answers AAAA with an empty response so dual-stack clients fall back to IPv4.
++- `nat64_prefixes` lists the NAT64 prefixes of the sandbox network as RFC 6052 CIDRs (`/32`, `/40`, `/48`, `/56`, `/64`, or `/96`). The supervisor applies the IPv4 SSRF rules to the IPv4 address embedded in any destination inside these prefixes. It always recognizes the well-known prefix `64:ff9b::/96` and also discovers the network prefix through `ipv4only.arpa` (RFC 7050), so set this key when the network uses a prefix that discovery cannot find.
++
++The gateway rejects an unknown mode or a malformed prefix at startup.
++
++```toml
++policy_dns_ipv6_egress = "auto"
++nat64_prefixes         = ["2001:db8:64::/96"]
++```
++
+ ### Kubernetes
+ 
+ The gateway runs as a Pod and creates paired workload and supervisor Pods in another namespace. The gateway CA is projected from a Kubernetes Secret into supervisor Pods; user client certificate and key entries in that Secret are not exposed to either Pod.
+@@ -832,6 +846,9 @@ supervisor_image_pull_policy   = "if_not_present"
+ # and its TLS stack, so a full merged trust bundle wastes the sandbox
+ # boundary's control-frame budget on duplicated roots.
+ # proxy_ca_bundle              = "/etc/openshell-tls/proxy-ca/ca.crt"
++# Policy DNS AAAA handling and NAT64 prefixes; see IPv6 Egress and NAT64.
++# policy_dns_ipv6_egress       = "auto"
++# nat64_prefixes               = ["2001:db8:64::/96"]
+ # Required in raw gateway TOML because `namespace` identifies sandbox
+ # placement, not the gateway Service. Helm renders this from the release's
+ # gateway Service name and namespace.
+@@ -984,6 +1001,9 @@ proxy_connect_by_hostname = false
+ # Operator-owned gateway-host PEM bundle trusted for an HTTPS proxy and for
+ # destination certificates re-signed by a TLS-intercepting proxy.
+ proxy_ca_bundle = "/etc/openshell/tls/proxy-ca.pem"
++# Policy DNS AAAA handling and NAT64 prefixes; see IPv6 Egress and NAT64.
++# policy_dns_ipv6_egress = "auto"
++# nat64_prefixes = ["2001:db8:64::/96"]
+ # Project a host Unix Workload API socket into the supervisor for provider
+ # token exchange. The socket parent must be a dedicated absolute directory.
+ provider_spiffe_workload_api_socket = "/run/spire/agent.sock"
+@@ -1156,6 +1176,9 @@ health_check_interval_secs = 10
+ # proxy_connect_by_hostname = true
+ # Corporate CA trusted for an https:// proxy and TLS-intercepting proxies.
+ # proxy_ca_bundle           = "/etc/openshell/tls/proxy-ca.pem"
++# Policy DNS AAAA handling and NAT64 prefixes; see IPv6 Egress and NAT64.
++# policy_dns_ipv6_egress    = "auto"
++# nat64_prefixes            = ["2001:db8:64::/96"]
+ # Project a host Workload API Unix socket into the supervisor, or use an
+ # explicit container-reachable TCP endpoint, for provider token exchange.
+ # provider_spiffe_workload_api_socket = "/run/spire/agent.sock"
+@@ -1249,6 +1272,10 @@ overlay_disk_mib = 4096
+ # Gateway-host PEM bundle trusted for an https:// proxy and for server
+ # certificates re-signed by a TLS-intercepting proxy. Requires https_proxy.
+ # proxy_ca_bundle           = "/etc/openshell/tls/proxy-ca.pem"
++# Policy DNS AAAA handling and NAT64 prefixes for the host-side supervisors;
++# see IPv6 Egress and NAT64.
++# policy_dns_ipv6_egress    = "auto"
++# nat64_prefixes            = ["2001:db8:64::/96"]
+ # VM guests cannot mount a host Workload API Unix socket. Configure only a
+ # separately operated guest-reachable TCP listener and explicitly acknowledge
+ # the exposure; host-only sockets are never exposed automatically.
+diff --git a/docs/how-it-works/policies/network-rules.mdx b/docs/how-it-works/policies/network-rules.mdx
+index 811d92092..32053ed46 100644
+--- a/docs/how-it-works/policies/network-rules.mdx
++++ b/docs/how-it-works/policies/network-rules.mdx
+@@ -652,9 +652,20 @@ addresses whose TTL is at most 30 seconds. This applies to every endpoint, not
+ only `protocol: tcp`. The sandbox applies no DNS search domains, so request each
+ hostname exactly as your rules name it. Clients must resolve the hostname again
+ before reconnecting. A client that caches an address indefinitely can fail
+-after it expires, even while the endpoint remains allowed. OpenShell returns an
+-empty answer to AAAA queries, so dual-stack clients must fall back to the A
+-record.
++after it expires, even while the endpoint remains allowed. By default,
++OpenShell returns an empty answer to AAAA queries, so dual-stack clients must
++fall back to the A record. When the supervisor host has an IPv6 default route
++and no IPv4 default route, such as an IPv6-only host behind NAT64/DNS64,
++OpenShell also answers AAAA queries with placeholder IPv6 addresses. Set
++`policy_dns_ipv6_egress` to `enabled` or `disabled` in the compute driver
++configuration to force either behavior. The sandbox logs record the decision
++and the detected route state.
++
++On NAT64 networks, an IPv6 address inside the NAT64 prefix is checked as the
++IPv4 address it embeds, so the IPv4 rules for private, loopback, link-local,
++and cloud metadata addresses still apply. OpenShell recognizes `64:ff9b::/96`
++and discovers the network's prefix automatically. If your network uses a prefix
++that cannot be discovered, list it in the driver's `nat64_prefixes` setting.
+ 
+ ## Next Steps
+ 
+diff --git a/e2e/rust/tests/policy_dns_ipv6_egress.rs b/e2e/rust/tests/policy_dns_ipv6_egress.rs
+new file mode 100644
+index 000000000..10526f8ee
+--- /dev/null
++++ b/e2e/rust/tests/policy_dns_ipv6_egress.rs
+@@ -0,0 +1,128 @@
++// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++// SPDX-License-Identifier: Apache-2.0
++
++#![cfg(feature = "e2e")]
++
++//! Policy DNS IPv6 egress selection in each driver's supervisor network
++//! namespace.
++//!
++//! The supervisor reports its decision in an OCSF configuration event. Every
++//! driver lane checks that `auto` read the routing tables and enabled IPv6
++//! answers exactly when the namespace is IPv6-only. Lanes with a known
++//! network layout pin it with `OPENSHELL_E2E_EXPECT_ROUTE_STATE`
++//! (`ipv6_only`, `dual_stack`, `ipv4_only`), and lanes that configure the
++//! driver's `policy_dns_ipv6_egress` set `OPENSHELL_E2E_POLICY_DNS_IPV6_EGRESS`.
++
++use std::process::Stdio;
++
++use openshell_e2e::harness::binary::openshell_cmd;
++use openshell_e2e::harness::sandbox::SandboxGuard;
++
++const DECISION_PREFIX: &str = "Policy DNS IPv6 egress ";
++const NAT64_MESSAGE: &str = "NAT64 prefixes for SSRF classification";
++
++#[derive(Debug, PartialEq, Eq)]
++struct Decision {
++    enabled: bool,
++    requested: String,
++    route_state: String,
++}
++
++/// Parse `Policy DNS IPv6 egress <enabled|disabled> (requested <mode>, route
++/// state <state>)` from the sandbox log.
++fn parse_decision(logs: &str) -> Option<Decision> {
++    let line = logs.lines().find(|line| line.contains(DECISION_PREFIX))?;
++    let rest = &line[line.find(DECISION_PREFIX)? + DECISION_PREFIX.len()..];
++    let (state, rest) = rest.split_once(" (requested ")?;
++    let (requested, rest) = rest.split_once(", route state ")?;
++    let route_state = rest.split(')').next()?;
++    Some(Decision {
++        enabled: match state {
++            "enabled" => true,
++            "disabled" => false,
++            _ => return None,
++        },
++        requested: requested.to_string(),
++        route_state: route_state.to_string(),
++    })
++}
++
++async fn sandbox_logs(name: &str) -> Result<String, String> {
++    let output = openshell_cmd()
++        .args([
++            "logs", name, "-n", "500", "--since", "5m", "--source", "sandbox",
++        ])
++        .stdout(Stdio::piped())
++        .stderr(Stdio::piped())
++        .output()
++        .await
++        .map_err(|e| format!("failed to spawn openshell logs: {e}"))?;
++    let combined = format!(
++        "{}{}",
++        String::from_utf8_lossy(&output.stdout),
++        String::from_utf8_lossy(&output.stderr)
++    );
++    if output.status.success() {
++        Ok(combined)
++    } else {
++        Err(format!("openshell logs failed:\n{combined}"))
++    }
++}
++
++#[tokio::test]
++async fn supervisor_reports_policy_dns_ipv6_egress_decision() {
++    let mut guard = SandboxGuard::create(&["--", "sh", "-c", "echo ipv6-egress-ready"])
++        .await
++        .expect("create sandbox");
++
++    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(20);
++    let logs = loop {
++        let logs = sandbox_logs(&guard.name).await.expect("fetch sandbox logs");
++        if parse_decision(&logs).is_some() && logs.contains(NAT64_MESSAGE) {
++            break logs;
++        }
++        assert!(
++            tokio::time::Instant::now() < deadline,
++            "timed out waiting for the IPv6 egress and NAT64 events:\n{logs}"
++        );
++        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
++    };
++    let decision = parse_decision(&logs).expect("decision event");
++
++    let requested = std::env::var("OPENSHELL_E2E_POLICY_DNS_IPV6_EGRESS")
++        .unwrap_or_else(|_| "auto".to_string());
++    assert_eq!(decision.requested, requested, "{logs}");
++    assert_ne!(
++        decision.route_state, "route_table_unavailable",
++        "supervisor could not read its routing tables:\n{logs}"
++    );
++    match decision.requested.as_str() {
++        "auto" => assert_eq!(
++            decision.enabled,
++            decision.route_state == "ipv6_only",
++            "auto must enable IPv6 egress only on IPv6-only namespaces: {decision:?}"
++        ),
++        "enabled" => assert!(decision.enabled, "{decision:?}"),
++        "disabled" => assert!(!decision.enabled, "{decision:?}"),
++        other => panic!("unexpected requested mode {other}"),
++    }
++    if let Ok(expected) = std::env::var("OPENSHELL_E2E_EXPECT_ROUTE_STATE") {
++        assert_eq!(decision.route_state, expected, "{logs}");
++    }
++
++    guard.cleanup().await;
++}
++
++#[test]
++fn parses_the_decision_message() {
++    let line = "OCSF CONFIG:ENABLED [INFO] Policy DNS IPv6 egress disabled (requested auto, route state dual_stack)";
++    assert_eq!(
++        parse_decision(line),
++        Some(Decision {
++            enabled: false,
++            requested: "auto".to_string(),
++            route_state: "dual_stack".to_string(),
++        })
++    );
++    assert_eq!(parse_decision("unrelated"), None);
++}

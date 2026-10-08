@@ -9,9 +9,11 @@ agentSandbox:
 # manifests/openshell/jwt-keys-job.yaml.
 certManager:
   enabled: true
-  # The chart's defaults plus the LAN LoadBalancer's k8s_gateway name
-  # (manifests/openshell/service-lb.yaml). Setting the list replaces the
-  # defaults, so they are repeated; re-check them on a chart bump.
+  # The gateway.toml server_sans; the server certificate's own names are set
+  # by a patch in kustomization.yaml. The chart's defaults plus the LAN
+  # LoadBalancer's k8s_gateway name (manifests/openshell/service-lb.yaml).
+  # Setting the list replaces the defaults, so they are repeated; re-check
+  # them on a chart bump.
   serverDnsNames:
     - openshell
     - openshell.openshell.svc
@@ -41,9 +43,10 @@ server:
     # The Secret comes from manifests/openshell/secret.yaml (sops).
     existingSecret: openshell-kek
   # CLI users log in through Authelia (manifests/authelia, client
-  # openshell-cli). On Kubernetes the chart's mTLS is transport only, so this is
-  # what authenticates people. With an issuer set, the gateway makes client
-  # certificates optional but still verifies any it is given.
+  # openshell-cli). This is what authenticates people; programs log in with a
+  # client certificate (mtls_auth, kustomization.yaml). With an issuer set, the
+  # gateway makes client certificates optional but still verifies any it is
+  # given.
   oidc:
     issuer: https://auth.home.garvey.sh
     # Roles are Authelia groups, which the openshell-cli claims policy puts in
@@ -56,22 +59,24 @@ server:
     adminRole: admins
     userRole: openshell
 
-# The gateway and supervisor run the images NVIDIA's CI built for the head of
-# NVIDIA/OpenShell#3702 (9ab8076a, "0.1.2 + IPv6 policy DNS egress"). 0.1.2's
-# policy DNS answers every AAAA query with NODATA and resolves only A records
-# upstream, so in this IPv6-only cluster no sandbox can resolve any name. The
-# sandbox runtime image is unchanged by the PR and stays at the chart's 0.1.2.
-# Drop both pins (and the deadline check in agents/outputs.nix) once a release
-# includes #3702, and bump VERSION in chart.env.
+# The gateway, supervisor and sandbox runtime are our own builds of the chart's
+# version with NVIDIA/OpenShell#3702 (IPv6 policy DNS egress) applied:
+# packages/openshell, pushed to oci.garvey.sh/openshell/<name>:<tag> and
+# pinned by digest. Upstream's policy DNS answers every AAAA query with NODATA,
+# so in this IPv6-only cluster no sandbox could resolve any name. Drop the
+# patch (and the deadline check in agents/outputs.nix) once a release includes
+# #3702, and go back to the chart's images (nix-lNoiG). A rebuild changes the
+# digests: push it and update all three here, and the gateway's in
+# manifests/openshell/jwt-keys-job.yaml.
+global:
+  image:
+    registry: oci.garvey.sh
 gateway:
   image:
-    digest: sha256:676297600ffa01aa52500e95c7fbb2bdaa11e4a08d35f731f6ad0a90f73a0a8d
+    digest: sha256:9127be956c553ce240273b2b0d6d7e18840a267a19f3234cebc1cacf46dd03f4
 supervisor:
   image:
-    digest: sha256:621a015cf8d70727e81377754c89ff0e1f5572f476fad0940beb5849f908dd4d
-# The PR gateway derives the sandbox runtime tag from its own version
-# (0.1.2-dev.11-g9ab8076a9), which ghcr does not have, so pin the PR head's
-# runtime too.
+    digest: sha256:a74a12ddfc99c73216fdfa8ce6f5d37b72c22631da6d82b503c4462745adf6b0
 sandboxRuntime:
   image:
-    digest: sha256:21440e180367e3905d69ddbdc8400c26200cf6bbdd0e230ed0e10a4dee256ba7
+    digest: sha256:561c63acbc7f247c452d83e90d92623403d66a7eed031e23b809ac3d4177b885

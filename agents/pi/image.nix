@@ -1,5 +1,6 @@
-# Sandbox image for the pi agent: pi from nixpkgs, a small shell toolset, its
-# config under /sandbox/.pi/agent, and the sandbox policy.
+# Sandbox image for the pi agent: pi from nixpkgs, a small shell toolset, and
+# its config under /sandbox/.pi/agent. The sandbox policy is not in the image:
+# it is passed at sandbox creation (agents/declaration.nix).
 { pkgs }:
 let
   # The k8s driver runs sandboxes as uid/gid 10001, ignoring the image's User,
@@ -32,7 +33,7 @@ pkgs.dockerTools.buildLayeredImage {
   tag = "latest";
   contents = [ root ];
   fakeRootCommands = ''
-    mkdir -p usr tmp etc/openshell sandbox/.pi/agent
+    mkdir -p usr tmp sandbox/.pi/agent
     ln -s /bin usr/bin
     chmod 1777 tmp
 
@@ -41,7 +42,6 @@ pkgs.dockerTools.buildLayeredImage {
     echo 'root:x:0:' > etc/group
     echo 'sandbox:x:${uid}:' >> etc/group
 
-    cp ${./policy.yaml} etc/openshell/policy.yaml
     cp ${./models.json} sandbox/.pi/agent/models.json
     cp ${./settings.json} sandbox/.pi/agent/settings.json
     cp ${./instructions.md} sandbox/.pi/agent/AGENTS.md
@@ -52,7 +52,9 @@ pkgs.dockerTools.buildLayeredImage {
   config = {
     User = "${uid}:${uid}";
     WorkingDir = "/sandbox";
-    Cmd = [ "/bin/pi" ];
+    # The sandbox's main process only has to keep running: the work arrives
+    # through exec, one `pi -p` per turn.
+    Cmd = [ "/bin/sleep" "infinity" ];
     Env = [
       "HOME=/sandbox"
       "PATH=/bin"

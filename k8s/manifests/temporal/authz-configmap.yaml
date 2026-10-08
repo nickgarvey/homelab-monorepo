@@ -1,0 +1,27 @@
+# Who may do what in Temporal: the --authz-table the server loads at start
+# (packages/temporal-server/authz/table.go has the format). Keys are the URI SAN
+# of the caller's client certificate, which for a pod is its SPIRE identity
+# spiffe://home.garvey.sh/ns/<namespace>/sa/<service account>; give every
+# worker its own ServiceAccount. A caller not listed here can do nothing.
+#
+# Roles are levels (read < write < admin) per Temporal namespace, or for all of
+# them under system. Workers need write. The server reads this only at start:
+# after a change, kubectl -n temporal rollout restart deploy/temporal.
+#
+# People get roles from Authelia groups instead (config-configmap.yaml,
+# global.authorization). The UI's own identity has no entry: it may only
+# relay its user's token, so a request without a valid one gets nothing.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: temporal-authz
+  namespace: temporal
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+data:
+  table.yaml: |
+    subjects:
+      # The agents worker (manifests/agents), in its Temporal namespace.
+      spiffe://home.garvey.sh/ns/agents/sa/agents-worker:
+        namespaces:
+          agents: write

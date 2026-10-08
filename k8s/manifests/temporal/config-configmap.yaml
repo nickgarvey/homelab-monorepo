@@ -1,0 +1,134 @@
+# Temporal's server config, read as /etc/temporal/config/homelab.yaml
+# (--env homelab). It replaces what the auto-setup image rendered from env vars.
+#
+# Every service binds 127.0.0.1, the frontend included: Temporal binds a
+# service's membership port (ringpop, unauthenticated) wherever it binds its
+# gRPC port, so a frontend on the pod IP would expose 6933 to the LAN too. The
+# forwarder sidecar in deployment.yaml is the only thing on the pod IP (7233,
+# and Prometheus on 9090). This works only with one replica: more would need
+# the services to reach each other over the network.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: temporal-config
+  namespace: temporal
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+data:
+  homelab.yaml: |
+    log:
+      stdout: true
+      level: info
+
+    persistence:
+      # Fixed when the cluster was created; Temporal cannot change it.
+      numHistoryShards: 4
+      defaultStore: default
+      visibilityStore: visibility
+      datastores:
+        # The shared postgres (manifests/postgres/), as role temporal with the
+        # client certificate in /etc/temporal-pg; there is no password.
+        default:
+          sql: &postgres
+            pluginName: postgres12
+            databaseName: temporal
+            connectAddr: postgres-rw.postgres.svc:5432
+            connectProtocol: tcp
+            user: temporal
+            maxConns: 20
+            maxIdleConns: 20
+            maxConnLifetime: 1h
+            tls:
+              enabled: true
+              caFile: /etc/temporal-pg/ca.crt
+              certFile: /etc/temporal-pg/tls.crt
+              keyFile: /etc/temporal-pg/tls.key
+              enableHostVerification: true
+              serverName: postgres-rw.postgres.svc
+        visibility:
+          sql:
+            <<: *postgres
+            databaseName: temporal_visibility
+            maxConns: 10
+            maxIdleConns: 10
+
+    global:
+      # mTLS on the frontend only: clients present a certificate that chains to
+      # the spiffe-ca root, and --authz-table maps its URI SAN to roles. The
+      # internal frontend and the services behind it are loopback-only, plain.
+      tls:
+        refreshInterval: 1m
+        frontend:
+          server:
+            certFile: /etc/temporal-frontend-tls/tls.crt
+            keyFile: /etc/temporal-frontend-tls/tls.key
+            requireClientAuth: true
+            clientCaFiles:
+              - /etc/temporal-frontend-tls/ca.crt
+      # Bearer tokens: Authelia access tokens, which the UI forwards for the
+      # logged-in user. With a token, its groups decide (temporal-<namespace>-
+      # <role>, temporal-system-<role> for every namespace) and the client
+      # certificate's table entry does not apply; a token that fails to verify
+      # is refused. aud must be temporal (the temporal-ui client's audience).
+      authorization:
+        jwtKeyProvider:
+          keySourceURIs:
+            - https://auth.home.garvey.sh/jwks.json
+          refreshInterval: 1m
+        permissionsClaimName: groups
+        permissionsRegex: ^temporal-(?P<namespace>.+)-(?P<role>read|write|worker|admin)$
+        audience: temporal
+      membership:
+        maxJoinDuration: 30s
+        broadcastAddress: 127.0.0.1
+      metrics:
+        prometheus:
+          timerType: histogram
+          listenAddress: "[::]:9090"
+
+    services:
+      # httpPort 0 turns the HTTP API off; nothing uses it.
+      frontend:
+        rpc:
+          grpcPort: 7233
+          membershipPort: 6933
+          bindOnIP: 127.0.0.1
+          httpPort: 0
+      # Temporal's own system worker reaches the frontend through this one,
+      # which skips authorization (manifests/temporal/README.md, "Ports").
+      internal-frontend:
+        rpc:
+          grpcPort: 7236
+          membershipPort: 6936
+          bindOnIP: 127.0.0.1
+          httpPort: 0
+      matching:
+        rpc:
+          grpcPort: 7235
+          membershipPort: 6935
+          bindOnIP: 127.0.0.1
+      history:
+        rpc:
+          grpcPort: 7234
+          membershipPort: 6934
+          bindOnIP: 127.0.0.1
+      worker:
+        rpc:
+          grpcPort: 7239
+          membershipPort: 6939
+          bindOnIP: 127.0.0.1
+
+    clusterMetadata:
+      enableGlobalNamespace: false
+      failoverVersionIncrement: 10
+      masterClusterName: active
+      currentClusterName: active
+      clusterInformation:
+        active:
+          enabled: true
+          initialFailoverVersion: 1
+          rpcName: frontend
+          rpcAddress: 127.0.0.1:7233
+
+    dcRedirectionPolicy:
+      policy: noop

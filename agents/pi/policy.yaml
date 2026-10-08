@@ -1,5 +1,5 @@
-# Sandbox policy for the pi agent, baked into the image at
-# /etc/openshell/policy.yaml. It grants no network access itself: the only
+# Sandbox policy for the pi agent, passed at sandbox creation (--policy); it is
+# not in the image. It grants no network access itself: the only
 # endpoint the sandbox can reach is the one the attached litellm provider
 # adds (litellm-profile.yaml).
 version: 1

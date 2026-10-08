@@ -1,0 +1,136 @@
+# The agents worker (packages/agents, cmd/agents-worker): the ChatSession,
+# session-coordinator and sandbox-reaper workflows on task queue agents,
+# Temporal namespace agents. It logs in to Temporal and RGW with its SVIDs
+# (spiffe-helper), to the OpenShell gateway and Postgres with cert-manager
+# certificates, and reads the agent types agents-apply publishes to the
+# agents-desired-state ConfigMap afresh for every activity, so a publish needs
+# no restart.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agents-worker
+  namespace: agents
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agents-worker
+  template:
+    metadata:
+      labels:
+        app: agents-worker
+        app.kubernetes.io/managed-by: ngarvey-homelab
+    spec:
+      serviceAccountName: agents-worker
+      securityContext:
+        # The image runs as 1000; this lets it read the client keys (0440).
+        fsGroup: 1000
+      initContainers:
+        # Native sidecar: starts before the worker and keeps its SVID files
+        # fresh.
+        - name: spiffe-helper
+          image: ghcr.io/spiffe/spiffe-helper:0.11.0
+          restartPolicy: Always
+          args: ["-config", "/etc/spiffe-helper/helper.conf"]
+          securityContext:
+            # Same user as the worker, which reads the files (mode 0600).
+            runAsUser: 1000
+            runAsGroup: 1000
+          volumeMounts:
+            - name: spiffe-workload-api
+              mountPath: /spiffe-workload-api
+              readOnly: true
+            - name: spiffe-helper-config
+              mountPath: /etc/spiffe-helper
+              readOnly: true
+            - name: svid
+              mountPath: /run/spiffe
+          startupProbe:
+            httpGet:
+              path: /ready
+              port: 8081
+            periodSeconds: 2
+            failureThreshold: 60
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: 8081
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+      containers:
+        - name: worker
+          image: oci.garvey.sh/agents-worker:xal3jiz1pkq6z59q4dg0h0nlfdp9ax0y
+          args:
+            - --temporal-cert=/run/spiffe/svid.pem
+            - --temporal-key=/run/spiffe/svid_key.pem
+            - --temporal-ca=/run/spiffe/bundle.pem
+            - --gateway-cert=/etc/agents/openshell/tls.crt
+            - --gateway-key=/etc/agents/openshell/tls.key
+            # The spiffe-ca root, which also signs the gateway's certificate.
+            - --gateway-ca=/etc/agents/openshell/ca.crt
+            - --postgres=postgres://agents@postgres-rw.postgres.svc:5432/agents
+            - --postgres-cert=/etc/agents/postgres/tls.crt
+            - --postgres-key=/etc/agents/postgres/tls.key
+            - --postgres-ca=/etc/agents/postgres/ca.crt
+            - --rgw-endpoint=https://rgw.home.garvey.sh
+            - --state=/etc/agents/desired-state/desired-state.json
+          env:
+            # RGW credentials from the JWT-SVID through STS
+            # (manifests/spire/README.md, "S3 on Ceph RGW").
+            - name: AWS_WEB_IDENTITY_TOKEN_FILE
+              value: /run/spiffe/jwt_svid.token
+            - name: AWS_ROLE_ARN
+              value: arn:aws:iam::RGW77873637642885287:role/nix-managed/agents-worker
+            - name: AWS_ROLE_SESSION_NAME
+              value: agents-worker
+            - name: AWS_ENDPOINT_URL_STS
+              value: https://rgw.home.garvey.sh
+          volumeMounts:
+            - name: svid
+              mountPath: /run/spiffe
+              readOnly: true
+            - name: openshell-cert
+              mountPath: /etc/agents/openshell
+              readOnly: true
+            - name: postgres-cert
+              mountPath: /etc/agents/postgres
+              readOnly: true
+            # Mounted whole (no subPath), so the kubelet's updates reach it.
+            - name: desired-state
+              mountPath: /etc/agents/desired-state
+              readOnly: true
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+      volumes:
+        - name: spiffe-workload-api
+          csi:
+            driver: csi.spiffe.io
+            readOnly: true
+        - name: spiffe-helper-config
+          configMap:
+            name: agents-worker-spiffe-helper
+        - name: svid
+          emptyDir:
+            medium: Memory
+        - name: openshell-cert
+          secret:
+            secretName: agents-worker-openshell
+            defaultMode: 0440
+        - name: postgres-cert
+          secret:
+            secretName: agents-postgres-client
+            defaultMode: 0440
+        - name: desired-state
+          configMap:
+            name: agents-desired-state

@@ -1,0 +1,38 @@
+# The worker's login to the OpenShell gateway: user agents-worker with the
+# gateway's user role (OU=openshell), which the gateway reads from the
+# certificate's subject (mtls_auth, vendor/openshell/kustomization.yaml).
+# Issued by the SPIFFE CA only because manifests/cert-manager/spiffe-policies.yaml
+# (spiffe-agents-worker) allows exactly this subject here. The role alone
+# reaches no sandbox: the user must also be a member of the gateway workspace
+# it works in (agents).
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: agents-worker-openshell
+  namespace: agents
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  secretName: agents-worker-openshell
+  commonName: agents-worker
+  subject:
+    organizationalUnits:
+      - openshell
+  # No URI SAN: the gateway refuses a client certificate with a URI under the
+  # SPIFFE root's name constraint (see the policy).
+  usages:
+    - client auth
+    - digital signature
+    - key encipherment
+  # Short lived. The OpenShell Go SDK reads the files once, when a client is
+  # made, so the worker makes a new client when they change.
+  duration: 24h
+  renewBefore: 8h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: spiffe-ca

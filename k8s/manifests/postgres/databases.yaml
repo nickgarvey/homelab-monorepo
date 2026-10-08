@@ -52,3 +52,16 @@ spec:
   owner: celler
   cluster:
     name: postgres
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: agents
+  namespace: postgres
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  name: agents
+  owner: agents
+  cluster:
+    name: postgres

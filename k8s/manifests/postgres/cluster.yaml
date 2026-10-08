@@ -60,6 +60,10 @@ spec:
       - name: celler
         ensure: present
         login: true
+      # The agents worker (manifests/agents); certificate login only.
+      - name: agents
+        ensure: present
+        login: true
   postgresql:
     # A role gets the databases named here and no others. First match wins and
     # the operator puts these before its 'host all all all scram-sha-256', so
@@ -72,6 +76,8 @@ spec:
       - host all openshell all reject
       - hostssl celler celler all cert clientname=DN map=spiffe
       - host all celler all reject
+      - hostssl agents agents all cert clientname=DN map=spiffe
+      - host all agents all reject
     # A certificate login matches the client certificate's whole subject DN,
     # not just its CN. The client CA signs for the whole trust domain, so only
     # these exact DNs, which come from the policies in
@@ -82,3 +88,4 @@ spec:
       - spiffe "CN=temporal" temporal
       - spiffe "CN=openshell" openshell
       - spiffe "CN=celler" celler
+      - spiffe "CN=agents" agents

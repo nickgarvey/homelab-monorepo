@@ -1,7 +1,7 @@
 # The gateway's gRPC API on the LAN, so the CLI needs no port-forward. Callers
 # authenticate with an Authelia OIDC token (README.md); the TLS certificate is
-# the chart CA's, with this Service's k8s_gateway name
-# (gateway.openshell.k8s.home.garvey.sh) added in vendor/openshell/values.yaml.
+# from the spiffe-ca ClusterIssuer, with this Service's k8s_gateway name
+# (gateway.openshell.k8s.home.garvey.sh), set in vendor/openshell/kustomization.yaml.
 # The chart's own ClusterIP Service stays as it is: sandboxes reach the gateway
 # in-cluster at openshell.openshell.svc:8080.
 apiVersion: v1
