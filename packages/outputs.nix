@@ -1,6 +1,6 @@
 # packages outputs: homelab packages, container images and the deploy tool.
 # Imported by the root flake.nix.
-{ nixpkgs, ... }:
+{ nixpkgs, celler, ... }:
 let
   system = "x86_64-linux";
   pkgs = import nixpkgs { inherit system; };
@@ -11,6 +11,7 @@ let
   thinkrail = import ./thinkrail/outputs.nix { inherit nixpkgs system; };
   lan-table = import ./lan-table/outputs.nix { inherit nixpkgs system; };
   openshell = import ./openshell/outputs.nix { inherit nixpkgs system; };
+  celler-pkg = import ./celler/outputs.nix { inherit nixpkgs celler system; };
 
   # The deploy binary, built from ./deploy. buildGoModule runs `go test`
   # as part of the build, so this derivation is also the test check.
@@ -31,6 +32,8 @@ in
     thinkrail-node-modules = thinkrail.node-modules;
     inherit lan-table;
     inherit openshell;
+    celler = celler-pkg.package;
+    celler-image = celler-pkg.image;
     inherit deploy;
   };
 

@@ -65,18 +65,37 @@ Let's Encrypt certificate (`certificate.yaml`, acme-dns account
 `modules/networking/dns.nix`). It re-reads the certificate files every minute, so
 renewals need no restart.
 
-RGW pins the **last certificate of the chain** this host serves as the OIDC
-provider's thumbprint. Today the chain is leaf → Let's Encrypt `YR1` → `ISRG Root
-YR` cross-signed by ISRG Root X1 (valid to 2032-09-02), so the pinned certificate
-is that cross-sign, SHA-1 `ab9d0263244dd0326eb67015705a667e79cfe998`. If Let's
-Encrypt changes the chain it hands out, JWT login to RGW fails until the
-thumbprint registered in RGW is updated. Check what is served with:
+RGW trusts this host through ordinary certificate validation: it fetches the
+discovery document and JWKS over HTTPS with the system CAs (`rgw_verify_ssl`,
+on by default). The provider is registered in RGW with a thumbprint, the SHA-1
+of the last certificate of the served chain (today the `ISRG Root YR`
+cross-sign, `ab9d0263244dd0326eb67015705a667e79cfe998`), but RGW does not check
+it: thumbprint pinning only runs with `rgw_enable_jwks_url_verification`, which
+stays off (`modules/services/ceph.nix`; its connection is IPv4-only), and keys
+without an x5c chain, which is all SPIRE publishes, never use thumbprints. A
+change in the chain Let's Encrypt hands out therefore changes nothing.
 
-```sh
-echo | openssl s_client -connect spiffe-oidc.home.garvey.sh:443 -showcerts 2>/dev/null \
-  | awk '/BEGIN CERT/{c=""} {c=c $0 "\n"} /END CERT/{last=c} END{printf "%s", last}' \
-  | openssl x509 -noout -subject -fingerprint -sha1
-```
+## S3 on Ceph RGW
+
+An app reaches its RGW buckets with its JWT-SVID instead of a static key: RGW's
+STS (AssumeRoleWithWebIdentity) trades the token for 1h credentials of the
+app's role. The roles live in the RGW account `k8s` (`RGW77873637642885287`),
+which trusts this OIDC provider with client ID (audience) `rgw.home.garvey.sh`.
+
+1. Give the app its own ServiceAccount (pods sharing one share the role).
+2. Declare it in `modules/services/rgw-roles.nix` (namespace, ServiceAccount,
+   bucket prefix) and deploy joor. Its role,
+   `arn:aws:iam::RGW77873637642885287:role/nix-managed/<name>`, may use only
+   buckets starting with the prefix, and creates them itself.
+3. In the pod: keep a JWT-SVID with audience `rgw.home.garvey.sh` in a file
+   (spiffe-helper as a native sidecar), and set `AWS_WEB_IDENTITY_TOKEN_FILE`,
+   `AWS_ROLE_ARN`, `AWS_ROLE_SESSION_NAME` and
+   `AWS_ENDPOINT_URL_STS=https://rgw.home.garvey.sh`, with the S3 endpoint
+   `https://rgw.home.garvey.sh`. No `AWS_ACCESS_KEY_ID` may be set: static keys
+   win over web identity in the AWS SDKs.
+
+When testing a denial with the AWS CLI, use `aws s3api`: `aws s3` reports some
+of RGW's AccessDenied responses as "argument of type 'NoneType' is not iterable".
 
 ## Apply (from `k8s/`)
 

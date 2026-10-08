@@ -9,6 +9,8 @@
     ../../modules/services/ceph.nix
     # Backs up every Ceph RBD volume; one node is enough.
     ../../modules/services/ceph-backup.nix
+    # The RGW STS roles for k3s apps; one node reconciles them.
+    ../../modules/services/rgw-roles.nix
   ];
 
   networking.hostName = "joor";

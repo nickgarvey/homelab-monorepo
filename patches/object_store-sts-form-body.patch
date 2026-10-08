@@ -1,0 +1,22 @@
+--- a/src/aws/credential.rs
++++ b/src/aws/credential.rs
+@@ -753,7 +753,7 @@
+ 
+     let bytes = client
+         .post(endpoint)
+-        .query(&[
++        .form(&[
+             ("Action", "AssumeRoleWithWebIdentity"),
+             ("DurationSeconds", "3600"),
+             ("RoleArn", role_arn),
+--- a/src/client/builder.rs
++++ b/src/client/builder.rs
+@@ -229,7 +229,7 @@
+         self
+     }
+ 
+-    #[cfg(any(feature = "gcp-base", feature = "azure-base"))]
++    #[cfg(any(feature = "aws-base", feature = "gcp-base", feature = "azure-base"))]
+     pub(crate) fn form<T: serde::Serialize>(mut self, form: T) -> Self {
+         let mut error = None;
+         if let Ok(ref mut req) = self.request {

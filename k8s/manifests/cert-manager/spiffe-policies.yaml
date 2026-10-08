@@ -96,6 +96,7 @@ rules:
       - spiffe-postgres-replication
       - spiffe-postgres-server
       - spiffe-openshell
+      - spiffe-celler
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -189,6 +190,41 @@ spec:
     namespace:
       matchNames:
         - openshell
+---
+apiVersion: policy.cert-manager.io/v1alpha1
+kind: CertificateRequestPolicy
+metadata:
+  name: spiffe-celler
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  # cellerd's client certificate for postgres: CN is the postgres role and no
+  # other subject field is allowed, so the subject is exactly CN=celler, the DN
+  # postgres maps to the role.
+  allowed:
+    commonName:
+      value: celler
+    uris:
+      values:
+        - spiffe://home.garvey.sh/ns/celler/sa/celler
+    usages:
+      - client auth
+      - digital signature
+      - key encipherment
+    isCA: false
+  constraints:
+    privateKey:
+      algorithm: ECDSA
+      minSize: 256
+      maxSize: 521
+  selector:
+    issuerRef:
+      group: cert-manager.io
+      kind: ClusterIssuer
+      name: spiffe-ca
+    namespace:
+      matchNames:
+        - celler
 ---
 apiVersion: policy.cert-manager.io/v1alpha1
 kind: CertificateRequestPolicy

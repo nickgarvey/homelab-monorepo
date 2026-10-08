@@ -66,9 +66,9 @@ spiffe-csi-driver:
 # and the JWKS) so services outside the cluster, such as Ceph RGW STS, can
 # validate JWT-SVIDs. It serves HTTPS itself on the LoadBalancer's 443 with a
 # Let's Encrypt certificate (manifests/spire/certificate.yaml), and re-reads the
-# files when cert-manager renews them. RGW pins the last certificate of the
-# chain it serves, so a change in the chain Let's Encrypt hands out needs the thumbprint
-# re-registered (manifests/spire/README.md).
+# files when cert-manager renews them. RGW validates this host's certificate
+# against the system CAs and does not enforce the registered thumbprint
+# (manifests/spire/README.md).
 spiffe-oidc-discovery-provider:
   tls:
     spire:

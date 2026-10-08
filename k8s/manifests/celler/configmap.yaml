@@ -1,0 +1,58 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: celler-config
+  namespace: celler
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+data:
+  # No secrets here. S3 credentials come from RGW STS through the AWS_* web
+  # identity variables in deployment.yaml. The database login is the client
+  # certificate in postgres-client-certificate.yaml, mounted at /etc/celler-pg.
+  server.toml: |
+    listen = "[::]:8080"
+    allowed-hosts = ["celler.home.garvey.sh"]
+    api-endpoint = "https://celler.home.garvey.sh/"
+
+    [database]
+    url = "postgres://celler@postgres-rw.postgres.svc:5432/celler?sslmode=verify-full&sslrootcert=/etc/celler-pg/ca.crt&sslcert=/etc/celler-pg/tls.crt&sslkey=/etc/celler-pg/tls.key"
+
+    # Ceph RGW (modules/services/ceph.nix). "default" is the zonegroup name.
+    [storage]
+    type = "s3"
+    region = "default"
+    bucket = "celler"
+    endpoint = "https://rgw.home.garvey.sh"
+
+    # Changing these after the first upload stops new NARs from reusing
+    # existing chunks.
+    [chunking]
+    nar-size-threshold = 65536
+    min-size = 16384
+    avg-size = 65536
+    max-size = 262144
+
+    # Paths nobody has pulled for this long are deleted. A cache can override
+    # it with `celler cache configure --retention-period`.
+    [garbage-collection]
+    default-retention-period = "90 days"
+
+    [jwt]
+    rs256-public-key-file = "/etc/celler/jwt-public.pem"
+  # Verifies access tokens. The private key that signs them is in
+  # secrets/celler-admin.yaml.
+  jwt-public.pem: |
+    -----BEGIN PUBLIC KEY-----
+    MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAvi4Ss+H7uNOhEze4ND/K
+    bht1vwRywhr0gLsVSxAwsaR8hDp0cTmb8o8aCSq9X31ww1tzVKZZ8y8+OHj51OSl
+    5zw46jGpYL/UmxQ7FO3hn1Da5fwGkpeRuseHvRVgNj/l+1J+hTVXMvF5G6FtbDa4
+    Sz+AlGD2Fhpyf5xo9SuBCyooGTKXZj4i7qwUD2jgdNwyHBU6bcUvLgKnxQkAUwLs
+    B9b9lDQMs+5EcHLtPMUm95KRtHttJge3BKkZrWAm0kFZLoc3H8yjJ4bGmR5chuYY
+    /A5W6hch3QR5eryvfDfzvAJr1iSY9C2RBkF9K4B5jWSWhzSX2mW0y+wfyl4eA7tr
+    t3wD3VG4sWOY9BC2JOiMqvGggGSl5NfEPH+4Pc66O7AEtq+8V1uLP7Epm4qqRZ3o
+    tWGFJBXh20BdPajKgOJRJbOMhbP831HzbmlcAS0e4ZwlnuNOAefq+Zn+zj6HboU8
+    mM6VVvl92kptW03h5+0c4Vz71zLgN7mg7Ii+CTPjcQaqsuNXGXR3i+3JSVapCwi0
+    /6HAv0MMidYz066bHkvXuGyYRjd+FKlppxeTjLzMQxHum+cyLPSIVj7SLGkcVI4c
+    +fgzreC3R+vr+Y4bnYlpqVmWX7UOHsnRFbK7OVKwVTsFrJgW/I1JdhM5jcib2oS8
+    FPHMR8oc+AVlrv93Zew4jz0CAwEAAQ==
+    -----END PUBLIC KEY-----

@@ -25,8 +25,21 @@
 
   nix.settings = {
     experimental-features = [ "nix-command" "flakes" ];
-    extra-substituters = [ "https://cache.nixos-cuda.org" ];
-    extra-trusted-public-keys = [ "cache.nixos-cuda.org:74DUi4Ye579gUqzH4ziL9IyiJBlDpMRn9MBN8oNan9M=" ];
+    # homelab: our celler cache (k8s/manifests/celler), with what the
+    # workstations build. Hosts trust only its signing key, not the pushers.
+    extra-substituters = [
+      "https://cache.nixos-cuda.org"
+      "https://celler.home.garvey.sh/homelab"
+    ];
+    extra-trusted-public-keys = [
+      "cache.nixos-cuda.org:74DUi4Ye579gUqzH4ziL9IyiJBlDpMRn9MBN8oNan9M="
+      "homelab:6sDcOpt7utnF/hUg3mhEM5J35n+Qh5XTIIckJayzRxw="
+    ];
+    # celler runs on k3s, whose nodes use this config too, and is reachable
+    # only on the LAN: an unreachable cache costs one short timeout, then Nix
+    # builds what it cannot substitute.
+    connect-timeout = 5;
+    fallback = true;
     trusted-users = [ "root" "ngarvey" ];
   };
 

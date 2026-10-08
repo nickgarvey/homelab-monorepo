@@ -38,3 +38,17 @@ spec:
   owner: openshell
   cluster:
     name: postgres
+---
+# The celler Nix binary cache (k8s/manifests/celler).
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: celler
+  namespace: postgres
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  name: celler
+  owner: celler
+  cluster:
+    name: postgres

@@ -1,0 +1,168 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celler
+  namespace: celler
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  # One replica: cellerd runs in monolithic mode, which also runs garbage
+  # collection and the database migrations at startup.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: celler
+  template:
+    metadata:
+      labels:
+        app: celler
+        app.kubernetes.io/managed-by: ngarvey-homelab
+    spec:
+      serviceAccountName: celler
+      securityContext:
+        # The image runs as 65534; this lets it read the client key (0440).
+        fsGroup: 65534
+      initContainers:
+        # A native sidecar (restartPolicy Always): it starts before cellerd and
+        # keeps running. Its startup probe passes once the JWT-SVID file is
+        # written, so cellerd never starts without one.
+        - name: spiffe-helper
+          image: ghcr.io/spiffe/spiffe-helper:0.11.0
+          restartPolicy: Always
+          args: ["-config", "/etc/spiffe-helper/helper.conf"]
+          securityContext:
+            # Same user as cellerd, which reads the token (mode 0600).
+            runAsUser: 65534
+            runAsGroup: 65534
+          volumeMounts:
+            - name: spiffe-workload-api
+              mountPath: /spiffe-workload-api
+              readOnly: true
+            - name: spiffe-helper-config
+              mountPath: /etc/spiffe-helper
+              readOnly: true
+            - name: rgw-token
+              mountPath: /run/rgw-token
+          startupProbe:
+            httpGet:
+              path: /ready
+              port: 8081
+            periodSeconds: 2
+            failureThreshold: 60
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: 8081
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+      containers:
+        # TLS terminator for celler.home.garvey.sh; cellerd serves plain HTTP.
+        # Caddy loads the cert only at startup, so after each cert-manager
+        # renewal: kubectl rollout restart deploy/celler -n celler
+        - name: caddy
+          image: caddy:2-alpine
+          command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile"]
+          ports:
+            - containerPort: 80
+              name: http-redirect
+            - containerPort: 443
+              name: https
+          volumeMounts:
+            - name: caddy-config
+              mountPath: /etc/caddy
+            - name: caddy-data
+              mountPath: /data
+            - name: certs
+              mountPath: /certs
+              readOnly: true
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: "1"
+              memory: 256Mi
+        - name: cellerd
+          # Built by `nix build .#celler-image`; the tag is the celler flake
+          # input's revision plus a hash of its patch (packages/celler/outputs.nix).
+          image: oci.garvey.sh/celler:de7e348-418c166
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: RUST_LOG
+              value: info
+            # S3 credentials: RGW STS trades the JWT-SVID for temporary keys
+            # of the celler role (modules/services/rgw-roles.nix), which may
+            # use only buckets named celler*.
+            - name: AWS_WEB_IDENTITY_TOKEN_FILE
+              value: /run/rgw-token/jwt_svid.token
+            - name: AWS_ROLE_ARN
+              value: arn:aws:iam::RGW77873637642885287:role/nix-managed/celler
+            - name: AWS_ROLE_SESSION_NAME
+              value: celler
+            - name: AWS_ENDPOINT_URL_STS
+              value: https://rgw.home.garvey.sh
+          volumeMounts:
+            - name: config
+              mountPath: /etc/celler
+              readOnly: true
+            - name: postgres-client
+              mountPath: /etc/celler-pg
+              readOnly: true
+            - name: rgw-token
+              mountPath: /run/rgw-token
+              readOnly: true
+          # TCP, not HTTP: allowed-hosts rejects the pod-IP Host header a
+          # kubelet HTTP probe would send.
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 2Gi
+      volumes:
+        - name: config
+          configMap:
+            name: celler-config
+        - name: caddy-config
+          configMap:
+            name: celler-caddy
+        - name: caddy-data
+          emptyDir: {}
+        - name: certs
+          secret:
+            secretName: celler-tls
+        - name: postgres-client
+          secret:
+            secretName: celler-postgres-client
+            defaultMode: 0440
+        # The SPIRE agent's Workload API socket.
+        - name: spiffe-workload-api
+          csi:
+            driver: csi.spiffe.io
+            readOnly: true
+        - name: spiffe-helper-config
+          configMap:
+            name: celler-spiffe-helper
+        - name: rgw-token
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi

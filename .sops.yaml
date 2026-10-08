@@ -122,6 +122,22 @@ creation_rules:
     - age:
       - *ngarvey
       - *workstation
+  # celler-push: one push-only celler token per workstation, keyed by host
+  # name, for `celler watch-store` (modules/desktop/celler-push.nix). Minted
+  # with the key in secrets/celler-admin.yaml; the server checks them with its
+  # public key only.
+  - path_regex: secrets/celler-push.yaml
+    key_groups:
+    - age:
+      - *ngarvey
+      - *workstation
+  # celler-admin: the RS256 private key that signs celler access tokens
+  # (`celler admin make-token --signing-key`). The server holds only the public
+  # key (k8s/manifests/celler/configmap.yaml); no host needs this.
+  - path_regex: secrets/celler-admin.yaml
+    key_groups:
+    - age:
+      - *ngarvey
   - path_regex: secrets/smb-credentials.yaml
     key_groups:
     - age:

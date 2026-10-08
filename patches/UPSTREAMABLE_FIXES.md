@@ -276,3 +276,22 @@ but orca's `wxGLCanvas` uses a GLX context. GLEW-EGL can't read the GL version
 from it ("Unable to init glew library, Error: Missing GL version"), so the 3D
 build plate never renders and the app crashes. Drop the override once PR #531346
 (or an equivalent) lands.
+
+---
+
+## object_store: AssumeRoleWithWebIdentity parameters sent in the query string
+
+**Affected:** `object_store` (apache/arrow-rs-object-store) 0.14.2,
+`src/aws/credential.rs` `web_identity()`, and Ceph RGW's STS endpoint.
+**Local workaround:** `patches/object_store-sts-form-body.patch`, applied to the
+vendored crate by `packages/celler/outputs.nix` (celler's S3 backend).
+
+object_store POSTs `Action=AssumeRoleWithWebIdentity&...&WebIdentityToken=...`
+as URL query parameters with an empty body. Ceph RGW only routes STS calls whose
+parameters are in an `application/x-www-form-urlencoded` body, which is what the
+AWS SDKs and aws-cli send; it answers the query-string form with 405 before any
+authentication. A side effect is that the JWT ends up in RGW's access log. The
+patch sends the same parameters as a form body, enabling the crate's existing
+`form()` builder for `aws-base` too. Upstream object_store should send a form
+body like the SDKs do (AWS STS accepts both, so this is compatible); arguably
+RGW should also accept query parameters.

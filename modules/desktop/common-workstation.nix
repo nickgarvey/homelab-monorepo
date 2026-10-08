@@ -62,6 +62,7 @@ in
     ../llms/hf-to-garage.nix
     ../llms/pi.nix
     ./zot-push.nix
+    ./celler-push.nix
     inputs.sops-nix.nixosModules.sops
   ];
 

@@ -50,6 +50,13 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # Nix binary cache server and client (packages/celler, k8s/manifests/celler).
+    celler = {
+      url = "github:celler-cache/celler";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.nixpkgs-stable.follows = "nixpkgs";
+    };
+
     nixos-raspberrypi.url = "github:nvmd/nixos-raspberrypi/main";
 
     # Cartographer V3 klipper plugin (the current/active one — newer than

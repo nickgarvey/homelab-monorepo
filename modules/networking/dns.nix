@@ -46,6 +46,9 @@ in rec {
     # SPIRE's OIDC discovery provider serves the trust domain's JWKS on 443 off
     # this LB IP (k8s/manifests/spire).
     spiffe-oidc   = { v4 = []; v6 = [ "2001:470:482f:2::5007" ]; };
+    # Celler Nix binary cache; Caddy sidecar terminates TLS on 443
+    # (k8s/manifests/celler).
+    celler        = { v4 = []; v6 = [ "2001:470:482f:2::5008" ]; };
   };
 
   # CNAMEs (targets are FQDNs with trailing dot).
@@ -55,6 +58,7 @@ in rec {
     "_acme-challenge.grafana" = "32622e22-227e-41f0-becf-674c8192c9f1.acme.garvey.sh.";
     "_acme-challenge.auth" = "bfeb451a-9409-4da5-a44e-f1b80354a075.acme.garvey.sh.";
     "_acme-challenge.spiffe-oidc" = "cb6844ff-24e9-46c4-a148-550d1bc2d414.acme.garvey.sh.";
+    "_acme-challenge.celler" = "3a7bfadd-a547-4fb2-83ea-dfb61749790f.acme.garvey.sh.";
   };
 
   # Split-horizon overrides: public (garvey.sh) names answered internally with
