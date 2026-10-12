@@ -16,7 +16,9 @@ agents/ build fails after 2026-12-01 while the patch remains). With #3702 the su
 logs "Policy DNS IPv6 egress enabled (requested auto, route state
 ipv6_only)" at start. Still broken upstream: a policy endpoint given as an
 IPv6 literal fails (the supervisor writes the CONNECT host unbracketed), so
-use hostnames.
+use hostnames. The build also carries
+`patches/openshell-supervisor-template-labels.patch`, which puts the sandbox
+template's labels on the supervisor pod too ("Provider token grants").
 
 ## Apply order (from `k8s/`)
 
@@ -136,9 +138,13 @@ The supervisor's identity is
 `spiffe://home.garvey.sh/agent/<type>/<sandbox-id>`, from the
 `openshell-sandboxes` ClusterSPIFFEID (`vendor/spire/values.yaml`). `<type>` is
 the supervisor pod's `agents.garvey.sh/type` label. The agents worker sets that
-label on the sandbox template, but OpenShell 0.1.3 puts template labels on the
-workload pod only, so supervisors are `agent/untyped/<sandbox-id>` until it
-copies them over.
+label on the sandbox template. Upstream OpenShell 0.1.3 puts template labels on
+the workload pod only; our build copies them onto the supervisor pod as well
+(`patches/openshell-supervisor-template-labels.patch`, nix-q7Q31), except
+`openshell.ai/*` ones, and never over a label the driver sets. A sandbox
+created without the label (with the CLI, say) is `agent/untyped/<sandbox-id>`.
+Anyone who can create sandboxes picks the type, since template labels are
+caller input.
 
 Apply the SPIRE side first, so no supervisor starts with the socket but
 without its identity:
@@ -155,7 +161,9 @@ socket when its supervisor pod is next created (a stop and start).
 
 Bump `VERSION` in `vendor/openshell/chart.env` and the version and hashes in
 the repo root's `packages/openshell/outputs.nix` to match (rebasing
-`patches/openshell-ipv6-policy-dns.patch` while it is carried), and re-render.
+`patches/openshell-ipv6-policy-dns.patch` and
+`patches/openshell-supervisor-template-labels.patch` while they are carried),
+and re-render.
 Then build and push the three images and pin their digests in
 `vendor/openshell/values.yaml`, and the gateway's in `jwt-keys-job.yaml`
 (from the repo root; `nix flake check` runs the image test):

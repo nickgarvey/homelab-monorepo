@@ -73,14 +73,16 @@ gatewayConfig:
     provider_spiffe_workload_api_socket_path: /spiffe-workload-api/spire-agent.sock
 
 # The gateway, supervisor and sandbox runtime are our own builds of the chart's
-# version with NVIDIA/OpenShell#3702 (IPv6 policy DNS egress) applied:
-# packages/openshell, pushed to oci.garvey.sh/openshell/<name>:<tag> and
-# pinned by digest. Upstream's policy DNS answers every AAAA query with NODATA,
-# so in this IPv6-only cluster no sandbox could resolve any name. Drop the
-# patch (and the deadline check in agents/outputs.nix) once a release includes
-# #3702, and go back to the chart's images (nix-lNoiG). A rebuild changes the
-# digests: push it and update all three here, and the gateway's in
-# manifests/openshell/jwt-keys-job.yaml.
+# version with two patches: packages/openshell, pushed to
+# oci.garvey.sh/openshell/<name>:<tag> and pinned by digest.
+# NVIDIA/OpenShell#3702 (IPv6 policy DNS egress): upstream's policy DNS
+# answers every AAAA query with NODATA, so in this IPv6-only cluster no sandbox
+# could resolve any name (nix-lNoiG). The template-labels patch copies the
+# sandbox template's labels onto the supervisor pod, for its SPIFFE ID
+# (nix-q7Q31). Drop each patch (and its deadline check in agents/outputs.nix)
+# once a release includes it, and go back to the chart's images when none is
+# left. A rebuild changes the digests: push it and update all three here, and
+# the gateway's in manifests/openshell/jwt-keys-job.yaml.
 global:
   image:
     registry: oci.garvey.sh

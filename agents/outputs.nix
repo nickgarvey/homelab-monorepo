@@ -22,6 +22,21 @@ let
     deliberately.
   '';
 
+  # Our OpenShell build also copies the sandbox template's labels onto the
+  # supervisor pod, so its SPIFFE ID can carry the agent type
+  # (patches/openshell-supervisor-template-labels.patch, nix-q7Q31). Meant to
+  # be temporary too, until upstream takes it.
+  labelsPatched = builtins.pathExists ../patches/openshell-supervisor-template-labels.patch;
+  labelsPinExpired = labelsPatched
+    && lib.max self.lastModified nixpkgs.lastModified >= 1796083200; # 2026-12-01T00:00:00Z
+  checkLabelsPin = lib.throwIf labelsPinExpired ''
+    patches/openshell-supervisor-template-labels.patch (nix-q7Q31) expired on
+    2026-12-01. Move to a release that copies template labels onto the
+    supervisor pod, drop the patch and this check in agents/outputs.nix, or
+    push the deadline out deliberately.
+  '';
+  checkPins = drv: checkLabelsPin (checkPin drv);
+
   # The provider profile's binaries entry must be the exe that opens the
   # connection: the node that pi's wrapper execs, resolved past symlinks.
   # Fails the build if pi stops running under pkgs.nodejs.
@@ -75,7 +90,7 @@ let
   };
 in
 {
-  packages.${system} = lib.mapAttrs (_: checkPin) {
+  packages.${system} = lib.mapAttrs (_: checkPins) {
     pi-agent-image = images.pi;
     pi-agent-litellm-profile = piLitellmProfile;
     agents-desired-state = desiredState ./declaration.nix;
@@ -83,7 +98,7 @@ in
     agents-worker-image = agentsWorkerImage;
   };
 
-  checks.${system} = lib.mapAttrs (_: checkPin) {
+  checks.${system} = lib.mapAttrs (_: checkPins) {
     agents-declaration-test = import ./declaration-test.nix { inherit pkgs lib images desiredState; };
     agents-go-tests = agentsGo;
   };
