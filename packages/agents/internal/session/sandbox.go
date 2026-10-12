@@ -142,6 +142,7 @@ func (a *Activities) create(ctx context.Context, c Conversation, row *store.Sess
 			ManagedByLabel:    ManagedBy,
 			ConversationLabel: store.ConversationHash(c.Type, c.Conversation),
 		},
+		PodLabels: map[string]string{TypePodLabel: c.Type},
 	})
 	if err != nil {
 		return EnsureResult{}, fmt.Errorf("creating %s: %w", row.Sandbox, err)

@@ -27,6 +27,12 @@ const (
 	ConversationLabel = "conversation"
 )
 
+// TypePodLabel carries the agent type on the sandbox's workload pod. The
+// SPIFFE ID of the sandbox's supervisor, agent/<type>/<sandbox-id>, reads it
+// from the supervisor pod (k8s/vendor/spire/values.yaml), where OpenShell
+// 0.1.3 does not copy it yet.
+const TypePodLabel = "agents.garvey.sh/type"
+
 // SessionDir is where pi keeps its session files in the sandbox: under
 // PI_CODING_AGENT_DIR (/sandbox/.pi/agent, set by the image), in the
 // directory pi names after its working directory, /sandbox.
