@@ -1,6 +1,7 @@
 # The agents Go module: agents-apply (cmd/agents-apply), which publishes the
-# agent types declared in agents/declaration.nix, and agents-worker
-# (cmd/agents-worker), which runs the chat sessions on Temporal.
+# agent types declared in agents/declaration.nix, agents-worker
+# (cmd/agents-worker), which runs the chat sessions on Temporal, and
+# agents-chat (cmd/agents-chat), a terminal client for a conversation.
 # buildGoModule runs `go test`, so the tests gate the build; the store and
 # session tests run against a throwaway Postgres started by
 # postgresqlTestHook. Built by agents/outputs.nix.

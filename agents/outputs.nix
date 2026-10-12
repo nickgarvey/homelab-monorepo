@@ -1,7 +1,8 @@
 # agents outputs: sandbox images and OpenShell provider profiles for the
 # agents run on the OpenShell gateway, the desired state built from
-# agents/declaration.nix, agents-apply, which publishes it, and the image of
-# agents-worker, which runs the chat sessions. Imported by the root flake.nix.
+# agents/declaration.nix, agents-apply, which publishes it, the image of
+# agents-worker, which runs the chat sessions, and the agents-chat app.
+# Imported by the root flake.nix.
 { self, nixpkgs, ... }:
 let
   system = "x86_64-linux";
@@ -88,6 +89,17 @@ let
       exec ${lib.getExe agentsGo} --state ${desiredState ./declaration.nix} "$@"
     '';
   };
+
+  # agents-chat (`nix run .#agents-chat -- <type> <conversation>`) is a
+  # stand-in until the Matrix transport works, so it has a deadline: after
+  # it, the app and `nix flake check` stop evaluating.
+  chatExpired = lib.max self.lastModified nixpkgs.lastModified >= 1801440000; # 2027-02-01T00:00:00Z
+  checkChat = lib.throwIf chatExpired ''
+    agents-chat expired on 2027-01-31. Remove it now that Matrix works
+    (packages/agents/cmd/agents-chat, the agents-chat app and this check in
+    agents/outputs.nix, and its section in agents/README.md), or push the
+    deadline out deliberately.
+  '';
 in
 {
   packages.${system} = lib.mapAttrs (_: checkPins) {
@@ -98,7 +110,13 @@ in
     agents-worker-image = agentsWorkerImage;
   };
 
-  checks.${system} = lib.mapAttrs (_: checkPins) {
+  apps.${system}.agents-chat = {
+    type = "app";
+    program = checkChat (lib.getExe' agentsGo "agents-chat");
+    meta.description = "Talk to an agent conversation through the Temporal break-glass port-forward (temporary)";
+  };
+
+  checks.${system} = lib.mapAttrs (_: drv: checkPins (checkChat drv)) {
     agents-declaration-test = import ./declaration-test.nix { inherit pkgs lib images desiredState; };
     agents-go-tests = agentsGo;
   };
