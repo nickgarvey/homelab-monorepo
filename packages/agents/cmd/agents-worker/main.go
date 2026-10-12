@@ -1,10 +1,10 @@
 // agents-worker runs the agent chat sessions (docs/agent-sessions-design.md,
-// section 7): the ChatSession, SessionCoordinator and SandboxReaper workflows
-// and their activities, on task queue "agents" in Temporal namespace agents,
-// and keeps the sandbox-reaper Schedule that runs SandboxReaper hourly. It
-// reaches the OpenShell gateway as user agents-worker, Postgres as role agents
-// and RGW as role agents-worker, each with its own certificate or token file
-// (k8s/manifests/agents/README.md).
+// section 7): the ChatSession, SessionCoordinator, SandboxReaper and Wakeup
+// workflows and their activities, on task queue "agents" in Temporal namespace
+// agents, and keeps the sandbox-reaper Schedule that runs SandboxReaper
+// hourly. It reaches the OpenShell gateway as user agents-worker, Postgres as
+// role agents and RGW as role agents-worker, each with its own certificate or
+// token file (k8s/manifests/agents/README.md).
 package main
 
 import (
@@ -12,6 +12,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	// Type timezones (session.timezone); the image has no zoneinfo.
+	_ "time/tzdata"
 
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/worker"
@@ -98,6 +100,9 @@ func run(tc *temporalconn.Config, gw *gateway.Client, pgTLS *store.TLSFiles, pos
 			// by agents-apply reaches the next turn without a restart.
 			State:     func() (*desired.State, error) { return desired.Load(state) },
 			Heartbeat: func(ctx context.Context) { activity.RecordHeartbeat(ctx) },
+			WakeupStatus: func(ctx context.Context, conv session.Conversation) (*session.WakeupStatus, error) {
+				return chat.QueryWakeup(ctx, c, conv)
+			},
 		},
 		Client: c,
 		Cap:    sessCap,
@@ -106,6 +111,7 @@ func run(tc *temporalconn.Config, gw *gateway.Client, pgTLS *store.TLSFiles, pos
 	w.RegisterWorkflow(chat.ChatSession)
 	w.RegisterWorkflow(chat.SessionCoordinator)
 	w.RegisterWorkflow(chat.SandboxReaper)
+	w.RegisterWorkflow(chat.Wakeup)
 	if err := chat.EnsureReaperSchedule(ctx, c.ScheduleClient()); err != nil {
 		return fmt.Errorf("schedule %s: %w", chat.ReaperScheduleID, err)
 	}

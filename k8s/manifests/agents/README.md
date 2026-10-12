@@ -7,10 +7,12 @@ the repo root's `agents/`.
 ## The worker
 
 `deployment.yaml` runs `agents-worker` (`packages/agents`): the `ChatSession`,
-`SessionCoordinator` and `SandboxReaper` workflows on task queue `agents` in
-Temporal namespace `agents`. Each conversation is a `ChatSession` with
-workflow ID `chat/<type>/<conversation>`; a message is its Update `message`,
-sent with Update-with-Start, and the Update's result is the reply. Sessions
+`SessionCoordinator`, `SandboxReaper` and `Wakeup` workflows on task queue
+`agents` in Temporal namespace `agents`. Each conversation is a `ChatSession`
+with workflow ID `chat/<type>/<conversation>`; a message is its Update
+`message`, sent with Update-with-Start, and the Update's result is the reply.
+A conversation of a type with wake-ups also has a `Wakeup`,
+`wakeup/<type>/<conversation>` ("Wake-ups" in `agents/README.md`). Sessions
 keep their records in the `agents` database, and pi's session files go to RGW
 bucket `agent-sessions`. The agent types are read from the
 `agents-desired-state` ConfigMap, which `nix run .#agents-apply` writes; a
@@ -94,6 +96,8 @@ All three know the worker by its ServiceAccount, `agents-worker`:
 - **Temporal**: its X.509-SVID
   (`spiffe://home.garvey.sh/ns/agents/sa/agents-worker`) has `write` in the
   Temporal namespace `agents` (`manifests/temporal/authz-configmap.yaml`).
+  That covers its activities' own client calls too (Update-with-Start,
+  Signal-with-Start and queries), which need at most `write`.
 - **Postgres**: the `agents` role and database, logged in with
   `postgres-client-certificate.yaml` (CN `agents`, 24h), the only login
   `manifests/postgres/cluster.yaml` accepts for the role. The

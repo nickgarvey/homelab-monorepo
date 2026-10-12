@@ -1,7 +1,8 @@
 // Package chat holds the worker's Temporal workflows (design section 7):
 // ChatSession, one per conversation; SessionCoordinator, which keeps the
-// number of running session sandboxes under the cap; and SandboxReaper, run
-// hourly by the sandbox-reaper Schedule. The activities are the session
+// number of running session sandboxes under the cap; SandboxReaper, run
+// hourly by the sandbox-reaper Schedule; and Wakeup, one per conversation of
+// a type with wake-ups (wakeup.go). The activities are the session
 // package's, registered through Activities here, which turns their errors
 // into ones the workflows can act on.
 package chat

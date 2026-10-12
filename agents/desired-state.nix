@@ -10,13 +10,15 @@
 #                               archive: the tarball to push; cmd: its Cmd
 #     policy                    file: the policy YAML; spec: its content as JSON
 #     providers, env, resources as declared (resources null = gateway default)
-#     session                   idleTimeoutSeconds, retentionSeconds, primeMessages
+#     session                   idleTimeoutSeconds, retentionSeconds, primeMessages,
+#                               defaultWakeupSeconds (null: no wake-ups), timezone
 #     version                   sha256 of everything above except the store
 #                               paths (archive, file), plus the specs of the
 #                               profiles behind the type's providers
 #
-# Also fails the build if a profile's id is not its attribute name or an image
-# has no Cmd, which can only be read once the image config is built.
+# Also fails the build if a profile's id is not its attribute name, an image
+# has no Cmd, which can only be read once the image config is built, or a
+# timezone is not in tzdata.
 { pkgs, lib, config }:
 let
   failed = lib.filter (a: !a.assertion) config.assertions;
@@ -52,7 +54,9 @@ let
       session = {
         idleTimeoutSeconds = seconds t.session.idleTimeout;
         retentionSeconds = seconds t.session.retention;
-        inherit (t.session) primeMessages;
+        defaultWakeupSeconds =
+          if t.session.defaultWakeup == null then null else seconds t.session.defaultWakeup;
+        inherit (t.session) primeMessages timezone;
       };
     }) config.types;
   };
@@ -85,6 +89,9 @@ lib.throwIf (failed != [ ])
       conf=$(jq -r --arg t "$t" '.types[$t].imageConfig' <<< "$state")
       cmd=$(jq -c '.config.Cmd // []' "$conf")
       [ "$(jq length <<< "$cmd")" -gt 0 ] || fail "type $t: the image has no Cmd"
+
+      tz=$(jq -r --arg t "$t" '.types[$t].session.timezone' <<< "$state")
+      [ -f "${pkgs.tzdata}/share/zoneinfo/$tz" ] || fail "type $t: timezone $tz is not in tzdata"
 
       state=$(jq --arg t "$t" --argjson policy "$policy" --argjson cmd "$cmd" '
         .types[$t].policy.spec = $policy

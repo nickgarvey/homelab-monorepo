@@ -1,8 +1,9 @@
 // Package session holds the chat session activities (design section 7):
-// EnsureSandbox, RunTurn, ArchiveSession, StopSandbox and DeleteSandbox, and
-// the reaper's PlanReap, ReapExpired, ReapStuck, ReapOrphan and MarkVanished
-// (reap.go). They are plain methods here; the worker registers them with
-// Temporal. Each is safe to retry.
+// EnsureSandbox, RunTurn, ArchiveSession, StopSandbox and DeleteSandbox, the
+// wake-up outbox (ReadOutbox and ClearOutbox, wakeup.go), and the reaper's
+// PlanReap, ReapExpired, ReapStuck, ReapOrphan and MarkVanished (reap.go).
+// They are plain methods here; the worker registers them with Temporal. Each
+// is safe to retry.
 package session
 
 import (
@@ -76,6 +77,19 @@ type Activities struct {
 	// Heartbeat, if set, is called every HeartbeatInterval while pi runs.
 	Heartbeat         func(ctx context.Context)
 	HeartbeatInterval time.Duration
+	// WakeupStatus returns the conversation's pending wake-up for the prompt
+	// header of a type with wake-ups: nil if it has no Wakeup workflow yet.
+	WakeupStatus func(ctx context.Context, c Conversation) (*WakeupStatus, error)
+	// Now is the time for the prompt header and for checking wake-up
+	// requests; time.Now if nil.
+	Now func() time.Time
+}
+
+func (a *Activities) now() time.Time {
+	if a.Now == nil {
+		return time.Now()
+	}
+	return a.Now()
 }
 
 // Conversation names a conversation: its agent type and its ID in the type.
@@ -91,7 +105,8 @@ func (c Conversation) validate() error {
 	return ValidConversation(c.Conversation)
 }
 
-func (a *Activities) agentType(name string) (desired.Type, error) {
+// AgentType returns the published type, or ErrInvalid if it is not published.
+func (a *Activities) AgentType(name string) (desired.Type, error) {
 	s, err := a.State()
 	if err != nil {
 		return desired.Type{}, fmt.Errorf("desired state: %w", err)

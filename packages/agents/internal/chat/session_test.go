@@ -40,10 +40,13 @@ type sessionWorld struct {
 	stoppedAt []time.Time
 	stopTakes time.Duration
 	acquires  int
-	archived  []string
-	archErr   error
-	replies   map[string]string
-	errs      map[string]error
+	// wakeups is what EnsureSandbox reports; outboxes records CollectOutbox.
+	wakeups  bool
+	outboxes []OutboxInput
+	archived []string
+	archErr  error
+	replies  map[string]string
+	errs     map[string]error
 }
 
 func newSessionWorld(t *testing.T) *sessionWorld {
@@ -63,7 +66,12 @@ func newSessionWorld(t *testing.T) *sessionWorld {
 			if created {
 				w.sandbox++
 			}
-			return session.EnsureResult{Sandbox: fmt.Sprintf("sb-%d", w.sandbox), Created: created, IdleTimeoutSeconds: int(idle / time.Second)}, nil
+			return session.EnsureResult{Sandbox: fmt.Sprintf("sb-%d", w.sandbox), Created: created, IdleTimeoutSeconds: int(idle / time.Second), Wakeups: w.wakeups}, nil
+		})
+	w.env.OnActivity("CollectOutbox", mock.Anything, mock.Anything).Return(
+		func(_ context.Context, in OutboxInput) error {
+			w.outboxes = append(w.outboxes, in)
+			return nil
 		})
 	w.env.OnActivity("RunTurn", mock.Anything, mock.Anything).After(time.Minute).Return(
 		func(_ context.Context, in session.TurnInput) (session.TurnResult, error) {
@@ -97,6 +105,10 @@ func newSessionWorld(t *testing.T) *sessionWorld {
 
 // send sends a message as Update id after delay.
 func (w *sessionWorld) send(delay time.Duration, id, text string) {
+	w.sendMessage(delay, id, Message{Text: text})
+}
+
+func (w *sessionWorld) sendMessage(delay time.Duration, id string, m Message) {
 	w.env.RegisterDelayedCallback(func() {
 		w.env.UpdateWorkflow(MessageUpdate, id, &testsuite.TestUpdateCallback{
 			OnAccept: func() {},
@@ -108,7 +120,7 @@ func (w *sessionWorld) send(delay time.Duration, id, text string) {
 				}
 				w.replies[id] = res.(Reply).Text
 			},
-		}, Message{Text: text})
+		}, m)
 	}, delay)
 }
 
@@ -319,5 +331,32 @@ func TestCarriedStateIsUsed(t *testing.T) {
 	}
 	if w.acquires != 0 {
 		t.Errorf("acquired a slot it holds")
+	}
+}
+
+func TestWakeupTypeCollectsTheOutboxAfterEachTurn(t *testing.T) {
+	w := newSessionWorld(t)
+	w.wakeups = true
+	w.send(0, "u1", "one")
+	w.sendMessage(2*time.Minute, "wakeup-r1", Message{Text: "[wake-up] Set for ...", Wakeup: true})
+	w.run(nil)
+	if w.replies["u1"] != "re: one" || w.replies["wakeup-r1"] == "" {
+		t.Fatalf("replies %v, errors %v", w.replies, w.errs)
+	}
+	if w.turns[0].Wakeup || !w.turns[1].Wakeup {
+		t.Errorf("turns %+v", w.turns)
+	}
+	// After each turn, in its sandbox; the user's turn reported as such.
+	if len(w.outboxes) != 2 || !w.outboxes[0].User || w.outboxes[1].User || w.outboxes[0].Sandbox != "sb-1" {
+		t.Errorf("outboxes %+v", w.outboxes)
+	}
+}
+
+func TestNoOutboxWithoutWakeups(t *testing.T) {
+	w := newSessionWorld(t)
+	w.send(0, "u1", "one")
+	w.run(nil)
+	if len(w.outboxes) != 0 {
+		t.Errorf("outboxes %+v", w.outboxes)
 	}
 }
