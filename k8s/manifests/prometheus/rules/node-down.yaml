@@ -1,0 +1,61 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: node-down-alerts
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+    prometheus: prometheus
+spec:
+  groups:
+    - name: node.down
+      rules:
+        # A k3s node the API server has marked NotReady (kubelet stopped
+        # posting status): powered off, hung, k3s stopped, or cut off from the
+        # API server. KubeletScrapeDown and HostDown leave out NotReady nodes,
+        # so one dead node sends this alert only.
+        - alert: KubeNodeNotReady
+          expr: kube_node_status_condition{condition="Ready",status="true"} == 0
+          for: 30m
+          labels:
+            severity: critical
+          annotations:
+            summary: "k3s node {{ $labels.node }} has been NotReady for 30 minutes"
+            description: "Pods on {{ $labels.node }} are not running, and ceph-rbd pods there stay Terminating until it returns (nix-Ksf5Q). Check that it is powered on, then `systemctl status k3s` (or k3s-agent) on it."
+
+        # Prometheus cannot scrape a node's kubelet while the node still reports
+        # Ready: usually a firewall or routing change between the Prometheus pod
+        # and the node's :10250. Its container and volume metrics are missing
+        # until it recovers.
+        - alert: KubeletScrapeDown
+          expr: |
+            max by (node) (up{job="kubelet"}) == 0
+              unless on (node) (kube_node_status_condition{condition="Ready",status="true"} == 0)
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Prometheus cannot scrape the kubelet on {{ $labels.node }}"
+            description: "Check the kubelet target on the Prometheus targets page for the scrape error, and the Cilium host firewall on {{ $labels.node }}."
+
+        # Every NixOS host with the vector agent (modules/services/vector-agent.nix)
+        # pushes host_filesystem_used_ratio every minute. A hostname seen in the
+        # last 3 days that has stopped pushing is down, or its vector agent is.
+        # The 3-day lookback means a host still off after 3 days stops alerting
+        # (and emails as resolved); a removed host alerts for 3 days.
+        # Workstations and the TV box are powered off routinely and are left out,
+        # and so are NotReady k3s nodes, which KubeNodeNotReady reports.
+        - alert: HostDown
+          expr: |
+            max by (hostname) (last_over_time(host_filesystem_used_ratio{hostname!~"talos|dovahkiin|guevenne"}[3d]))
+              unless max by (hostname) (host_filesystem_used_ratio)
+              unless on (hostname) label_replace(
+                kube_node_status_condition{condition="Ready",status="true"} == 0,
+                "hostname", "$1", "node", "(.*)"
+              )
+          for: 25m
+          labels:
+            severity: critical
+          annotations:
+            summary: "{{ $labels.hostname }} has not pushed metrics for 30 minutes"
+            description: "{{ $labels.hostname }} is down or unreachable, or its vector agent has stopped (`systemctl status vector` on it). A series goes stale 5 minutes after its last push; the 25m `for` makes that 30 minutes in all."
