@@ -1,0 +1,18 @@
+# Scrapes every worker pod on its node's address (host network), port 9090:
+# the Temporal SDK's metrics from each, and the backup metrics
+# (homelab_ceph_backup_*) from the one holding the Lease ceph-backup-metrics.
+# The rules are in manifests/prometheus/rules/ceph-backup.yaml.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: ceph-backup-worker
+  namespace: ceph-backup
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  selector:
+    matchLabels:
+      app: ceph-backup-worker
+  podMetricsEndpoints:
+    - port: metrics
+      interval: 60s

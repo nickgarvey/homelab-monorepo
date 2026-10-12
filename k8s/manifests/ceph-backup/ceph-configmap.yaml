@@ -1,0 +1,21 @@
+# ceph.conf for the worker's Ceph CLIs (rbd, ceph, rados) and mount.ceph. The
+# mons speak msgr2 only and accept secure mode only
+# (modules/services/ceph.nix), so the kernel client maps RBD images with
+# ms_mode=secure too; CephFS mounts pass it themselves.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ceph-backup-ceph-conf
+  namespace: ceph-backup
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+data:
+  ceph.conf: |
+    [global]
+    fsid = 8d324da3-f3ab-40f8-aaa1-71ed33705f75
+    mon_host = [v2:[2001:470:482f::24]:3300],[v2:[2001:470:482f::25]:3300],[v2:[2001:470:482f::26]:3300]
+    ms_bind_ipv6 = true
+    ms_bind_ipv4 = false
+    ms_client_mode = secure
+    ms_mon_client_mode = secure
+    rbd_default_map_options = ms_mode=secure

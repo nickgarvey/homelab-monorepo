@@ -10,28 +10,29 @@ spec:
   groups:
     - name: ceph.backup
       rules:
-        # Fed by ceph-backup.service on joor
-        # (modules/services/ceph-backup.nix), which backs up every ceph-rbd
-        # volume daily at ~10:00 UTC to Garage; vector pushes the results.
-        # Recovery: docs/ceph-backup.md.
+        # Everything in Ceph (RBD images, RGW buckets and metadata, CephFS) is
+        # backed up daily at 10:00 UTC to the Kopia repository on Garage, and
+        # the repository copied to Storj, by the worker in manifests/ceph-backup
+        # (scraped). Runs are in the Temporal UI, namespace ceph-backup. Items
+        # are labelled kind and name. Recovery: docs/ceph-backup.md.
         - alert: CephBackupFailed
           expr: homelab_ceph_backup_last_run_success == 0
           for: 15m
           labels:
             severity: warning
           annotations:
-            summary: "The last Ceph volume backup run failed"
-            description: "At least one volume failed. On joor: `journalctl -u ceph-backup`; rerun with `sudo systemctl start ceph-backup`."
+            summary: "The last Ceph backup run failed"
+            description: "At least one item failed. The failed CephBackup run in https://temporal.garvey.sh/namespaces/ceph-backup/workflows lists them."
 
-        # A day plus slack for the timer's random delay and a slow run.
+        # A day plus slack for a slow run.
         - alert: CephBackupStale
           expr: time() - homelab_ceph_backup_last_success_timestamp_seconds > 26 * 3600
           for: 30m
           labels:
             severity: warning
           annotations:
-            summary: "{{ $labels.namespace }}/{{ $labels.pvc }} has not been backed up for over a day"
-            description: "Its last successful backup is {{ $value | humanizeDuration }} old. Check `journalctl -u ceph-backup` on joor."
+            summary: "Ceph {{ $labels.kind }} {{ $labels.name }} has not been backed up for over a day"
+            description: "Its newest snapshot without errors is {{ $value | humanizeDuration }} old. Check the last CephBackup runs in the Temporal UI (namespace ceph-backup)."
 
         - alert: CephBackupNotRunning
           expr: time() - homelab_ceph_backup_last_run_timestamp_seconds > 26 * 3600
@@ -39,15 +40,49 @@ spec:
           labels:
             severity: warning
           annotations:
-            summary: "The Ceph volume backup job has not run for over a day"
-            description: "Check `systemctl list-timers ceph-backup` on joor."
+            summary: "No Ceph backup run has finished for over a day"
+            description: "Is the Schedule ceph-backup paused, or a run stuck (Temporal UI, namespace ceph-backup)?"
 
-        # Pushed, not scraped: silence looks like health unless alerted on.
+        # Something exists in Ceph that no backup has ever covered: a pool the
+        # backup cannot read (kind="pool": an application it does not know, or
+        # an RBD namespace), or an item whose every backup so far has failed.
+        - alert: CephBackupNotCovered
+          expr: homelab_ceph_backup_item unless on (kind, name) homelab_ceph_backup_last_success_timestamp_seconds
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: "Ceph {{ $labels.kind }} {{ $labels.name }} is not backed up"
+            description: "The backup found it but the repository has no snapshot of it without errors. A kind=pool item needs support in packages/ceph-backup-worker."
+
+        # The items come from the metrics leader alone, so they vanish when
+        # no worker computes metrics. Silence would look like health.
         - alert: CephBackupMetricsMissing
-          expr: absent(homelab_ceph_backup_last_run_timestamp_seconds)
+          expr: absent(homelab_ceph_backup_item)
           for: 1h
           labels:
             severity: warning
           annotations:
             summary: "No Ceph backup metrics for an hour"
-            description: "joor or its vector agent is down, or the backup job has never run. Until this recovers the other backup alerts cannot fire."
+            description: "No worker holds the Lease ceph-backup-metrics or it cannot reach Ceph or the repository (`kubectl -n ceph-backup logs ds/ceph-backup-worker -c worker`). Until this recovers the other backup alerts cannot fire."
+
+        # SyncStorj runs after the items, daily; one missed day fires.
+        - alert: CephBackupStorjStale
+          expr: time() - homelab_ceph_backup_storj_last_sync_timestamp_seconds > 26 * 3600
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "The off-site Ceph backup copy on Storj is over a day old"
+            description: "Its newest snapshot is {{ $value | humanizeDuration }} old. Check SyncStorj and VerifyStorj in the last CephBackup runs (Temporal UI, namespace ceph-backup)."
+
+        # The staleness rule cannot fire on a series that is not there: the
+        # copy is gone, unreadable, or was never made.
+        - alert: CephBackupStorjMissing
+          expr: absent(homelab_ceph_backup_storj_last_sync_timestamp_seconds) and on() count(homelab_ceph_backup_item) > 0
+          for: 2h
+          labels:
+            severity: warning
+          annotations:
+            summary: "The Ceph backup metrics show no Storj copy"
+            description: "The metrics leader cannot list snapshots in the Storj copy (`kubectl -n ceph-backup logs ds/ceph-backup-worker -c worker`: \"metrics: Storj snapshots\"), or there are none. Check SyncStorj and VerifyStorj in the last CephBackup run."

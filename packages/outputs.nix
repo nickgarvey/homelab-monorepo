@@ -12,6 +12,7 @@ let
   openshell = import ./openshell/outputs.nix { inherit nixpkgs system; };
   celler-pkg = import ./celler/outputs.nix { inherit nixpkgs celler system; };
   temporal-server = import ./temporal-server/outputs.nix { inherit nixpkgs system; };
+  ceph-backup-worker = import ./ceph-backup-worker/outputs.nix { inherit nixpkgs system; };
 
   # The deploy binary, built from ./deploy. buildGoModule runs `go test`
   # as part of the build, so this derivation is also the test check.
@@ -38,11 +39,14 @@ in
     inherit deploy;
     temporal-server = temporal-server.package;
     temporal-server-image = temporal-server.image;
+    ceph-backup-worker = ceph-backup-worker.package;
+    ceph-backup-worker-image = ceph-backup-worker.image;
   };
 
   checks.${system} = {
     deploy-tests = deploy;
     temporal-server-tests = temporal-server.package;
+    ceph-backup-worker-tests = ceph-backup-worker.package;
     openshell-images-test = openshell.images-test;
   };
 }

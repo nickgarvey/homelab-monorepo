@@ -1,0 +1,202 @@
+# The Ceph backup worker (packages/ceph-backup-worker): the CephBackup
+# workflow on task queue ceph-backup, Temporal namespace ceph-backup, on each
+# storage node; whichever pod is up takes the work. Mapping RBD images and
+# mounting CephFS and rclone is kernel work, done as ceph-csi's node plugin
+# does it: privileged, in the host's network namespace (the kernel clients
+# connect from there), with the host's /dev and /sys. Its mounts stay in the
+# pod's mount namespace (no Bidirectional propagation); its RBD mappings are
+# the node's, and the worker removes leftover ones at start.
+#
+# Host network means Cilium policies do not apply to these pods, and the
+# metrics (9090) and spiffe-helper health (8081) ports are bound on the node.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: ceph-backup-worker
+  namespace: ceph-backup
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  selector:
+    matchLabels:
+      app: ceph-backup-worker
+  template:
+    metadata:
+      labels:
+        app: ceph-backup-worker
+        app.kubernetes.io/managed-by: ngarvey-homelab
+    spec:
+      serviceAccountName: ceph-backup-worker
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      # The storage nodes (modules/services/ceph.nix). There is no label for
+      # them.
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values: [joor, zah, frul]
+      # On SIGTERM the worker stops taking work and its running activity
+      # unwinds (unmount, unmap, remove the clone); Temporal retries it on
+      # another node.
+      terminationGracePeriodSeconds: 120
+      initContainers:
+        # Native sidecar: starts before the worker and keeps its SVID files
+        # fresh.
+        - name: spiffe-helper
+          image: ghcr.io/spiffe/spiffe-helper:0.11.0
+          restartPolicy: Always
+          args: ["-config", "/etc/spiffe-helper/helper.conf"]
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+          volumeMounts:
+            - name: spiffe-workload-api
+              mountPath: /spiffe-workload-api
+              readOnly: true
+            - name: spiffe-helper-config
+              mountPath: /etc/spiffe-helper
+              readOnly: true
+            - name: svid
+              mountPath: /run/spiffe
+          startupProbe:
+            httpGet:
+              path: /ready
+              port: 8081
+            periodSeconds: 2
+            failureThreshold: 60
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: 8081
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+      containers:
+        - name: worker
+          image: oci.garvey.sh/ceph-backup-worker:iscb54ah8dhk5bfg8p9vxjm6dsqb63yf
+          args:
+            - --temporal-cert=/run/spiffe/svid.pem
+            - --temporal-key=/run/spiffe/svid_key.pem
+            - --temporal-ca=/run/spiffe/bundle.pem
+            - --ceph-conf=/etc/ceph-backup/ceph/ceph.conf
+            - --ceph-keyring=/etc/ceph-backup/ceph/keyring
+            - --rgw-endpoint=https://rgw.home.garvey.sh
+            - --rgw-admin-dir=/etc/ceph-backup/rgw-admin
+            - --kopia-dir=/etc/ceph-backup/kopia
+            - --storj-dir=/etc/ceph-backup/storj
+            - --node-name=$(NODE_NAME)
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            # RGW credentials of the read-only role ceph-backup
+            # (modules/services/rgw-roles.nix) from the JWT-SVID through STS.
+            - name: AWS_WEB_IDENTITY_TOKEN_FILE
+              value: /run/spiffe/jwt_svid.token
+            - name: AWS_ROLE_ARN
+              value: arn:aws:iam::RGW77873637642885287:role/nix-managed/ceph-backup
+            - name: AWS_ROLE_SESSION_NAME
+              value: ceph-backup-worker
+            - name: AWS_ENDPOINT_URL_STS
+              value: https://rgw.home.garvey.sh
+          securityContext:
+            privileged: true
+          ports:
+            - name: metrics
+              containerPort: 9090
+          volumeMounts:
+            - name: svid
+              mountPath: /run/spiffe
+              readOnly: true
+            - name: ceph
+              mountPath: /etc/ceph-backup/ceph
+              readOnly: true
+            - name: rgw-admin
+              mountPath: /etc/ceph-backup/rgw-admin
+              readOnly: true
+            - name: kopia
+              mountPath: /etc/ceph-backup/kopia
+              readOnly: true
+            - name: storj
+              mountPath: /etc/ceph-backup/storj
+              readOnly: true
+            # Kopia's repository configs hold the storage keys: memory only.
+            - name: run
+              mountPath: /run/ceph-backup-worker
+            - name: cache
+              mountPath: /var/cache/ceph-backup-worker
+            # rbd device map creates /dev/rbdN after the pod started.
+            - name: dev
+              mountPath: /dev
+            - name: sys
+              mountPath: /sys
+            # rbd waits for udev to finish with a mapped device; udev's
+            # events reach this network namespace (the host's), and its
+            # control socket tells libudev that it runs.
+            - name: udev
+              mountPath: /run/udev
+              readOnly: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            # Incremental runs peak at ~0.7 GiB; the first full read of a
+            # large bucket took 8.6 GiB on joor and is run by hand.
+            limits:
+              memory: 4Gi
+      volumes:
+        - name: spiffe-workload-api
+          csi:
+            driver: csi.spiffe.io
+            readOnly: true
+        - name: spiffe-helper-config
+          configMap:
+            name: ceph-backup-worker-spiffe-helper
+        - name: svid
+          emptyDir:
+            medium: Memory
+        - name: ceph
+          projected:
+            defaultMode: 0400
+            sources:
+              - configMap:
+                  name: ceph-backup-ceph-conf
+              - secret:
+                  name: ceph-backup-ceph
+        - name: rgw-admin
+          secret:
+            secretName: ceph-backup-rgw-admin
+            defaultMode: 0400
+        - name: kopia
+          secret:
+            secretName: ceph-backup-kopia
+            defaultMode: 0400
+        - name: storj
+          secret:
+            secretName: ceph-backup-storj
+            defaultMode: 0400
+        - name: run
+          emptyDir:
+            medium: Memory
+        - name: cache
+          hostPath:
+            path: /var/cache/ceph-backup-worker
+            type: DirectoryOrCreate
+        - name: dev
+          hostPath:
+            path: /dev
+        - name: sys
+          hostPath:
+            path: /sys
+        - name: udev
+          hostPath:
+            path: /run/udev

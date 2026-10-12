@@ -25,3 +25,7 @@ data:
       spiffe://home.garvey.sh/ns/agents/sa/agents-worker:
         namespaces:
           agents: write
+      # The Ceph backup worker (manifests/ceph-backup), in its Temporal namespace.
+      spiffe://home.garvey.sh/ns/ceph-backup/sa/ceph-backup-worker:
+        namespaces:
+          ceph-backup: write

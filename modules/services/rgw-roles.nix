@@ -4,7 +4,9 @@
 # the JWT-SVID spiffe://home.garvey.sh/ns/<namespace>/sa/<serviceAccount>
 # (audience rgw.home.garvey.sh, enforced by the OIDC provider registered for
 # spiffe-oidc.home.garvey.sh) and allows s3:* on buckets named
-# <bucketPrefix>*, nothing else; the app creates its own buckets. A pod gets
+# <bucketPrefix>*, nothing else; the app creates its own buckets. A read-only
+# role (access = "readonly") may only read and list, on its prefix or, with
+# no prefix, on every bucket of the account (the Ceph backup worker). A pod gets
 # credentials with AWS_WEB_IDENTITY_TOKEN_FILE + AWS_ROLE_ARN; see "S3 on Ceph
 # RGW" in k8s/manifests/spire/README.md.
 #
@@ -35,14 +37,16 @@ let
         "spiffe://${trustDomain}/ns/${app.namespace}/sa/${app.serviceAccount}";
     }];
   };
-  permissions = app: builtins.toJSON {
+  permissions = app: let p = if app.bucketPrefix == null then "" else app.bucketPrefix; in builtins.toJSON {
     Version = "2012-10-17";
     Statement = [{
       Effect = "Allow";
-      Action = [ "s3:*" ];
+      Action = if app.access == "readonly" then [
+        "s3:GetObject" "s3:GetObjectVersion" "s3:ListBucket" "s3:ListBucketVersions" "s3:GetBucketLocation"
+      ] else [ "s3:*" ];
       Resource = [
-        "arn:aws:s3:::${app.bucketPrefix}*"
-        "arn:aws:s3:::${app.bucketPrefix}*/*"
+        "arn:aws:s3:::${p}*"
+        "arn:aws:s3:::${p}*/*"
       ];
     }];
   };
@@ -54,9 +58,11 @@ let
       policy = permissions app;
     }) cfg.apps));
 
-  prefixes = lib.mapAttrsToList (name: app: { inherit name; p = app.bucketPrefix; }) cfg.apps;
+  prefixes = lib.mapAttrsToList (name: app: { inherit name; p = app.bucketPrefix; })
+    (lib.filterAttrs (_: app: app.access == "readwrite") cfg.apps);
   # One app's prefix may not start another's: role "cache" (cache*) would
-  # otherwise reach every bucket of an app with prefix "cache-x".
+  # otherwise reach every bucket of an app with prefix "cache-x". Read-only
+  # roles are exempt: reading is not owning.
   overlaps = lib.concatMap (a: map (b: "${a.name} (${a.p}) and ${b.name} (${b.p})")
     (lib.filter (b: b.name != a.name && lib.hasPrefix a.p b.p) prefixes)) prefixes;
 
@@ -129,8 +135,13 @@ in
         namespace = lib.mkOption { type = lib.types.str; };
         serviceAccount = lib.mkOption { type = lib.types.str; };
         bucketPrefix = lib.mkOption {
-          type = lib.types.strMatching "[a-z0-9][a-z0-9.-]{2,}";
-          description = "The app may create and use every bucket whose name starts with this.";
+          type = lib.types.nullOr (lib.types.strMatching "[a-z0-9][a-z0-9.-]{2,}");
+          description = "The app may create and use every bucket whose name starts with this. null (read-only roles only): every bucket.";
+        };
+        access = lib.mkOption {
+          type = lib.types.enum [ "readwrite" "readonly" ];
+          default = "readwrite";
+          description = "readonly: get and list objects only, no writes, no bucket creation.";
         };
       };
     });
@@ -145,12 +156,17 @@ in
       celler = { namespace = "celler"; serviceAccount = "celler"; bucketPrefix = "celler"; };
       # The agents worker's archive of pi's session files (k8s/manifests/agents).
       agents-worker = { namespace = "agents"; serviceAccount = "agents-worker"; bucketPrefix = "agent-sessions"; };
+      # The Ceph backup worker (k8s/manifests/ceph-backup) reads every bucket.
+      ceph-backup = { namespace = "ceph-backup"; serviceAccount = "ceph-backup-worker"; access = "readonly"; bucketPrefix = null; };
     };
 
     assertions = [{
       assertion = overlaps == [ ];
       message = "rgw-roles.nix: bucket prefixes overlap: ${lib.concatStringsSep "; " overlaps}";
-    }];
+    }] ++ lib.mapAttrsToList (name: app: {
+      assertion = app.bucketPrefix != null || app.access == "readonly";
+      message = "rgw-roles.nix: ${name} has no bucketPrefix; only a readonly role may reach every bucket.";
+    }) cfg.apps;
 
     environment.systemPackages = [ reconcile ];
 
