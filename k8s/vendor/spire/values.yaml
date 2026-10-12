@@ -37,7 +37,8 @@ spire-server:
   # controller-manager's ignoreNamespaces) and spire (the default
   # ClusterSPIFFEID's namespaceSelector) gets
   # spiffe://home.garvey.sh/ns/<namespace>/sa/<service account> (the chart's
-  # default ClusterSPIFFEID). The OIDC provider, in the spire namespace, gets
+  # default ClusterSPIFFEID), unless another ClusterSPIFFEID matches it: the
+  # default is a fallback. The OIDC provider, in the spire namespace, gets
   # its identity from the chart's oidc-discovery-provider ClusterSPIFFEID; the
   # test-keys one serves the chart's tests, which do not run here.
   controllerManager:
@@ -45,6 +46,25 @@ spire-server:
       clusterSPIFFEIDs:
         test-keys:
           enabled: false
+        # OpenShell sandbox supervisors (one pod per sandbox, the one that
+        # holds the Workload API socket; vendor/openshell/values.yaml) get
+        # spiffe://home.garvey.sh/agent/<type>/<sandbox-id>. The default
+        # ClusterSPIFFEID is a fallback, so it no longer applies to them.
+        # Only the gateway creates pods with these labels; the agent's own
+        # (workload) pod always carries boundary-role=workload and gets no
+        # socket. <type> is the pod's agents.garvey.sh/type label, which
+        # OpenShell 0.1.3 does not put on supervisor pods (nix-psvkl.1), so
+        # until it does every sandbox is agent/untyped/<sandbox-id>.
+        openshell-sandboxes:
+          spiffeIDTemplate: 'spiffe://{{ .TrustDomain }}/agent/{{ or (index .PodMeta.Labels "agents.garvey.sh/type") "untyped" }}/{{ index .PodMeta.Labels "openshell.ai/sandbox-id" }}'
+          namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshell
+          podSelector:
+            matchLabels:
+              openshell.ai/managed-by: openshell
+              openshell.ai/component: supervisor
+              openshell.ai/boundary-role: supervisor
 
   # The cluster services run on fus/ro/dah.
   nodeSelector: &controlPlaneSelector

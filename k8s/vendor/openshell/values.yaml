@@ -59,6 +59,19 @@ server:
     adminRole: admins
     userRole: openshell
 
+# Provider token grants with SPIFFE: the driver mounts the SPIRE Workload API
+# socket (csi.spiffe.io) into each sandbox's supervisor pod, never into the
+# workload pod where the agent runs. For a provider whose profile has a
+# token_grant, the supervisor fetches a JWT-SVID, trades it at the profile's
+# token endpoint and injects the token it gets into the proxied request. The
+# supervisor's identity, spiffe://home.garvey.sh/agent/<type>/<sandbox-id>,
+# is the openshell-sandboxes ClusterSPIFFEID in vendor/spire/values.yaml. The
+# chart also mounts the socket into the gateway pod (identity
+# ns/openshell/sa/openshell), which only token_exchange grants use.
+gatewayConfig:
+  openshell.drivers.kubernetes:
+    provider_spiffe_workload_api_socket_path: /spiffe-workload-api/spire-agent.sock
+
 # The gateway, supervisor and sandbox runtime are our own builds of the chart's
 # version with NVIDIA/OpenShell#3702 (IPv6 policy DNS egress) applied:
 # packages/openshell, pushed to oci.garvey.sh/openshell/<name>:<tag> and

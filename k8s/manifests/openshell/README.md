@@ -116,6 +116,41 @@ including with the client certificate alone or a forged token (checked
 2026-10-07, nix-yIyr3). `Health` and `/.well-known/openid-configuration`
 answer anyone; they give the version and the public signing keys.
 
+## Provider token grants (SPIFFE)
+
+Each sandbox is two pods in namespace `openshell`, both with ServiceAccount
+`openshell-sandbox`: the workload pod, where the agent runs, and
+`os-supervisor-<sandbox-id>`, whose proxy carries all of the sandbox's
+traffic. `provider_spiffe_workload_api_socket_path`
+(`vendor/openshell/values.yaml`) mounts the SPIRE Workload API socket into the
+supervisor pod only (and into the gateway pod). For a provider whose profile
+credential has a `token_grant`, the supervisor fetches a JWT-SVID (audience:
+the profile's `jwt_svid_audience`, or else the token endpoint URL), POSTs it as
+the `client_assertion` of a `client_credentials` grant to `token_endpoint`,
+caches the returned token, and injects it into matching requests. The token
+and the socket never reach the workload pod. The token endpoint must be
+`https://` (verified against the supervisor image's system CAs) or `http://`
+to a `<svc>.<ns>.svc[.cluster.local]` name.
+
+The supervisor's identity is
+`spiffe://home.garvey.sh/agent/<type>/<sandbox-id>`, from the
+`openshell-sandboxes` ClusterSPIFFEID (`vendor/spire/values.yaml`). `<type>` is
+the supervisor pod's `agents.garvey.sh/type` label. The agents worker sets that
+label on the sandbox template, but OpenShell 0.1.3 puts template labels on the
+workload pod only, so supervisors are `agent/untyped/<sandbox-id>` until it
+copies them over.
+
+Apply the SPIRE side first, so no supervisor starts with the socket but
+without its identity:
+
+```sh
+kubectl apply -f vendor/spire/spire.yaml
+kubectl apply -k vendor/openshell
+```
+
+The gateway reads the setting at start; a sandbox already running gets the
+socket when its supervisor pod is next created (a stop and start).
+
 ## Upgrading
 
 Bump `VERSION` in `vendor/openshell/chart.env` and the version and hashes in
