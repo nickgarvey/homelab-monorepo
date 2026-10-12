@@ -40,7 +40,12 @@ type Spec struct {
 	// CPU and Memory are Kubernetes quantities, set as limits when not nil.
 	CPU    *string
 	Memory *string
+	// Labels are the sandbox's labels on the gateway, which List selects
+	// on; they reach no Kubernetes object.
 	Labels map[string]string
+	// PodLabels go on the sandbox's Kubernetes pod (the workload pod, where
+	// the agent runs).
+	PodLabels map[string]string
 }
 
 type Sandbox struct {

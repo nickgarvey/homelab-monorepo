@@ -85,7 +85,7 @@ func (c *Client) Create(ctx context.Context, name string, spec Spec) error {
 	if err != nil {
 		return err
 	}
-	tmpl := &openshell.SandboxTemplate{Image: spec.Image}
+	tmpl := &openshell.SandboxTemplate{Image: spec.Image, Labels: spec.PodLabels}
 	limits := map[string]any{}
 	if spec.CPU != nil {
 		limits["cpu"] = *spec.CPU

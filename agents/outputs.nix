@@ -1,7 +1,9 @@
 # agents outputs: sandbox images and OpenShell provider profiles for the
 # agents run on the OpenShell gateway, the desired state built from
-# agents/declaration.nix, agents-apply, which publishes it, and the image of
-# agents-worker, which runs the chat sessions. Imported by the root flake.nix.
+# agents/declaration.nix, agents-apply, which publishes it, the images of
+# agents-worker, which runs the chat sessions, and of agent-token, the token
+# service for sandbox credentials, and the agents-chat app.
+# Imported by the root flake.nix.
 { self, nixpkgs, ... }:
 let
   system = "x86_64-linux";
@@ -21,6 +23,21 @@ let
     patch and this check in agents/outputs.nix, or push the deadline out
     deliberately.
   '';
+
+  # Our OpenShell build also copies the sandbox template's labels onto the
+  # supervisor pod, so its SPIFFE ID can carry the agent type
+  # (patches/openshell-supervisor-template-labels.patch, nix-q7Q31). Meant to
+  # be temporary too, until upstream takes it.
+  labelsPatched = builtins.pathExists ../patches/openshell-supervisor-template-labels.patch;
+  labelsPinExpired = labelsPatched
+    && lib.max self.lastModified nixpkgs.lastModified >= 1796083200; # 2026-12-01T00:00:00Z
+  checkLabelsPin = lib.throwIf labelsPinExpired ''
+    patches/openshell-supervisor-template-labels.patch (nix-q7Q31) expired on
+    2026-12-01. Move to a release that copies template labels onto the
+    supervisor pod, drop the patch and this check in agents/outputs.nix, or
+    push the deadline out deliberately.
+  '';
+  checkPins = drv: checkLabelsPin (checkPin drv);
 
   # The provider profile's binaries entry must be the exe that opens the
   # connection: the node that pi's wrapper execs, resolved past symlinks.
@@ -64,6 +81,23 @@ let
     };
   };
 
+  # Pushed as oci.garvey.sh/agent-token:<tag>, tagged like agents-worker, and
+  # run by k8s/manifests/agents/agent-token-deployment.yaml. It talks only to
+  # the SPIRE agent's socket, so it needs no CA certificates.
+  agentTokenImage = pkgs.dockerTools.buildLayeredImage {
+    name = "agent-token";
+    tag = builtins.substring 11 32 agentsGo.outPath;
+    contents = pkgs.buildEnv {
+      name = "image-root";
+      paths = [ agentsGo ];
+      pathsToLink = [ "/bin" ];
+    };
+    config = {
+      Entrypoint = [ "/bin/agent-token" ];
+      User = "1000:1000";
+    };
+  };
+
   # `nix run .#agents-apply [-- --dry-run]`: publishes agents/declaration.nix
   # with the CLIs it drives, the openshell one at the gateway's version.
   agentsApply = pkgs.writeShellApplication {
@@ -73,17 +107,35 @@ let
       exec ${lib.getExe agentsGo} --state ${desiredState ./declaration.nix} "$@"
     '';
   };
+
+  # agents-chat (`nix run .#agents-chat -- <type> <conversation>`) is a
+  # stand-in until the Matrix transport works, so it has a deadline: after
+  # it, the app and `nix flake check` stop evaluating.
+  chatExpired = lib.max self.lastModified nixpkgs.lastModified >= 1801440000; # 2027-02-01T00:00:00Z
+  checkChat = lib.throwIf chatExpired ''
+    agents-chat expired on 2027-01-31. Remove it now that Matrix works
+    (packages/agents/cmd/agents-chat, the agents-chat app and this check in
+    agents/outputs.nix, and its section in agents/README.md), or push the
+    deadline out deliberately.
+  '';
 in
 {
-  packages.${system} = lib.mapAttrs (_: checkPin) {
+  packages.${system} = lib.mapAttrs (_: checkPins) {
     pi-agent-image = images.pi;
     pi-agent-litellm-profile = piLitellmProfile;
     agents-desired-state = desiredState ./declaration.nix;
     agents-apply = agentsApply;
     agents-worker-image = agentsWorkerImage;
+    agent-token-image = agentTokenImage;
   };
 
-  checks.${system} = lib.mapAttrs (_: checkPin) {
+  apps.${system}.agents-chat = {
+    type = "app";
+    program = checkChat (lib.getExe' agentsGo "agents-chat");
+    meta.description = "Talk to an agent conversation through the Temporal break-glass port-forward (temporary)";
+  };
+
+  checks.${system} = lib.mapAttrs (_: drv: checkPins (checkChat drv)) {
     agents-declaration-test = import ./declaration-test.nix { inherit pkgs lib images desiredState; };
     agents-go-tests = agentsGo;
   };

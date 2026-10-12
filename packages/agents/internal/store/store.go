@@ -57,6 +57,9 @@ type Message struct {
 const (
 	RoleUser      = "user"
 	RoleAssistant = "assistant"
+	// RoleWakeup is the prompt of a turn the worker started itself: a
+	// wake-up.
+	RoleWakeup = "wakeup"
 )
 
 type Store struct {

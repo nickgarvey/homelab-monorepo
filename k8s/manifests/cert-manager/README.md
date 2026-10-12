@@ -25,6 +25,9 @@ kubectl apply -f manifests/cert-manager/
 name constraint, so it can only certify URIs under `home.garvey.sh`, and path length 1, so
 it can sign exactly one level of CA below it: SPIRE's (`manifests/spire/`). Services trust
 this single root and decide which identities they accept (postgres: `manifests/postgres/`).
+Copies of the root certificate that are not read from a Secret, to replace with it if the
+CA is ever replaced: `manifests/postgres/client-ca.yaml` and the repo root's
+`packages/openshell/spiffe-ca.crt` (baked into the OpenShell supervisor image).
 
 Identities come from one of two registries, both chaining to this root:
 

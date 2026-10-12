@@ -1,0 +1,19 @@
+# agent-token's grants: which SPIFFE IDs, asking for which audience, get
+# which credential (format in packages/agents/internal/token/config.go, and
+# "The token service" in README.md). The credential files are keys of the
+# agent-token-credentials Secret (secret.yaml), mounted at
+# /etc/agent-token/credentials. Read at start: after a change,
+# kubectl -n agents rollout restart deploy/agent-token.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-token
+  namespace: agents
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+data:
+  config.yaml: |
+    trustDomain: home.garvey.sh
+    # The jwt_svid_audience every caller asks SPIRE for.
+    audience: spiffe://home.garvey.sh/ns/agents/sa/agent-token
+    grants: []

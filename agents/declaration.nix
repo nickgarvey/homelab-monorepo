@@ -14,4 +14,14 @@
     policy = ./pi/policy.yaml;
     providers = [ "litellm" ];
   };
+
+  # pi with wake-ups, to try the worker's wake-ups out until an agent type of
+  # its own uses them. To be removed by nix-psvkl.7.
+  types.pi-wakeup = {
+    image = images.pi;
+    policy = ./pi/policy.yaml;
+    providers = [ "litellm" ];
+    session.defaultWakeup = "1h";
+    session.timezone = "America/Los_Angeles";
+  };
 }

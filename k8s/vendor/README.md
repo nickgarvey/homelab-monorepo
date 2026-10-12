@@ -15,7 +15,7 @@ on top of a component (issuers, StorageClasses, policies) live in
 | sops-secrets-operator | chart, `sops-secrets-operator/chart.env` | 0.23.1 (operator 0.17.1) | `kubectl apply -n sops-secrets-operator -f vendor/sops-secrets-operator/sops-secrets-operator.yaml` |
 | longhorn | chart, `longhorn/chart.env` | 1.11.1 | `kubectl apply -f vendor/longhorn/longhorn.yaml` |
 | ceph-csi-rbd | chart, `ceph-csi-rbd/chart.env` | 3.17.1 | `kubectl apply -f vendor/ceph-csi-rbd/ceph-csi-rbd.yaml` |
-| openshell | chart, `openshell/chart.env` (OCI), plus `kustomization.yaml` (IPv6 listeners); see `manifests/openshell/README.md` | 0.1.3 chart; our images with NVIDIA/OpenShell#3702 (`packages/openshell`), pinned in `values.yaml` | `kubectl apply -k vendor/openshell` |
+| openshell | chart, `openshell/chart.env` (OCI), plus `kustomization.yaml` (IPv6 listeners); see `manifests/openshell/README.md` | 0.1.3 chart; our images with NVIDIA/OpenShell#3702 and the supervisor template-labels patch (`packages/openshell`), pinned in `values.yaml` | `kubectl apply -k vendor/openshell` |
 | prometheus-operator | static, `prometheus-operator/source.env`, plus `kustomization.yaml` (own namespace, control-plane pinning) | v0.90.1 | `kubectl apply --server-side -k vendor/prometheus-operator` |
 | csi-smb | static, `deploy/<v>/` of kubernetes-csi/csi-driver-smb (rbac, driver, controller, node) | v1.16.0 | `kubectl apply -f vendor/csi-smb/install.yaml` |
 | intel-gpu-plugin | static, `deployments/gpu_plugin/base/intel-gpu-plugin.yaml` of intel/intel-device-plugins-for-kubernetes | 0.31.0 | `kubectl apply -f vendor/intel-gpu-plugin/daemonset.yaml` |

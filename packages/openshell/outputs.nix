@@ -1,6 +1,7 @@
 # OpenShell v0.1.3 built from source with the IPv6 policy-DNS patch
-# (patches/openshell-ipv6-policy-dns.patch): the CLI, and the gateway,
-# supervisor and sandbox-runtime images that k8s/vendor/openshell runs.
+# (patches/openshell-ipv6-policy-dns.patch) and the supervisor template-labels
+# patch (patches/openshell-supervisor-template-labels.patch): the CLI, and the
+# gateway, supervisor and sandbox-runtime images that k8s/vendor/openshell runs.
 # nixpkgs packages only the CLI, at an older release (0.0.x) that cannot talk
 # to a 0.1 gateway. Imported by packages/outputs.nix.
 { nixpkgs, system }:
@@ -16,6 +17,14 @@ let
   # is applied.
   patch = ../../patches/openshell-ipv6-policy-dns.patch;
 
+  # Upstream's Kubernetes driver puts the sandbox template's labels only on the
+  # workload pod, never on the supervisor pod that holds the SPIFFE identity,
+  # where the openshell-sandboxes ClusterSPIFFEID (k8s/vendor/spire/values.yaml)
+  # reads the agent type. This copies them over, under the driver's own labels
+  # (see patches/UPSTREAMABLE_FIXES.md). agents/outputs.nix gives it a
+  # deadline. Applies on top of the #3702 patch.
+  labelsPatch = ../../patches/openshell-supervisor-template-labels.patch;
+
   src = pkgs.applyPatches {
     name = "openshell-${version}-src";
     src = pkgs.fetchFromGitHub {
@@ -24,7 +33,7 @@ let
       tag = "v${version}";
       hash = "sha256-7cIJ6YbBWev+C4uo2wxGer+nEpE3hxPEejC+BSo/VDc=";
     };
-    patches = [ patch ];
+    patches = [ patch labelsPatch ];
     # The workspace's crates are versioned 0.0.0; release builds stamp it.
     postPatch = ''
       substituteInPlace Cargo.toml \
@@ -55,8 +64,11 @@ let
       "-p" "openshell-gateway" "--bin" "openshell-gateway"
       "-p" "openshell-supervisor" "--bin" "openshell-supervisor"
     ];
-    # The patched crates' own tests, which include the PR's.
-    cargoTestFlags = [ "-p" "openshell-core" "-p" "openshell-supervisor-network" ];
+    # The patched crates' own tests, which include the patches'.
+    cargoTestFlags = [
+      "-p" "openshell-core" "-p" "openshell-supervisor-network"
+      "-p" "openshell-driver-kubernetes"
+    ];
     # Tests the build sandbox cannot run: the filesystem preflight ones exec
     # /bin/sleep and the like, and two proxy ones resolve dns.google.
     checkFlags = [
@@ -86,8 +98,8 @@ let
     doCheck = false;
   });
 
-  # An image's tag is the version plus its binary's store hash, so every build
-  # gets its own tag.
+  # An image's tag is the version plus its binary's store hash (the
+  # supervisor's also its CA bundle's), so every build gets its own tag.
   tagOf = drv: "${version}-${builtins.substring 11 7 drv.outPath}";
 
   # The images follow upstream's deploy/docker/Dockerfile.{gateway,supervisor,
@@ -114,17 +126,27 @@ let
     };
   };
 
+  # The supervisor's trust store: the public CAs plus our spiffe-ca root
+  # (./spiffe-ca.crt, the same certificate as k8s/manifests/postgres/client-ca.yaml),
+  # which signs in-cluster server certificates such as agent-token's
+  # (k8s/manifests/agents/). Token grants verify their token_endpoint against
+  # SSL_CERT_FILE (reqwest's native roots, rustls-native-certs). The proxy's
+  # upstream TLS does not use it: it trusts the bundled Mozilla roots plus
+  # the first of a fixed list of system bundle paths, none of which the image
+  # has.
+  supervisorCAs = pkgs.cacert.override { extraCertificateFiles = [ ./spiffe-ca.crt ]; };
+
   # Runs as root, as upstream's: the driver sets the supervisor's user.
   supervisor-image = pkgs.dockerTools.buildLayeredImage {
     name = "openshell/supervisor";
-    tag = tagOf workspace;
-    contents = [ pkgs.cacert ];
+    tag = "${tagOf workspace}-${builtins.substring 11 7 supervisorCAs.outPath}";
+    contents = [ supervisorCAs ];
     extraCommands = ''
       ln -s ${workspace}/bin/openshell-supervisor openshell-supervisor
     '';
     config = {
       Entrypoint = [ "/openshell-supervisor" ];
-      Env = [ "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt" ];
+      Env = [ "SSL_CERT_FILE=${supervisorCAs}/etc/ssl/certs/ca-bundle.crt" ];
     };
   };
 
@@ -143,7 +165,8 @@ let
   };
   # Unpacks each image and checks what the chart and the Kubernetes driver rely
   # on: the entrypoint exists and is executable, the user, the sandbox binary
-  # is a static file of its own, and the supervisor takes the patch's flag.
+  # is a static file of its own, the supervisor takes the patch's flag and
+  # trusts the spiffe-ca root.
   images-test = pkgs.runCommand "openshell-images-test"
     { nativeBuildInputs = [ pkgs.jq pkgs.file ]; } ''
       # unpack <image> <dir>: the image's layers, in order, into <dir>/root.
@@ -180,6 +203,13 @@ let
       supervisor=$(executable supervisor /openshell-supervisor)
       "$supervisor" --help | grep -q -- --policy-dns-ipv6-egress \
         || { echo "supervisor: no --policy-dns-ipv6-egress; is the patch applied?"; exit 1; }
+      # Token grants verify the token endpoint against SSL_CERT_FILE, which
+      # must hold the spiffe-ca root.
+      cafile=$(jq -r '.Env[] | select(startswith("SSL_CERT_FILE=")) | ltrimstr("SSL_CERT_FILE=")' supervisor/config.json)
+      [ -f "supervisor/root$cafile" ] \
+        || { echo "supervisor: SSL_CERT_FILE $cafile is not in the image"; exit 1; }
+      grep -qF "$(sed -n 5p ${./spiffe-ca.crt})" "supervisor/root$cafile" \
+        || { echo "supervisor: SSL_CERT_FILE does not hold the spiffe-ca root"; exit 1; }
 
       unpack ${sandbox-image} sandbox
       expect sandbox .Entrypoint '["/openshell-sandbox"]'

@@ -90,6 +90,22 @@ let
           default = 50;
           description = "Chat messages a freshly created sandbox is primed with.";
         };
+        defaultWakeup = mkOption {
+          type = types.nullOr duration;
+          default = null;
+          description = ''
+            Enables wake-ups for the type: the worker runs a turn of its own
+            in each conversation when the agent asks for one, or by default
+            this long after the last wake-up. While the user stays silent the
+            default backs off: 1, 1, 1, 3, then 7 times this, and 7 times
+            from then on. Null: no wake-ups.
+          '';
+        };
+        timezone = mkOption {
+          type = types.strMatching "[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*";
+          default = "UTC";
+          description = "IANA time zone the prompt header gives the time in, e.g. America/Los_Angeles.";
+        };
       };
     };
   };

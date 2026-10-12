@@ -1,0 +1,98 @@
+# The token service (packages/agents, cmd/agent-token): an OAuth2
+# client_credentials endpoint that takes a JWT-SVID as the client assertion
+# and answers with the credential agent-token-configmap.yaml maps the SPIFFE
+# ID and requested audience to. It checks SVIDs against the trust domain's JWT
+# bundle from the SPIRE Workload API and serves HTTPS on 443 with
+# agent-token-certificate.yaml. Every request authenticates; nothing depends
+# on where it comes from.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-token
+  namespace: agents
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agent-token
+  template:
+    metadata:
+      labels:
+        app: agent-token
+        app.kubernetes.io/managed-by: ngarvey-homelab
+    spec:
+      serviceAccountName: agent-token
+      securityContext:
+        runAsNonRoot: true
+        # The image runs as 1000; this lets it read the keys (0440).
+        fsGroup: 1000
+        # Lets the non-root process bind 443.
+        sysctls:
+          - name: net.ipv4.ip_unprivileged_port_start
+            value: "443"
+      containers:
+        - name: agent-token
+          image: oci.garvey.sh/agent-token:nbskvkkz9ln0zm39m6g7m1lczmpnh994
+          args:
+            - --config=/etc/agent-token/config/config.yaml
+            - --tls-cert=/etc/agent-token/tls/tls.crt
+            - --tls-key=/etc/agent-token/tls/tls.key
+            - --workload-api=unix:///spiffe-workload-api/spire-agent.sock
+          ports:
+            - containerPort: 443
+              name: https
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: spiffe-workload-api
+              mountPath: /spiffe-workload-api
+              readOnly: true
+            - name: config
+              mountPath: /etc/agent-token/config
+              readOnly: true
+            - name: tls
+              mountPath: /etc/agent-token/tls
+              readOnly: true
+            # Mounted whole (no subPath), so rotated keys reach the files,
+            # which are read for every grant.
+            - name: credentials
+              mountPath: /etc/agent-token/credentials
+              readOnly: true
+          # Ready once it holds the trust domain's JWT bundle.
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 443
+              scheme: HTTPS
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 443
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+      volumes:
+        - name: spiffe-workload-api
+          csi:
+            driver: csi.spiffe.io
+            readOnly: true
+        - name: config
+          configMap:
+            name: agent-token
+        - name: tls
+          secret:
+            secretName: agent-token-tls
+            defaultMode: 0440
+        - name: credentials
+          secret:
+            secretName: agent-token-credentials
+            defaultMode: 0440

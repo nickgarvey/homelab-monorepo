@@ -38,6 +38,8 @@ let
     bad-env-name = with' { types.pi.env."1X" = "y"; };
     bad-duration = with' { types.pi.session.idleTimeout = "6 hours"; };
     zero-prime = with' { types.pi.session.primeMessages = 0; };
+    bad-wakeup = with' { types.pi.session.defaultWakeup = "1 day"; };
+    bad-timezone = with' { types.pi.session.timezone = "../etc/passwd"; };
     bad-memory = with' { types.pi.resources.memory = "lots"; };
     unknown-option = with' { types.pi.command = [ "pi" ]; };
   };

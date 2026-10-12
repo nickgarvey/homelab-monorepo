@@ -124,6 +124,9 @@ func TestFirstMessageCreatesSandbox(t *testing.T) {
 	if got.Labels[ManagedByLabel] != ManagedBy || got.Labels[ConversationLabel] != store.ConversationHash("pi", "c1") {
 		t.Errorf("labels: %v", got.Labels)
 	}
+	if got.PodLabels[TypePodLabel] != "pi" {
+		t.Errorf("pod labels: %v", got.PodLabels)
+	}
 	if row := w.row(t); row.State != store.Running || row.TypeVersion != "v1" {
 		t.Errorf("row: %+v", row)
 	}

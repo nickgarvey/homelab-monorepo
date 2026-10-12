@@ -22,6 +22,9 @@ type EnsureResult struct {
 	// IdleTimeoutSeconds is the type's session.idleTimeoutSeconds, after
 	// which the workflow stops the sandbox.
 	IdleTimeoutSeconds int
+	// Wakeups: the type has wake-ups, so each turn is followed by
+	// CollectOutbox.
+	Wakeups bool
 }
 
 // EnsureSandbox makes the conversation's sandbox ready for a turn, deciding
@@ -38,12 +41,13 @@ func (a *Activities) EnsureSandbox(ctx context.Context, in EnsureInput) (EnsureR
 	if err := in.validate(); err != nil {
 		return EnsureResult{}, err
 	}
-	t, err := a.agentType(in.Type)
+	t, err := a.AgentType(in.Type)
 	if err != nil {
 		return EnsureResult{}, err
 	}
 	res, err := a.ensure(ctx, in, t)
 	res.IdleTimeoutSeconds = t.Session.IdleTimeoutSeconds
+	res.Wakeups = t.Session.DefaultWakeupSeconds > 0
 	return res, err
 }
 
@@ -126,7 +130,7 @@ func (a *Activities) resume(ctx context.Context, row *store.Session) (bool, erro
 // create creates the row's sandbox (it may already exist, from an earlier
 // attempt) and waits until it takes commands.
 func (a *Activities) create(ctx context.Context, c Conversation, row *store.Session) (EnsureResult, error) {
-	t, err := a.agentType(c.Type)
+	t, err := a.AgentType(c.Type)
 	if err != nil {
 		return EnsureResult{}, err
 	}
@@ -142,6 +146,7 @@ func (a *Activities) create(ctx context.Context, c Conversation, row *store.Sess
 			ManagedByLabel:    ManagedBy,
 			ConversationLabel: store.ConversationHash(c.Type, c.Conversation),
 		},
+		PodLabels: map[string]string{TypePodLabel: c.Type},
 	})
 	if err != nil {
 		return EnsureResult{}, fmt.Errorf("creating %s: %w", row.Sandbox, err)

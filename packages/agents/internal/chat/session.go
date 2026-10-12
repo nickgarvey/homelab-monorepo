@@ -41,6 +41,9 @@ type Carry struct {
 
 type Message struct {
 	Text string
+	// Wakeup: the message is a wake-up's prompt, sent by the Wakeup
+	// workflow, not the user's.
+	Wakeup bool
 }
 
 type Reply struct {
@@ -51,10 +54,12 @@ type Reply struct {
 // WorkflowID(type, conversation). Callers send each message as a
 // MessageUpdate, with Update-with-Start and conflict policy UseExisting, and
 // get the reply back. Turns run one at a time, in the order the messages
-// were accepted; the turn ID is the Update ID. After the type's idle timeout
-// with nothing in flight, or when the coordinator evicts it, it stops the
-// sandbox and completes; a message accepted while it stops is still served,
-// and the session carries on.
+// were accepted; the turn ID is the Update ID. For a type with wake-ups, each
+// turn ends with CollectOutbox, and the Wakeup workflow sends its wake-ups
+// here as messages too. After the type's idle timeout with nothing in
+// flight, or when the coordinator evicts it, it stops the sandbox and
+// completes; a message accepted while it stops is still served, and the
+// session carries on.
 func ChatSession(ctx workflow.Context, in ChatInput) (err error) {
 	s := &chat{in: in}
 	if c := in.Carry; c != nil {
@@ -128,6 +133,8 @@ type chat struct {
 	invalid bool
 	// wake is set when anything the main loop waits on changes.
 	wake bool
+	// wakeups: the type has wake-ups, as of the last EnsureSandbox.
+	wakeups bool
 }
 
 func (s *chat) conversation() session.Conversation {
@@ -178,7 +185,7 @@ func (s *chat) message(ctx workflow.Context, m Message) (Reply, error) {
 		return Reply{}, err
 	}
 	defer done()
-	reply, err := s.turn(ctx, turnID, m.Text)
+	reply, err := s.turn(ctx, turnID, m)
 	s.LastActivity = workflow.Now(ctx)
 	if err != nil {
 		var app *temporal.ApplicationError
@@ -187,6 +194,9 @@ func (s *chat) message(ctx workflow.Context, m Message) (Reply, error) {
 		}
 		return Reply{}, err
 	}
+	if s.wakeups {
+		s.collectOutbox(ctx, !m.Wakeup)
+	}
 	s.touch(ctx)
 	s.archive(ctx, s.Sandbox)
 	return Reply{Text: reply}, nil
@@ -194,19 +204,19 @@ func (s *chat) message(ctx workflow.Context, m Message) (Reply, error) {
 
 // turn ensures the sandbox and runs the turn in it, once more in a fresh
 // sandbox if the first is lost under it.
-func (s *chat) turn(ctx workflow.Context, turnID, text string) (string, error) {
+func (s *chat) turn(ctx workflow.Context, turnID string, m Message) (string, error) {
 	s.acquire(ctx)
 	if err := s.ensure(ctx); err != nil {
 		return "", err
 	}
-	reply, err := s.runTurn(ctx, turnID, text)
+	reply, err := s.runTurn(ctx, turnID, m)
 	var app *temporal.ApplicationError
 	if errors.As(err, &app) && app.Type() == ErrTypeSandboxLost {
 		workflow.GetLogger(ctx).Warn("Sandbox lost during a turn, retrying in a fresh one", "sandbox", s.Sandbox, "error", err)
 		if err := s.ensure(ctx); err != nil {
 			return "", err
 		}
-		reply, err = s.runTurn(ctx, turnID, text)
+		reply, err = s.runTurn(ctx, turnID, m)
 	}
 	if err != nil {
 		return "", err
@@ -224,24 +234,40 @@ func (s *chat) ensure(ctx workflow.Context) error {
 	if err != nil {
 		return err
 	}
-	s.Sandbox, s.IdleTimeoutSeconds = res.Sandbox, res.IdleTimeoutSeconds
+	s.Sandbox, s.IdleTimeoutSeconds, s.wakeups = res.Sandbox, res.IdleTimeoutSeconds, res.Wakeups
 	if res.Created {
 		s.PrimeSandbox = res.Sandbox
 	}
 	return nil
 }
 
-func (s *chat) runTurn(ctx workflow.Context, turnID, text string) (string, error) {
+func (s *chat) runTurn(ctx workflow.Context, turnID string, m Message) (string, error) {
 	var res session.TurnResult
 	err := workflow.ExecuteActivity(workflow.WithActivityOptions(ctx, turnOptions),
 		(*Activities).RunTurn, session.TurnInput{
 			Conversation: s.conversation(),
 			Sandbox:      s.Sandbox,
 			Turn:         turnID,
-			Message:      text,
+			Message:      m.Text,
+			Wakeup:       m.Wakeup,
 			Prime:        s.PrimeSandbox == s.Sandbox,
 		}).Get(ctx, &res)
 	return res.Reply, err
+}
+
+// collectOutbox hands the turn's wake-up request, if any, to the
+// conversation's Wakeup workflow, and tells it whether the user wrote. It
+// runs before the reply goes back, so the next turn's header shows the
+// result. A failure is logged; the pending wake-up stands.
+func (s *chat) collectOutbox(ctx workflow.Context, user bool) {
+	err := workflow.ExecuteActivity(workflow.WithActivityOptions(ctx, outboxOptions),
+		(*Activities).CollectOutbox, OutboxInput{
+			SandboxRef: session.SandboxRef{Conversation: s.conversation(), Sandbox: s.Sandbox},
+			User:       user,
+		}).Get(ctx, nil)
+	if err != nil {
+		workflow.GetLogger(ctx).Warn("Collecting the wake-up request failed", "sandbox", s.Sandbox, "error", err)
+	}
 }
 
 // archive copies pi's session file to RGW after the reply has gone back.
@@ -339,6 +365,10 @@ var (
 			MaximumAttempts:        3,
 			NonRetryableErrorTypes: []string{ErrTypeInvalid, ErrTypeSandboxLost},
 		},
+	}
+	outboxOptions = workflow.ActivityOptions{
+		StartToCloseTimeout: time.Minute,
+		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 5, NonRetryableErrorTypes: []string{ErrTypeInvalid}},
 	}
 	archiveOptions = workflow.ActivityOptions{
 		StartToCloseTimeout: 5 * time.Minute,

@@ -1,0 +1,21 @@
+# The token endpoint, https://agent-token.agents.svc.cluster.local/token, for
+# sandbox supervisors (token_grant.token_endpoint in provider profiles) and
+# in-cluster workloads. ClusterIP only: callers outside the cluster get named
+# static keys instead (nix-psvkl).
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-token
+  namespace: agents
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  ipFamilies: [IPv6]
+  ipFamilyPolicy: SingleStack
+  selector:
+    app: agent-token
+  ports:
+    - name: https
+      port: 443
+      targetPort: 443
+      protocol: TCP

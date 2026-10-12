@@ -63,6 +63,11 @@ type Session struct {
 	IdleTimeoutSeconds int `json:"idleTimeoutSeconds"`
 	RetentionSeconds   int `json:"retentionSeconds"`
 	PrimeMessages      int `json:"primeMessages"`
+	// DefaultWakeupSeconds is the type's session.defaultWakeup; 0 (null in
+	// the JSON) when the type has no wake-ups.
+	DefaultWakeupSeconds int `json:"defaultWakeupSeconds"`
+	// Timezone is the IANA zone the prompt header gives the time in.
+	Timezone string `json:"timezone"`
 }
 
 // Parse decodes a desired state and checks the references the Nix evaluation

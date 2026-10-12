@@ -320,5 +320,39 @@ asked whether it is still needed. The patch is those six commits rebased onto
 v0.1.3: `architecture/sandbox.md`, deleted upstream, is dropped, and the docker
 and podman drivers keep both v0.1.3's `proxy_ca_bundle` and the PR's
 `ipv6_egress`, and the PR's two new `run_sandbox` arguments are carried
-through v0.1.3's `SandboxRunConfig`. Posting the rebase to the PR would answer the maintainers'
-question.
+through v0.1.3's `SandboxRunConfig`. In the Kubernetes driver's tests, the
+PR's `supervisor_pod` test passes v0.1.3's `tracing_environment` argument and
+v0.1.3's tracing test passes the PR's `ipv6_egress_args`. Posting the rebase to the PR would
+answer the maintainers' question.
+
+---
+
+## OpenShell: the supervisor pod carries none of the sandbox template's labels
+
+**Affected:** `NVIDIA/OpenShell` v0.1.3, the Kubernetes driver with the sandbox
+runtime: `crates/openshell-driver-kubernetes/src/sandbox_runtime.rs`
+(`supervisor_pod`, whose labels are the fixed `control_labels`) and `driver.rs`
+(its create and restart paths).
+**Local workaround:** `patches/openshell-supervisor-template-labels.patch`,
+applied by `packages/openshell/outputs.nix` after the #3702 patch, to the same
+builds. `agents/outputs.nix` fails the build after 2026-12-01 while the patch is
+carried (nix-q7Q31).
+
+Each sandbox is two pods: the workload pod, where the agent runs, and the
+supervisor pod (`os-supervisor-<sandbox-id>`), whose proxy makes every upstream
+connection and which alone gets the SPIFFE Workload API socket for provider
+token grants. `SandboxTemplate.labels` reach only the workload pod. The
+supervisor pod has only `openshell.ai/*` labels, none of which the caller
+controls, so a SPIRE ClusterSPIFFEID cannot put anything the caller chose (here
+the agent type, `agents.garvey.sh/type`) into the supervisor's SPIFFE ID, and
+no other label selector (NetworkPolicy, monitoring) can tell supervisors apart.
+
+The patch gives `supervisor_pod` the labels of the Sandbox resource's pod
+template (read from the CR, so the create and restart paths agree) and puts
+them on the supervisor pod under the driver's own: template labels whose
+prefix is `openshell.ai` or a subdomain of it are dropped, and the control
+labels are applied last, so `boundary-role`, `boundary-pair`, `component` and
+`sandbox-id`, which the driver's identity checks and NetworkPolicies select
+on, cannot be replaced. Unit tests cover both. Upstream, the same change fits
+as is; a caveat for the PR is that a Service or policy selecting on a template
+label now matches supervisor pods too.

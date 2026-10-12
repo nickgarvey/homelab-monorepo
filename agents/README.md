@@ -98,6 +98,87 @@ it's the command in `k8s/manifests/agents/README.md`.
   and sandboxes labelled `managed-by=agents-worker` that no conversation owns.
   The chat log and the RGW copies are kept.
 
+### Wake-ups
+
+A type with `session.defaultWakeup` gets wake-ups: turns the worker starts
+itself, so the agent can speak first. Each conversation of such a type has a
+`Wakeup` workflow, `wakeup/<type>/<conversation>`, holding its one pending
+wake-up. When that time comes, the workflow sends the conversation's
+`ChatSession` a wake-up message, which runs as a turn like any other, after
+any turn already queued.
+
+- **Asking for one.** During any turn the agent may write
+  `/sandbox/outbox/wakeup.json`, `{"at": "<RFC 3339 time>", "note": "<text>"}`.
+  After the turn the worker reads and removes it and hands it to the `Wakeup`,
+  where it replaces the pending wake-up. `at` must be 10 minutes to 60 days
+  ahead, and `note`, for the agent's future self, at most 500 characters. A
+  request that breaks these is dropped, and the next prompt says why. A turn
+  that writes no file leaves the pending wake-up alone.
+- **The default.** The first turn of a conversation starts its `Wakeup` with
+  a wake-up `session.defaultWakeup` ahead, unless the turn asked for one.
+  After a wake-up that asked for nothing, the next is a default again, which
+  backs off while the user is silent: the 1st, 2nd and 3rd wake-ups since the
+  user last wrote are followed by one in 1, the 4th in 3 and every later one
+  in 7 times `session.defaultWakeup` (so 1d, 1d, 1d, 3d, 7d, 7d, … for
+  `"24h"`). Any user message starts the count again. A request from the
+  agent always wins over the default.
+- **Failures.** A wake-up turn that fails is tried again an hour later, with
+  the note `retry: <note>`.
+- **The prompt header.** Every prompt of the type starts with the time now in
+  `session.timezone` and the pending wake-up (`none yet` before the first
+  turn; during a wake-up turn, how long the default after it would be), so a
+  fresh sandbox knows the schedule it inherited:
+
+  ```
+  [now] 2026-10-11T08:12-07:00 (America/Los_Angeles)
+  [next wake-up] 2026-10-11T21:00-07:00. Note: end-of-day check-in
+  ```
+
+  The header is not stored in the chat log.
+- **Replies.** The wake-up's prompt is stored in `messages` with role
+  `wakeup`, and the reply as written. A reply of exactly `<silent>` means the
+  agent chose to say nothing. Nothing delivers wake-up replies to the user
+  yet: they are in the chat log and in the worker's log (`Wake-up turn
+  replied`, or `Wake-up turn ended silent`).
+- **Ending.** A `Wakeup` ends at its next wake-up once the type is no longer
+  published or has no `session.defaultWakeup`.
+
+The pending wake-up, from the break-glass path:
+
+```sh
+temporal workflow query --address 127.0.0.1:7236 --namespace agents \
+  --workflow-id wakeup/<type>/<conversation> --type pending
+```
+
+`pi-wakeup` is pi with a 1h `session.defaultWakeup`, for trying wake-ups out.
+pi's instructions don't mention the outbox, so tell it in the message what to
+write.
+
+## agents-chat (temporary)
+
+A terminal client for one conversation, for talking to agents until the Matrix
+transport works; then it is removed. `agents/outputs.nix` stops evaluating it,
+and fails `nix flake check`, after 2027-01-31; past that, delete
+`packages/agents/cmd/agents-chat`, the `agents-chat` app and its check in
+`agents/outputs.nix` and this section, or push the deadline out deliberately.
+
+It uses the Temporal break-glass path ("Ports" in
+`k8s/manifests/temporal/README.md`), so it needs your cluster access and no
+identity of its own:
+
+```sh
+kubectl -n temporal port-forward deploy/temporal 7236:7236 &
+nix run .#agents-chat -- pi <conversation>                 # a line per message; Ctrl-D ends
+nix run .#agents-chat -- pi <conversation> -m "hello"      # one message, reply on stdout
+```
+
+Each message is the `message` Update, with Update-with-Start, as in "Sessions";
+it waits for the reply, which for a new sandbox includes creating it. It
+starts by printing the conversation's pending wake-up, from the `Wakeup`'s
+`pending` query, on stderr. Wake-up replies are not shown: they are in the
+chat log (`messages`, role `wakeup` for the prompt). `--address` and
+`--namespace` default to `127.0.0.1:7236` and `agents`.
+
 ## pi
 
 The pi coding agent (`pkgs.pi-coding-agent`), on `qwen3.8-flash-next` through

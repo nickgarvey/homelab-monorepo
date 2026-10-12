@@ -27,6 +27,11 @@ Identities are granted in one of two places (see `manifests/cert-manager/README.
   `vendor/spire/spire.yaml`. The agent attests the pod's real ServiceAccount
   through the kubelet. Pods that share a ServiceAccount (often `default`) share
   the identity, so a workload that something grants access to needs its own.
+  The default is a fallback: a pod that another ClusterSPIFFEID matches gets
+  only that one's identity. The one other is `openshell-sandboxes`
+  (`vendor/spire/values.yaml`): each OpenShell sandbox's supervisor pod gets
+  `spiffe://home.garvey.sh/agent/<type>/<sandbox-id>`, which it uses for
+  provider token grants (`manifests/openshell/README.md`).
 - **cert-manager + approver-policy**: identities whose consumer reads a
   Kubernetes Secret (CloudNativePG's server and replication certificates,
   Temporal's postgres client certificate). SPIRE does not write Secrets.

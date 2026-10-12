@@ -1,0 +1,207 @@
+Kubernetes driver: copy the sandbox template's labels onto the supervisor Pod.
+With the sandbox runtime, v0.1.3 puts template labels only on the workload
+Pod. The supervisor Pod, which holds the provider SPIFFE identity, carries a
+fixed set of openshell.ai labels, so a SPIRE ClusterSPIFFEID cannot build an
+ID from labels the caller chose. Template labels in the openshell.ai namespace
+are dropped, and none can replace a label the driver sets (boundary-role,
+component, ...). Tracked in patches/UPSTREAMABLE_FIXES.md; applied by
+packages/openshell/outputs.nix after openshell-ipv6-policy-dns.patch.
+
+diff --git a/crates/openshell-driver-kubernetes/src/driver.rs b/crates/openshell-driver-kubernetes/src/driver.rs
+index 551d408..1609c2a 100644
+--- a/crates/openshell-driver-kubernetes/src/driver.rs
++++ b/crates/openshell-driver-kubernetes/src/driver.rs
+@@ -2457,6 +2457,7 @@ impl KubernetesComputeDriver {
+                     ),
+                     dependent_owner.clone(),
+                     &self.supervisor_tracing_environment(),
++                    &sandbox_pod_template_labels(sandbox_cr),
+                 )
+                 .map_err(KubernetesDriverError::Message)?,
+             )
+@@ -3265,6 +3266,7 @@ impl KubernetesComputeDriver {
+                         false,
+                     ),
+                     &self.supervisor_tracing_environment(),
++                    &sandbox_pod_template_labels(&object),
+                 )
+                 .map_err(KubernetesDriverError::Message)?,
+             )
+@@ -6772,6 +6774,19 @@ fn child_environment_from_sandbox_object(
+         .collect()
+ }
+ 
++/// The labels of the Sandbox resource's pod template: the sandbox template's
++/// labels and the workload boundary labels.
++fn sandbox_pod_template_labels(object: &DynamicObject) -> BTreeMap<String, String> {
++    object
++        .data
++        .pointer("/spec/podTemplate/metadata/labels")
++        .and_then(serde_json::Value::as_object)
++        .into_iter()
++        .flatten()
++        .filter_map(|(key, value)| Some((key.clone(), value.as_str()?.to_string())))
++        .collect()
++}
++
+ fn required_sandbox_annotation(
+     object: &DynamicObject,
+     name: &str,
+@@ -9583,6 +9598,38 @@ mod tests {
+         );
+     }
+ 
++    #[test]
++    fn sandbox_pod_template_labels_reads_template_labels_from_the_sandbox_resource() {
++        let spec = SandboxSpec {
++            template: Some(SandboxTemplate {
++                labels: std::collections::HashMap::from([(
++                    "example.com/type".to_string(),
++                    "chat".to_string(),
++                )]),
++                ..SandboxTemplate::default()
++            }),
++            ..SandboxSpec::default()
++        };
++        let params = SandboxPodParams {
++            sandbox_id: "sandbox-123",
++            ..SandboxPodParams::default()
++        };
++        let resource = ApiResource::from_gvk(&GroupVersionKind::gvk(
++            SANDBOX_GROUP,
++            SANDBOX_VERSION_V1BETA1,
++            SANDBOX_KIND,
++        ));
++        let mut sandbox = DynamicObject::new("sandbox", &resource);
++        sandbox.data = sandbox_to_k8s_spec_for_test(Some(&spec), &params);
++
++        let labels = sandbox_pod_template_labels(&sandbox);
++        assert_eq!(labels["example.com/type"], "chat");
++        assert_eq!(labels[BOUNDARY_ROLE_LABEL], "workload");
++
++        let empty = DynamicObject::new("sandbox", &resource);
++        assert!(sandbox_pod_template_labels(&empty).is_empty());
++    }
++
+     #[test]
+     fn sandbox_runtime_renders_credential_free_boundary_workload() {
+         let params = SandboxPodParams {
+diff --git a/crates/openshell-driver-kubernetes/src/sandbox_runtime.rs b/crates/openshell-driver-kubernetes/src/sandbox_runtime.rs
+index 0b458b1..b534fe7 100644
+--- a/crates/openshell-driver-kubernetes/src/sandbox_runtime.rs
++++ b/crates/openshell-driver-kubernetes/src/sandbox_runtime.rs
+@@ -235,8 +235,9 @@ pub fn supervisor_pod(
+     provider_spiffe_socket_path: Option<&str>,
+     owner: OwnerReference,
+     tracing_environment: &[(&str, String)],
++    template_labels: &BTreeMap<String, String>,
+ ) -> Result<Pod, String> {
+-    let labels = control_labels(sandbox_id, gateway_id);
++    let labels = supervisor_labels(sandbox_id, gateway_id, template_labels);
+     let mut environment = vec![
+         env_var(
+             "OPENSHELL_ADMITTED_ISOLATION_BACKEND",
+@@ -667,6 +668,32 @@ fn control_labels(sandbox_id: &str, gateway_id: &str) -> BTreeMap<String, String
+     labels
+ }
+ 
++/// The supervisor Pod's labels: the sandbox template's labels, which the
++/// workload Pod also carries, so that selectors keyed on them (workload
++/// identity, policy, monitoring) can match the supervisor too; then the
++/// driver's own control labels. Template labels in the `openshell.ai`
++/// namespace are dropped, and none can replace a control label.
++fn supervisor_labels(
++    sandbox_id: &str,
++    gateway_id: &str,
++    template_labels: &BTreeMap<String, String>,
++) -> BTreeMap<String, String> {
++    let mut labels: BTreeMap<String, String> = template_labels
++        .iter()
++        .filter(|(key, _)| !is_openshell_label(key))
++        .map(|(key, value)| (key.clone(), value.clone()))
++        .collect();
++    labels.extend(control_labels(sandbox_id, gateway_id));
++    labels
++}
++
++/// Whether a label key's prefix is `openshell.ai` or one of its subdomains.
++fn is_openshell_label(key: &str) -> bool {
++    key.split_once('/').is_some_and(|(prefix, _)| {
++        prefix == "openshell.ai" || prefix.ends_with(".openshell.ai")
++    })
++}
++
+ /// The gateway may redirect the supervisor to a specific replica by pod
+ /// address, which the server certificate does not name. Verifying every dial
+ /// against the configured endpoint's host keeps those redirects valid.
+@@ -839,6 +866,7 @@ mod tests {
+             None,
+             owner(),
+             &[],
++            &BTreeMap::new(),
+         )
+         .expect("render supervisor Pod")
+     }
+@@ -905,6 +933,7 @@ mod tests {
+                 ),
+                 ("TRACEPARENT", TRACEPARENT.to_string()),
+             ],
++            &BTreeMap::new(),
+         )
+         .expect("render supervisor Pod");
+         let environment = pod.spec.expect("Pod spec").containers[0]
+@@ -996,6 +1025,30 @@ mod tests {
+         assert_eq!(owner().block_owner_deletion, Some(false));
+     }
+ 
++    #[test]
++    fn supervisor_labels_add_template_labels_without_replacing_control_labels() {
++        let template = BTreeMap::from([
++            ("example.com/type".to_string(), "chat".to_string()),
++            ("team".to_string(), "a".to_string()),
++            (BOUNDARY_ROLE_LABEL.to_string(), "workload".to_string()),
++            (BOUNDARY_PAIR_LABEL.to_string(), "other".to_string()),
++            ("openshell.ai/component".to_string(), "other".to_string()),
++            ("openshell.ai/extra".to_string(), "x".to_string()),
++            ("sub.openshell.ai/extra".to_string(), "x".to_string()),
++        ]);
++        let labels = supervisor_labels("pair", "gateway", &template);
++        let mut expected = control_labels("pair", "gateway");
++        expected.insert("example.com/type".to_string(), "chat".to_string());
++        expected.insert("team".to_string(), "a".to_string());
++        assert_eq!(labels, expected);
++        assert_eq!(labels[BOUNDARY_ROLE_LABEL], "supervisor");
++        assert_eq!(labels["openshell.ai/component"], "supervisor");
++        assert_eq!(
++            supervisor_labels("pair", "gateway", &BTreeMap::new()),
++            control_labels("pair", "gateway")
++        );
++    }
++
+     #[test]
+     fn supervisor_pod_is_gated_non_restarting_and_unprivileged() {
+         let names = SandboxRuntimeNames::new("pair");
+@@ -1026,6 +1079,7 @@ mod tests {
+             None,
+             owner(),
+             &[],
++            &BTreeMap::new(),
+         )
+         .expect("render supervisor Pod");
+         let pod_spec = pod.spec.as_ref().expect("Pod spec");
+@@ -1285,6 +1339,7 @@ mod tests {
+             None,
+             owner(),
+             &[],
++            &BTreeMap::new(),
+         )
+         .expect("render supervisor Pod")
+     }
+@@ -1323,6 +1378,7 @@ mod tests {
+             None,
+             owner(),
+             &[],
++            &BTreeMap::new(),
+         )
+         .expect("render supervisor Pod");
+         let command = pod.spec.as_ref().expect("Pod spec").containers[0]

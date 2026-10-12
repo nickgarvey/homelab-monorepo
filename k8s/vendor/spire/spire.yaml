@@ -1315,3 +1315,31 @@ spec:
   dnsNameTemplates:
     - oidc-discovery.{{ .TrustDomain }}
   autoPopulateDNSNames: true
+
+---
+# Source: spire/charts/spire-server/templates/controller-manager-cluster-ids.yaml
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: spire-spire-openshell-sandboxes
+  labels:
+    spire.spiffe.io/class-name: spire-spire
+spec:
+  className: "spire-spire"
+  hint: openshell-sandboxes
+  spiffeIDTemplate: "spiffe://{{ .TrustDomain }}/agent/{{ or (index .PodMeta.Labels \"agents.garvey.sh/type\") \"untyped\" }}/{{ index .PodMeta.Labels \"openshell.ai/sandbox-id\" }}"
+  podSelector:
+    matchLabels:
+      openshell.ai/boundary-role: supervisor
+      openshell.ai/component: supervisor
+      openshell.ai/managed-by: openshell
+  namespaceSelector:
+    matchExpressions:
+    - key: kubernetes.io/metadata.name
+      operator: NotIn
+      values:
+      - spire
+      - spire-server
+      - spire-system
+    matchLabels:
+      kubernetes.io/metadata.name: openshell

@@ -137,6 +137,7 @@ rules:
       - spiffe-celler
       - spiffe-agents-worker
       - spiffe-agents-postgres
+      - spiffe-agent-token
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -401,6 +402,43 @@ spec:
         - spiffe://home.garvey.sh/ns/agents/sa/agents-worker
     usages:
       - client auth
+      - digital signature
+      - key encipherment
+    isCA: false
+  constraints:
+    privateKey:
+      algorithm: ECDSA
+      minSize: 256
+      maxSize: 521
+  selector:
+    issuerRef:
+      group: cert-manager.io
+      kind: ClusterIssuer
+      name: spiffe-ca
+    namespace:
+      matchNames:
+        - agents
+---
+apiVersion: policy.cert-manager.io/v1alpha1
+kind: CertificateRequestPolicy
+metadata:
+  name: spiffe-agent-token
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  # The token service's server certificate
+  # (manifests/agents/agent-token-certificate.yaml), for its ClusterIP Service.
+  # Sandbox supervisors trust any spiffe-ca server certificate, so these names
+  # are what keeps another workload from posing as the token service.
+  allowed:
+    dnsNames:
+      values:
+        - agent-token
+        - agent-token.agents
+        - agent-token.agents.svc
+        - agent-token.agents.svc.cluster.local
+    usages:
+      - server auth
       - digital signature
       - key encipherment
     isCA: false

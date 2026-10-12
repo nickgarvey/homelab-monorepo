@@ -59,24 +59,41 @@ server:
     adminRole: admins
     userRole: openshell
 
+# Provider token grants with SPIFFE: the driver mounts the SPIRE Workload API
+# socket (csi.spiffe.io) into each sandbox's supervisor pod, never into the
+# workload pod where the agent runs. For a provider whose profile has a
+# token_grant, the supervisor fetches a JWT-SVID, trades it at the profile's
+# token endpoint and injects the token it gets into the proxied request. The
+# supervisor's identity, spiffe://home.garvey.sh/agent/<type>/<sandbox-id>,
+# is the openshell-sandboxes ClusterSPIFFEID in vendor/spire/values.yaml. The
+# chart also mounts the socket into the gateway pod (identity
+# ns/openshell/sa/openshell), which only token_exchange grants use.
+gatewayConfig:
+  openshell.drivers.kubernetes:
+    provider_spiffe_workload_api_socket_path: /spiffe-workload-api/spire-agent.sock
+
 # The gateway, supervisor and sandbox runtime are our own builds of the chart's
-# version with NVIDIA/OpenShell#3702 (IPv6 policy DNS egress) applied:
-# packages/openshell, pushed to oci.garvey.sh/openshell/<name>:<tag> and
-# pinned by digest. Upstream's policy DNS answers every AAAA query with NODATA,
-# so in this IPv6-only cluster no sandbox could resolve any name. Drop the
-# patch (and the deadline check in agents/outputs.nix) once a release includes
-# #3702, and go back to the chart's images (nix-lNoiG). A rebuild changes the
-# digests: push it and update all three here, and the gateway's in
+# version with two patches: packages/openshell, pushed to
+# oci.garvey.sh/openshell/<name>:<tag> and pinned by digest.
+# NVIDIA/OpenShell#3702 (IPv6 policy DNS egress): upstream's policy DNS
+# answers every AAAA query with NODATA, so in this IPv6-only cluster no sandbox
+# could resolve any name (nix-lNoiG). The template-labels patch copies the
+# sandbox template's labels onto the supervisor pod, for its SPIFFE ID
+# (nix-q7Q31). The supervisor image's CA bundle also holds the spiffe-ca root,
+# for token_grant endpoints such as agent-token (manifests/agents/), so it
+# stays our build even without patches. Drop each patch (and its deadline
+# check in agents/outputs.nix) once a release includes it. A rebuild changes
+# the digests: push it and update all three here, and the gateway's in
 # manifests/openshell/jwt-keys-job.yaml.
 global:
   image:
     registry: oci.garvey.sh
 gateway:
   image:
-    digest: sha256:9127be956c553ce240273b2b0d6d7e18840a267a19f3234cebc1cacf46dd03f4
+    digest: sha256:a46429242f4041d2b6d886e3b255f9d78d15181bafa0ce025859f7d8e414cbaa
 supervisor:
   image:
-    digest: sha256:a74a12ddfc99c73216fdfa8ce6f5d37b72c22631da6d82b503c4462745adf6b0
+    digest: sha256:0faa84144521c65c67b6bd3b32855beef68ca8376d0f67ad38a832a02f92b681
 sandboxRuntime:
   image:
     digest: sha256:561c63acbc7f247c452d83e90d92623403d66a7eed031e23b809ac3d4177b885

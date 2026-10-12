@@ -16,7 +16,12 @@ agents/ build fails after 2026-12-01 while the patch remains). With #3702 the su
 logs "Policy DNS IPv6 egress enabled (requested auto, route state
 ipv6_only)" at start. Still broken upstream: a policy endpoint given as an
 IPv6 literal fails (the supervisor writes the CONNECT host unbracketed), so
-use hostnames.
+use hostnames. The build also carries
+`patches/openshell-supervisor-template-labels.patch`, which puts the sandbox
+template's labels on the supervisor pod too ("Provider token grants"). The
+supervisor image also trusts the spiffe-ca root, for token endpoints with
+spiffe-ca certificates, so the supervisor stays our build after the patches
+are gone.
 
 ## Apply order (from `k8s/`)
 
@@ -116,11 +121,56 @@ including with the client certificate alone or a forged token (checked
 2026-10-07, nix-yIyr3). `Health` and `/.well-known/openid-configuration`
 answer anyone; they give the version and the public signing keys.
 
+## Provider token grants (SPIFFE)
+
+Each sandbox is two pods in namespace `openshell`, both with ServiceAccount
+`openshell-sandbox`: the workload pod, where the agent runs, and
+`os-supervisor-<sandbox-id>`, whose proxy carries all of the sandbox's
+traffic. `provider_spiffe_workload_api_socket_path`
+(`vendor/openshell/values.yaml`) mounts the SPIRE Workload API socket into the
+supervisor pod only (and into the gateway pod). For a provider whose profile
+credential has a `token_grant`, the supervisor fetches a JWT-SVID (audience:
+the profile's `jwt_svid_audience`, or else the token endpoint URL), POSTs it as
+the `client_assertion` of a `client_credentials` grant to `token_endpoint`,
+caches the returned token, and injects it into matching requests. The token
+and the socket never reach the workload pod. The token endpoint must be
+`https://` or `http://` to a `<svc>.<ns>.svc[.cluster.local]` name; we use
+`https://`. It is verified against the supervisor image's `SSL_CERT_FILE`,
+the public CAs plus the spiffe-ca root (`packages/openshell/spiffe-ca.crt`),
+so a spiffe-ca server certificate works. Our token endpoint is agent-token
+("The token service" in `manifests/agents/README.md`). The proxy's own
+upstream TLS does not use that file and trusts only the public roots.
+
+The supervisor's identity is
+`spiffe://home.garvey.sh/agent/<type>/<sandbox-id>`, from the
+`openshell-sandboxes` ClusterSPIFFEID (`vendor/spire/values.yaml`). `<type>` is
+the supervisor pod's `agents.garvey.sh/type` label. The agents worker sets that
+label on the sandbox template. Upstream OpenShell 0.1.3 puts template labels on
+the workload pod only; our build copies them onto the supervisor pod as well
+(`patches/openshell-supervisor-template-labels.patch`, nix-q7Q31), except
+`openshell.ai/*` ones, and never over a label the driver sets. A sandbox
+created without the label (with the CLI, say) is `agent/untyped/<sandbox-id>`.
+Anyone who can create sandboxes picks the type, since template labels are
+caller input.
+
+Apply the SPIRE side first, so no supervisor starts with the socket but
+without its identity:
+
+```sh
+kubectl apply -f vendor/spire/spire.yaml
+kubectl apply -k vendor/openshell
+```
+
+The gateway reads the setting at start; a sandbox already running gets the
+socket when its supervisor pod is next created (a stop and start).
+
 ## Upgrading
 
 Bump `VERSION` in `vendor/openshell/chart.env` and the version and hashes in
 the repo root's `packages/openshell/outputs.nix` to match (rebasing
-`patches/openshell-ipv6-policy-dns.patch` while it is carried), and re-render.
+`patches/openshell-ipv6-policy-dns.patch` and
+`patches/openshell-supervisor-template-labels.patch` while they are carried),
+and re-render.
 Then build and push the three images and pin their digests in
 `vendor/openshell/values.yaml`, and the gateway's in `jwt-keys-job.yaml`
 (from the repo root; `nix flake check` runs the image test):

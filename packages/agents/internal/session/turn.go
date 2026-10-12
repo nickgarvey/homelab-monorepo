@@ -21,6 +21,8 @@ type TurnInput struct {
 	// Prime puts the conversation's recent messages before the new one: the
 	// sandbox was just created and pi's own session is empty.
 	Prime bool
+	// Wakeup: the message is a wake-up's prompt, not the user's.
+	Wakeup bool
 }
 
 type TurnResult struct {
@@ -28,8 +30,10 @@ type TurnResult struct {
 }
 
 // RunTurn records the message, runs one `pi -p --session-id <conversation>`
-// in the sandbox, and records and returns its reply. An exec refused because
-// the sandbox is gone, in phase Error or stopped returns ErrSandboxLost.
+// in the sandbox, and records and returns its reply. For a type with
+// wake-ups the prompt starts with Header, which is not recorded. An exec
+// refused because the sandbox is gone, in phase Error or stopped returns
+// ErrSandboxLost.
 func (a *Activities) RunTurn(ctx context.Context, in TurnInput) (TurnResult, error) {
 	if err := in.validate(); err != nil {
 		return TurnResult{}, err
@@ -38,22 +42,33 @@ func (a *Activities) RunTurn(ctx context.Context, in TurnInput) (TurnResult, err
 	if reply, ok, err := a.Store.TurnMessage(ctx, in.Type, conv, in.Turn, store.RoleAssistant); err != nil || ok {
 		return TurnResult{Reply: reply}, err
 	}
-	if err := a.Store.AddMessage(ctx, in.Type, conv, in.Turn, store.RoleUser, in.Message); err != nil {
+	role := store.RoleUser
+	if in.Wakeup {
+		role = store.RoleWakeup
+	}
+	if err := a.Store.AddMessage(ctx, in.Type, conv, in.Turn, role, in.Message); err != nil {
 		return TurnResult{}, err
 	}
 
-	prompt := in.Message
-	if in.Prime {
-		t, err := a.agentType(in.Type)
-		if err != nil {
+	t, err := a.AgentType(in.Type)
+	if err != nil {
+		return TurnResult{}, err
+	}
+	var header string
+	if t.Session.DefaultWakeupSeconds > 0 {
+		if header, err = a.header(ctx, in.Conversation, t.Session.Timezone); err != nil {
 			return TurnResult{}, err
 		}
+	}
+	prompt := in.Message
+	if in.Prime {
 		history, err := a.Store.Recent(ctx, in.Type, conv, in.Turn, t.Session.PrimeMessages)
 		if err != nil {
 			return TurnResult{}, err
 		}
-		prompt = PrimedPrompt(history, in.Message)
+		prompt = primedPrompt(history, in.Message, MaxPromptBytes-len(header))
 	}
+	prompt = header + prompt
 	if len(prompt) > MaxPromptBytes {
 		return TurnResult{}, fmt.Errorf("message is %d bytes, over %d: %w", len(prompt), MaxPromptBytes, ErrInvalid)
 	}
@@ -76,6 +91,21 @@ func (a *Activities) RunTurn(ctx context.Context, in TurnInput) (TurnResult, err
 		return TurnResult{}, err
 	}
 	return TurnResult{Reply: reply}, nil
+}
+
+// header is the prompt header for the conversation.
+func (a *Activities) header(ctx context.Context, c Conversation, timezone string) (string, error) {
+	loc, err := Location(timezone)
+	if err != nil {
+		return "", err
+	}
+	var st *WakeupStatus
+	if a.WakeupStatus != nil {
+		if st, err = a.WakeupStatus(ctx, c); err != nil {
+			return "", fmt.Errorf("reading the pending wake-up: %w", err)
+		}
+	}
+	return Header(a.now(), loc, st), nil
 }
 
 func (a *Activities) execHeartbeating(ctx context.Context, sandbox string, argv []string) (gateway.ExecResult, error) {
@@ -116,6 +146,10 @@ func PiArgv(conversation, prompt string) []string {
 // oldest first, then the new one. The oldest are dropped until it fits in
 // MaxPromptBytes.
 func PrimedPrompt(history []store.Message, message string) string {
+	return primedPrompt(history, message, MaxPromptBytes)
+}
+
+func primedPrompt(history []store.Message, message string, limit int) string {
 	for {
 		if len(history) == 0 {
 			return message
@@ -127,7 +161,7 @@ func PrimedPrompt(history []store.Message, message string) string {
 		}
 		b.WriteString("The new message:\n\n")
 		b.WriteString(message)
-		if b.Len() <= MaxPromptBytes {
+		if b.Len() <= limit {
 			return b.String()
 		}
 		history = history[1:]

@@ -99,12 +99,13 @@ data:
     gateway_id = "openshell"
     grpc_endpoint = "https://openshell.openshell.svc.cluster.local:8080"
     namespace = "openshell"
+    provider_spiffe_workload_api_socket_path = "/spiffe-workload-api/spire-agent.sock"
     sa_token_ttl_secs = 3600
     sandbox_runtime = { boundary_port = 5500 }
     sandbox_runtime_image = "oci.garvey.sh/openshell/sandbox@sha256:561c63acbc7f247c452d83e90d92623403d66a7eed031e23b809ac3d4177b885"
     sandbox_runtime_image_pull_policy = "if_not_present"
     service_account_name = "openshell-sandbox"
-    supervisor_image = "oci.garvey.sh/openshell/supervisor@sha256:a74a12ddfc99c73216fdfa8ce6f5d37b72c22631da6d82b503c4462745adf6b0"
+    supervisor_image = "oci.garvey.sh/openshell/supervisor@sha256:0faa84144521c65c67b6bd3b32855beef68ca8376d0f67ad38a832a02f92b681"
     supervisor_image_pull_policy = "if_not_present"
     workspace_mode = "shared"
     [openshell.drivers.kubernetes.managed_ssh_ingress]
@@ -444,7 +445,7 @@ spec:
         # gateway only reads /etc/openshell/gateway.toml at startup, so without
         # this annotation a `helm upgrade` that only mutates the ConfigMap would
         # leave pods running with stale config.
-        checksum/gateway-config: 58e17e1f59b664d4ede2c36e7d9a496fa1294f9d8780cc5fb4c81bada316471f
+        checksum/gateway-config: 5f50977059c88bfcd1c80051198f53ff9d7dd996501ce3104875053c6e81d125
       labels:
         helm.sh/chart: helm-chart-0.1.3
         app.kubernetes.io/name: openshell
@@ -465,7 +466,7 @@ spec:
               - ALL
             runAsNonRoot: true
             runAsUser: 1000
-          image: "oci.garvey.sh/openshell/gateway@sha256:9127be956c553ce240273b2b0d6d7e18840a267a19f3234cebc1cacf46dd03f4"
+          image: "oci.garvey.sh/openshell/gateway@sha256:a46429242f4041d2b6d886e3b255f9d78d15181bafa0ce025859f7d8e414cbaa"
           imagePullPolicy: IfNotPresent
           args:
             - --config
@@ -523,6 +524,8 @@ spec:
             # settings consumed by libraries outside gateway code also remain here.
             - name: OPENSHELL_TELEMETRY_ENABLED
               value: "true"
+            - name: OPENSHELL_GATEWAY_SPIFFE_WORKLOAD_API_SOCKET
+              value: "/spiffe-workload-api/spire-agent.sock"
           volumeMounts:
             # ConfigMap directory mounts expose keys through atomic-writer symlinks,
             # while the gateway intentionally rejects symlinked configuration.
@@ -545,6 +548,9 @@ spec:
               readOnly: true
             - name: tls-client-ca
               mountPath: /etc/openshell-tls/client-ca
+              readOnly: true
+            - name: spiffe-workload-api
+              mountPath: "/spiffe-workload-api"
               readOnly: true
           ports:
             - name: grpc
@@ -609,6 +615,10 @@ spec:
             items:
               - key: ca.crt
                 path: ca.crt
+        - name: spiffe-workload-api
+          csi:
+            driver: csi.spiffe.io
+            readOnly: true
 
 ---
 # Source: helm-chart/templates/backend-tls-policy.yaml
