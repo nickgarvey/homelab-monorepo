@@ -1,7 +1,9 @@
-# Ceph run directly on the storage nodes (no Rook): a mon, mgr, OSD and RGW on each of joor/zah/frul.
+# Ceph run directly on the storage nodes (no Rook): a mon, mgr, OSD, RGW and MDS on each of joor/zah/frul.
 #
 # The cluster is bootstrapped by hand (keys, monmap, OSD mkfs; scripts in
 # docs/ceph-bootstrap/); this module only configures and runs the daemons.
+# The MDSs serve the CephFS filesystem `local-drive` (06-cephfs.sh): one
+# active, one standby-replay, one standby.
 # A daemon whose keyring is missing does not start (the NixOS module's
 # ConditionPathExists). A recovery copy of the admin keyring is in
 # secrets/ceph-admin.yaml, which only ngarvey can decrypt.
@@ -28,7 +30,8 @@ let
     frul = { osd = "2"; disk = "/dev/disk/by-id/nvme-WD_Blue_SN5100_4TB_25459R802230"; };
   };
   node = nodes.${hostname} or (throw "ceph.nix: ${hostname} is not a Ceph node");
-  monNames = lib.attrNames nodes;
+  cluster = import ./ceph-cluster.nix;
+  monNames = cluster.mons;
 
   rgwDomain = "rgw.home.garvey.sh";
   rgwCertDir = "/var/lib/acme/${rgwDomain}";
@@ -45,7 +48,7 @@ in
   services.ceph = {
     enable = true;
     global = {
-      fsid = "8d324da3-f3ab-40f8-aaa1-71ed33705f75";
+      inherit (cluster) fsid;
       monInitialMembers = lib.concatStringsSep "," monNames;
       monHost = lib.concatMapStringsSep ","
         (n: "[v2:[${lanV6 n}]:3300]") monNames;
@@ -100,6 +103,7 @@ in
       extraConfig = { };
     };
     rgw = { enable = true; daemons = [ "rgw.${hostname}" ]; package = ceph; };
+    mds = { enable = true; daemons = [ hostname ]; package = ceph; };
     client = {
       enable = true;
       # HTTPS only, on 443 with this node's certificate for the shared name
@@ -184,12 +188,13 @@ in
   systemd.services."ceph-mon-${hostname}".restartTriggers = [ cephConf ];
   systemd.services."ceph-mgr-${hostname}".restartTriggers = [ cephConf ];
   systemd.services."ceph-osd-${node.osd}".restartTriggers = [ cephConf ];
+  systemd.services."ceph-mds-${hostname}".restartTriggers = [ cephConf ];
 
   environment.systemPackages = [ ceph ];
 
   # Mesh interfaces are already trusted; these are for LAN clients and peers.
   # 9283: the mgr prometheus module, scraped by the k3s cluster's Prometheus.
   networking.firewall.allowedTCPPorts = [ 443 3300 9283 ];
-  # OSD and mgr messengers (ms_bind_port_min..max).
+  # OSD, mgr and MDS messengers (ms_bind_port_min..max).
   networking.firewall.allowedTCPPortRanges = [ { from = 6800; to = 7568; } ];
 }

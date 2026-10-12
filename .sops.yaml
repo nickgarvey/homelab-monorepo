@@ -206,6 +206,16 @@ creation_rules:
     - age:
       - *ngarvey
       - *lydia
+  # cephfs/<host>: each CephFS client host's own cephx key (client.<host>,
+  # docs/ceph-bootstrap/06-cephfs.sh client <host>), read by
+  # modules/services/cephfs-mount.nix. One file and rule per host, with that
+  # host's identity as recipient: a host's key can be revoked and replaced
+  # alone. A new client host gets its own rule here.
+  - path_regex: secrets/cephfs/talos\.yaml$
+    key_groups:
+    - age:
+      - *ngarvey
+      - *workstation
   - path_regex: secrets/storj-gateway.yaml
     key_groups:
     - age:

@@ -48,6 +48,9 @@
   # provider and can be pointed at it. DeepSeek stays the default model.
   homelab.pi.ninfer.enable = true;
 
+  # ~/local-drive on CephFS (modules/services/cephfs-mount.nix).
+  homelab.cephfs.enable = true;
+
   homelab.niri.outputs = ''
     output "ASUSTek COMPUTER INC XG27UQDMS W3LMAV000673" {
         mode "3840x2160@240.000"

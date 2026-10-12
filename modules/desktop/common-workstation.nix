@@ -58,6 +58,7 @@ in
     ./orca-skyforge.nix
     ./steam.nix
     ../services/smb-automount.nix
+    ../services/cephfs-mount.nix
     ../home/ngarvey.nix
     ../llms/hf-to-garage.nix
     ../llms/pi.nix
