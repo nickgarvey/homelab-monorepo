@@ -11,10 +11,10 @@ spec:
     - name: watchdog
       rules:
         # Dead man's switch. Always firing; Alertmanager routes it only to the
-        # Cronitor heartbeat homelab-alertmanager-watchdog (see secret.yaml),
-        # which pages when the pings stop. That catches what no in-cluster alert
-        # can report: Prometheus, Alertmanager, the cluster or its internet
-        # access being down.
+        # Cronitor heartbeat homelab-alertmanager-watchdog (see
+        # alertmanager-config.yaml), which pages when the pings stop. That
+        # catches what no in-cluster alert can report: Prometheus,
+        # Alertmanager, the cluster or its internet access being down.
         - alert: Watchdog
           expr: vector(1)
           labels:

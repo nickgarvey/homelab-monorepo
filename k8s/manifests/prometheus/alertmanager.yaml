@@ -10,6 +10,12 @@ spec:
   version: v0.31.1
   externalUrl: http://alertmanager.prometheus.k8s.home.garvey.sh:9093
 
+  # Routing config (alertmanager-config.yaml); the credentials it reads by file
+  # path are mounted at /etc/alertmanager/secrets/alertmanager-credentials/.
+  configSecret: alertmanager-config
+  secrets:
+    - alertmanager-credentials
+
   # Runs on the k3s servers (fus/ro/dah) so alerting keeps working when the
   # storage nodes and Ceph are down.
   nodeSelector:

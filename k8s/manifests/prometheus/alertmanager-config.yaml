@@ -1,0 +1,65 @@
+# Alertmanager's routing config, in plain text: it holds no secrets. The SMTP
+# password and the Cronitor ping URL come from the alertmanager-credentials
+# Secret (secret.yaml), which the Alertmanager CR mounts under
+# /etc/alertmanager/secrets/.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: alertmanager-config
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+type: Opaque
+stringData:
+  alertmanager.yaml: |
+    global:
+      resolve_timeout: 5m
+      smtp_smarthost: 'smtp.gmail.com:587'
+      smtp_from: 'garvey.nick@gmail.com'
+      smtp_auth_username: 'garvey.nick@gmail.com'
+      smtp_auth_password_file: /etc/alertmanager/secrets/alertmanager-credentials/smtp-password
+      smtp_require_tls: true
+
+    route:
+      receiver: 'email'
+      group_by: ['alertname', 'severity']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      routes:
+        # Dead man's switch (rules/watchdog.yaml): Watchdog always fires, so
+        # Cronitor gets a ping every minute and pages when they stop. It goes
+        # nowhere else.
+        - receiver: 'cronitor-heartbeat'
+          matchers:
+            - alertname = Watchdog
+          group_wait: 0s
+          group_interval: 1m
+          repeat_interval: 1m
+          continue: false
+
+        # Thunderbolt mesh alerts (rules/mesh.yaml) re-notify once a day: a cable
+        # left out should not email six times a day.
+        - receiver: 'email'
+          matchers:
+            - alertname =~ "Mesh.*"
+          repeat_interval: 24h
+          continue: false
+
+    receivers:
+      - name: 'cronitor-heartbeat'
+        webhook_configs:
+          - url_file: /etc/alertmanager/secrets/alertmanager-credentials/cronitor-url
+            send_resolved: false
+
+      - name: 'email'
+        email_configs:
+          - to: 'garvey.nick@gmail.com'
+            send_resolved: true
+
+    inhibit_rules:
+      - source_matchers:
+          - severity = critical
+        target_matchers:
+          - severity = warning
+        equal: ['alertname']

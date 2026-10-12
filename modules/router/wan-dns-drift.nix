@@ -42,7 +42,7 @@ let
       # points somewhere that no longer answers, the recursive lookup SERVFAILs
       # rather than returning a wrong address, and renewals are just as broken.
       # Retried: a single timed-out lookup is a blip, not drift, and this feeds a
-      # critical alert that places a phone call.
+      # critical alert.
       pub=""
       for _ in 1 2 3; do
         pub=$(${pkgs.dnsutils}/bin/dig +short +time=3 +tries=2 @1.1.1.1 "$rec" A 2>/dev/null \
@@ -87,7 +87,7 @@ in
     # per record whose value flips 0/1. The addresses must NOT be labels here --
     # a failed lookup would then mint a *new* series (published_ip="none") that
     # sits at 0 alongside the healthy one at 1, so a momentary blip would look
-    # like permanent drift and fire a critical alert that places a phone call.
+    # like permanent drift and fire a critical alert.
     # The addresses are carried on a separate _info series instead, where label
     # churn is harmless because nothing alerts on it.
     homelab.metrics.transforms.wan_dns_drift_metric = {

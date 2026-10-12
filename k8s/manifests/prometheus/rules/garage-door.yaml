@@ -25,5 +25,5 @@ spec:
             severity: critical
           annotations:
             summary: "Garage door has been open for over 30 minutes"
-            description: "The garage door ({{ $labels.friendly_name }}) has been in the open state for more than 30 minutes. Initiating phone call."
+            description: "The garage door ({{ $labels.friendly_name }}) has been in the open state for more than 30 minutes."
 
