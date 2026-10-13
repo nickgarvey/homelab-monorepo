@@ -99,7 +99,8 @@ end-of-day question should cover.`,
 	{
 		name: "history", args: "<habit> [--days N]", summary: "a habit day by day",
 		help: `Shows a habit's last N days (default 14, at most 366), one line per day:
-done, missed, or - for no entry, with the reason given.`,
+done, missed, or - for no entry, with the reason given. It starts no earlier
+than the habit's first day (the day it was added, or its earliest entry).`,
 		flags:   func(fs *flag.FlagSet, o *opts) { fs.IntVar(&o.days, "days", 14, "how many days back from today") },
 		minArgs: 1, maxArgs: 1,
 		run: cmdHistory,
@@ -656,13 +657,19 @@ func cmdHistory(ctx context.Context, a *app, args []string, o *opts) error {
 		return err
 	}
 	today := a.today()
+	// Not before the habit's first day, so days before it existed don't
+	// count as not logged.
 	from := today.AddDays(-(o.days - 1))
+	clamped := false
+	if s := a.since(h, es); s.After(from) {
+		from, clamped = s, true
+	}
 	lines := window(es, from, today)
 	c := countLines(lines)
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s, %s to %s: %d done, %d missed, %d not logged", h.Name, from, today, c.Done, c.Missed, c.NotLogged)
-	if created := a.createdDay(h); created.After(from) {
-		fmt.Fprintf(&b, " (added %s)", created)
+	if clamped {
+		fmt.Fprintf(&b, " (added %s)", a.createdDay(h))
 	}
 	b.WriteString("\n")
 	formatDays(&b, lines)

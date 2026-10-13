@@ -114,10 +114,11 @@ func TestIntegration(t *testing.T) {
 		Counts counts
 	}
 	it.json(&hist, "history", "meditate", "--days", "3")
-	if len(hist.Days) != 3 || hist.Days[1].Day != yesterday || str(hist.Days[1].Outcome) != "done" || hist.Days[1].Why != nil {
+	// The window starts at the habit's first day, yesterday's entry, not 3 days back.
+	if len(hist.Days) != 2 || hist.Days[0].Day != yesterday || str(hist.Days[0].Outcome) != "done" || hist.Days[0].Why != nil {
 		t.Errorf("history after relog (why cleared): %+v", hist.Days)
 	}
-	if hist.Counts != (counts{Days: 3, Done: 1, NotLogged: 2}) {
+	if hist.Counts != (counts{Days: 2, Done: 1, NotLogged: 1}) {
 		t.Errorf("history counts %+v", hist.Counts)
 	}
 
