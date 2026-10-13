@@ -2,7 +2,8 @@
 # agents run on the OpenShell gateway, the desired state built from
 # agents/declaration.nix, agents-apply, which publishes it, the images of
 # agents-worker, which runs the chat sessions, and of agent-token, the token
-# service for sandbox credentials, and the agents-chat app.
+# service for sandbox credentials, and of Habit Helper's PostgREST, and the
+# agents-chat app.
 # Imported by the root flake.nix.
 { self, nixpkgs, ... }:
 let
@@ -48,9 +49,17 @@ let
     substitute ${./pi/litellm-profile.yaml} $out --replace-fail @node@ "$node"
   '';
 
+  # The habit-data profile's binaries entry: curl, resolved past symlinks,
+  # until the habit CLI (nix-psvkl.5) is what talks to PostgREST.
+  habitDataProfile = pkgs.runCommand "habit-data-profile.yaml" { } ''
+    curl=$(readlink -f ${lib.getExe pkgs.curl})
+    substitute ${./habit-helper/habit-data-profile.yaml} $out --replace-fail @curl@ "$curl"
+  '';
+
   # What a declaration can refer to.
   images.pi = import ./pi/image.nix { inherit pkgs; };
   profiles.piLitellm = piLitellmProfile;
+  profiles.habitData = habitDataProfile;
 
   # evalAgents <module>: the declaration evaluated against agents/schema.nix.
   evalAgents = declaration: lib.evalModules {
@@ -127,6 +136,10 @@ in
     agents-apply = agentsApply;
     agents-worker-image = agentsWorkerImage;
     agent-token-image = agentTokenImage;
+    habit-data-profile = habitDataProfile;
+    # Pushed as oci.garvey.sh/habit-helper-postgrest:<tag> and run by
+    # k8s/manifests/habit-helper/deployment.yaml.
+    habit-helper-postgrest-image = import ./habit-helper/postgrest-image.nix { inherit pkgs; };
   };
 
   apps.${system}.agents-chat = {

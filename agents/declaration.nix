@@ -9,6 +9,11 @@
   profiles.litellm = profiles.piLitellm;
   providers.litellm.profile = "litellm";
 
+  # Habit Helper's data through PostgREST; only habit-helper sandboxes get
+  # a token for it (k8s/manifests/habit-helper).
+  profiles.habit-data = profiles.habitData;
+  providers.habit-data.profile = "habit-data";
+
   types.pi = {
     image = images.pi;
     policy = ./pi/policy.yaml;

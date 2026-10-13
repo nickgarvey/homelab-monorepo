@@ -179,6 +179,19 @@ starts by printing the conversation's pending wake-up, from the `Wakeup`'s
 chat log (`messages`, role `wakeup` for the prompt). `--address` and
 `--namespace` default to `127.0.0.1:7236` and `agents`.
 
+## habit-data
+
+The `habit-data` provider is Habit Helper's data: PostgREST in front of the
+`habit_helper` database (`k8s/manifests/habit-helper/`). Its profile,
+`habit-helper/habit-data-profile.yaml`, has a `token_grant`: the supervisor
+trades the sandbox's JWT-SVID with agent-token for a 5 minute PostgREST JWT
+and injects it, so no secret is in the sandbox, and only sandboxes with the
+`habit-helper` type get one. Requests may read, insert and update; the
+schema is `habit-helper/schema/`, applied by PostgREST's init container. Like
+pi's litellm profile it is a template: `binaries` is curl's store path, which
+`nix build .#habit-data-profile` fills in, until the `habit` CLI takes its
+place.
+
 ## pi
 
 The pi coding agent (`pkgs.pi-coding-agent`), on `qwen3.8-flash-next` through
