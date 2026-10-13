@@ -188,9 +188,10 @@ trades the sandbox's JWT-SVID with agent-token for a 5 minute PostgREST JWT
 and injects it, so no secret is in the sandbox, and only sandboxes with the
 `habit-helper` type get one. Requests may read, insert and update; the
 schema is `habit-helper/schema/`, applied by PostgREST's init container. Like
-pi's litellm profile it is a template: `binaries` is curl's store path, which
-`nix build .#habit-data-profile` fills in, until the `habit` CLI takes its
-place.
+pi's litellm profile it is a template: `binaries` is the store path of the
+`habit` CLI (`nix build .#habit-cli`), which `nix build .#habit-data-profile`
+fills in, so the CLI is the only program in the sandbox that reaches the
+data. The CLI is documented in `habit-helper/README.md`.
 
 ## pi
 

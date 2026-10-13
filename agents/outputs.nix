@@ -2,8 +2,8 @@
 # agents run on the OpenShell gateway, the desired state built from
 # agents/declaration.nix, agents-apply, which publishes it, the images of
 # agents-worker, which runs the chat sessions, and of agent-token, the token
-# service for sandbox credentials, and of Habit Helper's PostgREST, and the
-# agents-chat app.
+# service for sandbox credentials, and of Habit Helper's PostgREST, the habit
+# CLI, and the agents-chat app.
 # Imported by the root flake.nix.
 { self, nixpkgs, ... }:
 let
@@ -49,11 +49,18 @@ let
     substitute ${./pi/litellm-profile.yaml} $out --replace-fail @node@ "$node"
   '';
 
-  # The habit-data profile's binaries entry: curl, resolved past symlinks,
-  # until the habit CLI (nix-psvkl.5) is what talks to PostgREST.
+  # The habit CLI, Habit Helper's only way to its data; its build runs the
+  # integration test against PostgREST with this schema.
+  habitCli = pkgs.callPackage ../packages/agents/habit-cli.nix {
+    agents = agentsGo;
+    schema = ./habit-helper/schema;
+  };
+
+  # The habit-data profile's binaries entry: the habit CLI, resolved past
+  # symlinks (the sandbox matches the exe a connection comes from).
   habitDataProfile = pkgs.runCommand "habit-data-profile.yaml" { } ''
-    curl=$(readlink -f ${lib.getExe pkgs.curl})
-    substitute ${./habit-helper/habit-data-profile.yaml} $out --replace-fail @curl@ "$curl"
+    habit=$(readlink -f ${lib.getExe habitCli})
+    substitute ${./habit-helper/habit-data-profile.yaml} $out --replace-fail @habit@ "$habit"
   '';
 
   # What a declaration can refer to.
@@ -137,6 +144,8 @@ in
     agents-worker-image = agentsWorkerImage;
     agent-token-image = agentTokenImage;
     habit-data-profile = habitDataProfile;
+    # Goes into the habit-helper image (nix-psvkl.7).
+    habit-cli = habitCli;
     # Pushed as oci.garvey.sh/habit-helper-postgrest:<tag> and run by
     # k8s/manifests/habit-helper/deployment.yaml.
     habit-helper-postgrest-image = import ./habit-helper/postgrest-image.nix { inherit pkgs; };
@@ -151,5 +160,6 @@ in
   checks.${system} = lib.mapAttrs (_: drv: checkPins (checkChat drv)) {
     agents-declaration-test = import ./declaration-test.nix { inherit pkgs lib images desiredState; };
     agents-go-tests = agentsGo;
+    habit-cli-tests = habitCli;
   };
 }

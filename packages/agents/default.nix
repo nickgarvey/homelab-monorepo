@@ -6,11 +6,20 @@
 # buildGoModule runs `go test`, so the tests gate the build; the store and
 # session tests run against a throwaway Postgres started by
 # postgresqlTestHook. Built by agents/outputs.nix.
-{ buildGoModule, postgresql, postgresqlTestHook }:
+#
+# The habit CLI (cmd/habit) is built and tested by habit-cli.nix instead. It
+# and the Nix files are left out of the source here, so changing them does
+# not change these binaries' store paths or the image tags made from them.
+{ lib, buildGoModule, postgresql, postgresqlTestHook }:
 buildGoModule {
   pname = "agents";
   version = "0.1.0";
-  src = ./.;
+  src = builtins.path {
+    path = ./.;
+    name = "agents";
+    filter = path: _type:
+      !(builtins.elem (lib.removePrefix (toString ./. + "/") path) [ "cmd/habit" "default.nix" "habit-cli.nix" ]);
+  };
   vendorHash = "sha256-SjKDfVWPpasVPu6PFT058ryHC95sLL5/CkypVPV3rVw=";
 
   nativeCheckInputs = [ postgresql postgresqlTestHook ];

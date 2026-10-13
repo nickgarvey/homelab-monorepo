@@ -4,8 +4,9 @@ Habit Helper's data: the `habit_helper` database on the shared postgres
 (`manifests/postgres/`), served by PostgREST at
 `http://postgrest.habit-helper.svc.cluster.local:3000` to sandboxes of the
 `habit-helper` agent type, through the `habit-data` provider
-(`agents/habit-helper/habit-data-profile.yaml` at the repo root). The agent
-type and the `habit` CLI that uses it come later (nix-psvkl.5, .7).
+(`agents/habit-helper/habit-data-profile.yaml` at the repo root), to the
+`habit` CLI only (`agents/habit-helper/README.md`). The agent type comes later
+(nix-psvkl.7).
 
 ## Roles
 
@@ -49,7 +50,8 @@ A habit is referred to by name everywhere; renaming one carries over to the
 other tables, and names differing only in case are refused. Adding a habit
 also adds its `cadence` row, due today. `day`, `next_check` and `last_check`
 are the user's local dates, sent by the client. The tapering rule that sets
-`cadence` belongs to the CLI; the agent may override it with a `reason`.
+`cadence` belongs to the CLI ("Tapering" in `agents/habit-helper/README.md`);
+the agent may override it with a `reason`.
 Triggers keep `updated_at`; their functions are in schema `habit_private`,
 which PostgREST does not serve.
 

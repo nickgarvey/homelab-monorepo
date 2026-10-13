@@ -9,8 +9,9 @@
 #
 # The rules allow reads, inserts/upserts and updates; Postgres grants are the
 # real limit (no DELETE, no DDL for habit_agent). agents/outputs.nix fills in
-# `binaries` with the real path of curl (a store path; the sandbox matches the
-# resolved exe) until the habit CLI (nix-psvkl.5) replaces it.
+# `binaries` with the real path of the habit CLI (packages/agents/cmd/habit; a
+# store path, since the sandbox matches the resolved exe), the only program
+# that talks to PostgREST.
 id: habit-data
 display_name: habit-data
 description: Habit Helper's data through PostgREST (k8s/manifests/habit-helper)
@@ -45,4 +46,4 @@ endpoints:
           path: /**
 
 binaries:
-  - @curl@
+  - @habit@
