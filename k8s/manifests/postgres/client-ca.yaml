@@ -1,6 +1,7 @@
 # Public certificate of the SPIFFE CA (private key: cert-manager/secret.yaml).
 # Postgres validates client certificates against it. Keep it equal to the
-# tls.crt of the spiffe-ca Secret if the CA is ever replaced.
+# tls.crt of the spiffe-ca Secret if the CA is ever replaced, as
+# packages/openshell/spiffe-ca.crt at the repo root.
 apiVersion: v1
 kind: Secret
 metadata:

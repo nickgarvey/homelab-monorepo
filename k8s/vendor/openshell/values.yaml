@@ -79,10 +79,12 @@ gatewayConfig:
 # answers every AAAA query with NODATA, so in this IPv6-only cluster no sandbox
 # could resolve any name (nix-lNoiG). The template-labels patch copies the
 # sandbox template's labels onto the supervisor pod, for its SPIFFE ID
-# (nix-q7Q31). Drop each patch (and its deadline check in agents/outputs.nix)
-# once a release includes it, and go back to the chart's images when none is
-# left. A rebuild changes the digests: push it and update all three here, and
-# the gateway's in manifests/openshell/jwt-keys-job.yaml.
+# (nix-q7Q31). The supervisor image's CA bundle also holds the spiffe-ca root,
+# for token_grant endpoints such as agent-token (manifests/agents/), so it
+# stays our build even without patches. Drop each patch (and its deadline
+# check in agents/outputs.nix) once a release includes it. A rebuild changes
+# the digests: push it and update all three here, and the gateway's in
+# manifests/openshell/jwt-keys-job.yaml.
 global:
   image:
     registry: oci.garvey.sh
