@@ -46,9 +46,22 @@ spec:
         # Something exists in Ceph that no backup has ever covered: a pool the
         # backup cannot read (kind="pool": an application it does not know, or
         # an RBD namespace), or an item whose every backup so far has failed.
+        # Only items first seen over a day ago, plus slack for a slow run: a
+        # new PVC waits for the next daily run, and a run that fails on it
+        # fires CephBackupFailed. The age comes from the TSDB, not `for`,
+        # because a new metrics leader starts new series (label pod).
         - alert: CephBackupNotCovered
-          expr: homelab_ceph_backup_item unless on (kind, name) homelab_ceph_backup_last_success_timestamp_seconds
-          for: 1h
+          expr: |
+            (
+              max by (kind, name) (homelab_ceph_backup_item)
+                unless on (kind, name) homelab_ceph_backup_last_success_timestamp_seconds
+            )
+            and on (kind, name)
+            (
+              time() - min_over_time(timestamp(max by (kind, name) (homelab_ceph_backup_item))[27h:10m])
+                > 26 * 3600
+            )
+          for: 15m
           labels:
             severity: warning
           annotations:
