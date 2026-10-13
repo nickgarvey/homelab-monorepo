@@ -23,7 +23,6 @@ credentials:
     auth_style: bearer
     header_name: Authorization
     token_grant:
-      grant_type: client_credentials
       token_endpoint: https://agent-token.agents.svc.cluster.local/token
       jwt_svid_audience: spiffe://home.garvey.sh/ns/agents/sa/agent-token
       client_assertion_type: urn:ietf:params:oauth:client-assertion-type:jwt-spiffe
