@@ -53,11 +53,11 @@ spec:
               value: postgresql://litellm:$(POSTGRES_PASSWORD)@postgres-rw.postgres.svc:5432/litellm?sslmode=require&sslaccept=strict&sslcert=/etc/postgres-ca/ca.crt
             # Optional, so litellm starts without it; only the habit-helper
             # model needs it.
-            - name: ANTHROPIC_API_KEY
+            - name: DEEPSEEK_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: litellm-anthropic
-                  key: ANTHROPIC_API_KEY
+                  name: litellm-deepseek
+                  key: DEEPSEEK_API_KEY
                   optional: true
           ports:
             - containerPort: 4000

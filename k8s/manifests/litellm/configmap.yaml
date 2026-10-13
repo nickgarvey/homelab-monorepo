@@ -17,13 +17,13 @@ data:
           model: openai/qwen3.8-flash-next
           api_base: http://wabbajack.home.garvey.sh:8080/v1
           api_key: sk-unused
-      # Claude Sonnet 5.5, for the habit-helper agent. The key comes from the
-      # litellm-anthropic Secret; until the real one is in, calls to it fail
+      # DeepSeek V4 Flash, for the habit-helper agent. The key comes from the
+      # litellm-deepseek Secret; until the real one is in, calls to it fail
       # and everything else works.
       - model_name: habit-helper
         litellm_params:
-          model: anthropic/claude-sonnet-5-5
-          api_key: os.environ/ANTHROPIC_API_KEY
+          model: deepseek/deepseek-v4-flash
+          api_key: os.environ/DEEPSEEK_API_KEY
     litellm_settings:
       drop_params: true
     general_settings:

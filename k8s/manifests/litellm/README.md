@@ -6,7 +6,7 @@ An OpenAI-compatible proxy in front of the models the cluster uses
 | Model | Behind it |
 |---|---|
 | `qwen3.8-flash-next` | llama.cpp on wabbajack |
-| `habit-helper` | Claude Sonnet 5.5 (`anthropic/claude-sonnet-5-5`), with the key in `litellm-anthropic` |
+| `habit-helper` | DeepSeek V4 Flash (`deepseek/deepseek-v4-flash`), with the key in `litellm-deepseek` |
 
 In-cluster clients use `http://litellm.litellm.svc.cluster.local:4000`. The
 LoadBalancer (`service.yaml`, `2001:470:482f:2::4000`, open to all by
@@ -73,18 +73,25 @@ Put the new value in both Secrets (`sops secret.yaml`,
 then registers the new value under the alias. Supervisors pick up the new key
 when their cached one expires (agent-token's `expiresIn`, 1h).
 
-## Anthropic
+## DeepSeek
 
-`ANTHROPIC_API_KEY` in the `litellm-anthropic` Secret holds the placeholder
-`REPLACE_WITH_ANTHROPIC_API_KEY` until the real key is put in. litellm starts
-either way (the variable is optional in `deployment.yaml`); only calls to
-`habit-helper` fail without it. To put it in, from `k8s/`:
+`DEEPSEEK_API_KEY` in the `litellm-deepseek` Secret (`deepseek-secret.yaml`)
+holds the placeholder `REPLACE_WITH_DEEPSEEK_API_KEY` until the real key is put
+in. litellm starts either way (the variable is optional in `deployment.yaml`);
+only calls to `habit-helper` fail without it. The key is the one pi uses on the
+workstations, `deepseek-api-key` in `secrets/llm-api-keys.yaml`, which the
+cluster cannot decrypt, so it is copied across. From the repo root:
 
 ```sh
-sops manifests/litellm/secret.yaml    # replace the placeholder under litellm-anthropic
-kubectl apply -f manifests/litellm/secret.yaml
+sops set k8s/manifests/litellm/deepseek-secret.yaml \
+  '["spec"]["secretTemplates"][0]["stringData"]["DEEPSEEK_API_KEY"]' \
+  "$(sops -d --extract '["deepseek-api-key"]' secrets/llm-api-keys.yaml | jq -R .)"
+kubectl apply -f k8s/manifests/litellm/deepseek-secret.yaml
 kubectl -n litellm rollout restart deploy/litellm
 ```
+
+The `litellm-anthropic` Secret in `secret.yaml` holds only a placeholder and
+nothing reads it.
 
 ## Apply (from `k8s/`)
 
@@ -105,7 +112,8 @@ Then litellm and its keys. The Job waits for litellm to be ready:
 ```sh
 kubectl apply -f manifests/litellm/namespace.yaml
 kubectl apply -f manifests/litellm/secret.yaml
-kubectl -n litellm get secret litellm litellm-virtual-keys litellm-anthropic   # wait for all three
+kubectl apply -f manifests/litellm/deepseek-secret.yaml
+kubectl -n litellm get secret litellm litellm-virtual-keys litellm-deepseek   # wait for all three
 kubectl apply -f manifests/litellm/postgres-ca.yaml -f manifests/litellm/configmap.yaml
 kubectl apply -f manifests/litellm/deployment.yaml -f manifests/litellm/register-keys-job.yaml
 kubectl apply -f manifests/litellm/service.yaml -f manifests/litellm/network-policy.yaml

@@ -230,9 +230,10 @@ creation_rules:
       - *k8s-operator
   # Secrets kept apart from their directory's secret.yaml: the litellm
   # role's Postgres password (postgres), the litellm virtual keys agent-token
-  # hands out (agents), and agent-token's copy of the habit-data JWT key
-  # (agents; the habit-helper namespace holds the other copy).
-  - path_regex: k8s/manifests/(postgres/litellm-secret|agents/litellm-keys-secret|agents/agent-token-habit-data-secret)\.yaml$
+  # hands out (agents), agent-token's copy of the habit-data JWT key
+  # (agents; the habit-helper namespace holds the other copy), and the DeepSeek
+  # key behind litellm's habit-helper model (litellm).
+  - path_regex: k8s/manifests/(postgres/litellm-secret|agents/litellm-keys-secret|agents/agent-token-habit-data-secret|litellm/deepseek-secret)\.yaml$
     encrypted_regex: "^(data|stringData)$"
     key_groups:
     - age:
