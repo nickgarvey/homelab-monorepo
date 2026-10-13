@@ -187,8 +187,19 @@ only pi's `node` can reach it, and only for `GET /v1/models` and
 `POST /v1/chat/completions`. It cannot fetch packages, clone repositories or
 browse.
 
+litellm needs a key. The sandbox holds none: the `litellm` profile's
+credential is a `token_grant`, so the sandbox's supervisor trades its
+JWT-SVID (`spiffe://home.garvey.sh/agent/<type>/<sandbox-id>`) at agent-token
+for the key granted to that type and puts it in each request's
+`Authorization` header ("The token service" in
+`k8s/manifests/agents/README.md`). pi and pi-wakeup get litellm's `pi` key,
+which may call `qwen3.8-flash-next` only. A sandbox created without an agent
+type (`openshell sandbox create` by hand) gets no key, so its model calls fail
+with a 502.
+
 - `pi/models.json` and `pi/settings.json` are pi's config, installed in
-  `/sandbox/.pi/agent` (`PI_CODING_AGENT_DIR`).
+  `/sandbox/.pi/agent` (`PI_CODING_AGENT_DIR`). The `apiKey` there is a
+  placeholder that the supervisor replaces.
 - `pi/litellm-profile.yaml` is a template. Its `binaries` entry has to be the
   real path of pi's node, a store path, which `nix build
   .#pi-agent-litellm-profile` fills in; `agents-apply` publishes the built
@@ -201,23 +212,33 @@ The worker's sandboxes are for sessions; for a one-off, make your own in the
 same workspace, which has the published `litellm` provider. The reaper leaves
 alone sandboxes without the worker's label.
 
+A sandbox created with the CLI has no agent type, so agent-token refuses its
+supervisor a key. Give the supervisor pod the type label by hand before pi's
+first model call; the supervisor's SPIFFE ID follows the label.
+
 `<image ref>` is the one `agents-apply` pushed:
 `nix build .#agents-desired-state && jq -r .types.pi.image.ref result`.
 
 ```sh
-# Interactive
-openshell sandbox create --workspace agents --name pi --from <image ref> \
-  --policy agents/pi/policy.yaml --provider litellm -- pi
-
-# With a project: start it idle, upload (honouring .gitignore), run pi in it.
+# Start it idle and make it a pi sandbox.
 openshell sandbox create --workspace agents --name pi-work --from <image ref> \
   --policy agents/pi/policy.yaml --provider litellm --detach
+id=$(kubectl -n openshell get pod agents--pi-work -o jsonpath='{.metadata.annotations.openshell\.ai/sandbox-id}')
+kubectl -n openshell label pod os-supervisor-$id agents.garvey.sh/type=pi
+
+# Interactive
+openshell sandbox exec --workspace agents -n pi-work --tty -- pi
+
+# With a project: upload (honouring .gitignore), run pi in it.
 openshell sandbox upload --workspace agents pi-work ./myproject /sandbox    # lands in /sandbox/myproject
 openshell sandbox exec --workspace agents -n pi-work --tty --workdir /sandbox/myproject -- pi
 
 openshell sandbox download --workspace agents pi-work /sandbox/myproject ./out    # copy results back
 openshell sandbox delete --workspace agents pi-work
 ```
+
+A stop and start makes a new supervisor pod, without the label: label it
+again.
 
 `openshell logs --workspace agents <name> --tail` shows the sandbox's activity,
 including the connections it blocks.

@@ -1,8 +1,12 @@
 # OpenShell provider profile: lets the pi sandbox's node make model calls to
 # litellm, and nothing else. The proxy allows only listing models and chat
-# completions, so litellm's admin and other APIs stay out of reach (litellm
-# runs without a key, so there are no credentials to inject). It cannot pin
-# the model, which is in the request body; litellm serves one model anyway.
+# completions, so litellm's admin and other APIs stay out of reach. Each call
+# carries litellm's key for the sandbox's agent type: the supervisor gets it
+# from agent-token with its JWT-SVID (k8s/manifests/agents/README.md, "The
+# token service") and puts it in Authorization, replacing what pi sends, so
+# the key never enters the sandbox. litellm lets that key call only its own
+# models (k8s/manifests/litellm/README.md, "Keys"). The supervisor caches the
+# key for agent-token's expires_in, less 30s.
 # category and inference_capable are informational and restrict nothing.
 # agents/outputs.nix fills in `binaries` with the real path of the node pi runs
 # under (a store path; the sandbox matches the resolved exe).
@@ -12,7 +16,19 @@ description: In-cluster litellm proxy (k8s/manifests/litellm), model calls only
 category: inference
 inference_capable: true
 
-credentials: []
+credentials:
+  - name: litellm_key
+    description: litellm virtual key for the sandbox's agent type, from agent-token
+    required: true
+    auth_style: bearer
+    header_name: Authorization
+    # grant_type is client_credentials, the default; it is left out because
+    # `profile export` leaves it out, and agents-apply compares the two.
+    token_grant:
+      token_endpoint: https://agent-token.agents.svc.cluster.local/token
+      jwt_svid_audience: spiffe://home.garvey.sh/ns/agents/sa/agent-token
+      client_assertion_type: urn:ietf:params:oauth:client-assertion-type:jwt-spiffe
+      audience: litellm
 
 endpoints:
   - host: litellm.litellm.svc.cluster.local
