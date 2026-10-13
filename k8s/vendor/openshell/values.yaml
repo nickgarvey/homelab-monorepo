@@ -88,10 +88,10 @@ global:
     registry: oci.garvey.sh
 gateway:
   image:
-    digest: sha256:9127be956c553ce240273b2b0d6d7e18840a267a19f3234cebc1cacf46dd03f4
+    digest: sha256:a46429242f4041d2b6d886e3b255f9d78d15181bafa0ce025859f7d8e414cbaa
 supervisor:
   image:
-    digest: sha256:a74a12ddfc99c73216fdfa8ce6f5d37b72c22631da6d82b503c4462745adf6b0
+    digest: sha256:c83826c1bc6c646e5827ecdc0ea68b72462a35e53c1435fef8a21a122ad1349b
 sandboxRuntime:
   image:
     digest: sha256:561c63acbc7f247c452d83e90d92623403d66a7eed031e23b809ac3d4177b885
