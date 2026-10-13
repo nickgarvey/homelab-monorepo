@@ -65,3 +65,17 @@ spec:
   owner: agents
   cluster:
     name: postgres
+---
+# litellm's virtual keys and spend logs (manifests/litellm).
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: litellm
+  namespace: postgres
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  name: litellm
+  owner: litellm
+  cluster:
+    name: postgres

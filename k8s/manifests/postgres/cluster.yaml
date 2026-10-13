@@ -64,6 +64,15 @@ spec:
       - name: agents
         ensure: present
         login: true
+      # litellm (manifests/litellm); password login, TLS only (pg_hba). Its
+      # Prisma engine takes a client certificate only as a PKCS#12 file that it
+      # reads at its first connection and keeps, so a short-lived certificate
+      # would break new connections once it expired.
+      - name: litellm
+        ensure: present
+        login: true
+        passwordSecret:
+          name: postgres-litellm
   postgresql:
     # A role gets the databases named here and no others. First match wins and
     # the operator puts these before its 'host all all all scram-sha-256', so
@@ -78,6 +87,8 @@ spec:
       - host all celler all reject
       - hostssl agents agents all cert clientname=DN map=spiffe
       - host all agents all reject
+      - hostssl litellm litellm all scram-sha-256
+      - host all litellm all reject
     # A certificate login matches the client certificate's whole subject DN,
     # not just its CN. The client CA signs for the whole trust domain, so only
     # these exact DNs, which come from the policies in
