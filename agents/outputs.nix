@@ -1,7 +1,8 @@
 # agents outputs: sandbox images and OpenShell provider profiles for the
 # agents run on the OpenShell gateway, the desired state built from
-# agents/declaration.nix, agents-apply, which publishes it, the image of
-# agents-worker, which runs the chat sessions, and the agents-chat app.
+# agents/declaration.nix, agents-apply, which publishes it, the images of
+# agents-worker, which runs the chat sessions, and of agent-token, the token
+# service for sandbox credentials, and the agents-chat app.
 # Imported by the root flake.nix.
 { self, nixpkgs, ... }:
 let
@@ -80,6 +81,23 @@ let
     };
   };
 
+  # Pushed as oci.garvey.sh/agent-token:<tag>, tagged like agents-worker, and
+  # run by k8s/manifests/agents/agent-token-deployment.yaml. It talks only to
+  # the SPIRE agent's socket, so it needs no CA certificates.
+  agentTokenImage = pkgs.dockerTools.buildLayeredImage {
+    name = "agent-token";
+    tag = builtins.substring 11 32 agentsGo.outPath;
+    contents = pkgs.buildEnv {
+      name = "image-root";
+      paths = [ agentsGo ];
+      pathsToLink = [ "/bin" ];
+    };
+    config = {
+      Entrypoint = [ "/bin/agent-token" ];
+      User = "1000:1000";
+    };
+  };
+
   # `nix run .#agents-apply [-- --dry-run]`: publishes agents/declaration.nix
   # with the CLIs it drives, the openshell one at the gateway's version.
   agentsApply = pkgs.writeShellApplication {
@@ -108,6 +126,7 @@ in
     agents-desired-state = desiredState ./declaration.nix;
     agents-apply = agentsApply;
     agents-worker-image = agentsWorkerImage;
+    agent-token-image = agentTokenImage;
   };
 
   apps.${system}.agents-chat = {
