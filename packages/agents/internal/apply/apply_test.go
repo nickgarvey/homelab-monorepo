@@ -393,6 +393,36 @@ func TestSameProfile(t *testing.T) {
 	}
 }
 
+// A token_grant credential comes back from `profile export` with fields the
+// file leaves out, empty.
+func TestSameProfileIgnoresEmptyNestedFields(t *testing.T) {
+	grant := func() map[string]any {
+		return map[string]any{
+			"token_endpoint": "https://agent-token.agents.svc.cluster.local/token",
+			"audience":       "litellm",
+		}
+	}
+	spec := map[string]any{"id": "p", "credentials": []any{map[string]any{
+		"name": "key", "required": true, "auth_style": "bearer", "token_grant": grant(),
+	}}}
+	exported := map[string]any{"id": "p", "source": "user", "credentials": []any{map[string]any{
+		"name": "key", "required": true, "auth_style": "bearer", "token_grant": grant(),
+		"description": "", "env_vars": []any{}, "query_param": "", "header_name": "",
+	}}}
+	if !SameProfile(spec, exported) {
+		t.Error("equal profiles differ")
+	}
+	exported["credentials"].([]any)[0].(map[string]any)["token_grant"].(map[string]any)["audience"] = "other"
+	if SameProfile(spec, exported) {
+		t.Error("a changed nested field is not seen")
+	}
+	exported["credentials"].([]any)[0].(map[string]any)["token_grant"] = grant()
+	exported["credentials"].([]any)[0].(map[string]any)["env_vars"] = []any{"KEY"}
+	if SameProfile(spec, exported) {
+		t.Error("a non-empty nested field the spec lacks is not seen")
+	}
+}
+
 func TestParseRejectsDanglingReferences(t *testing.T) {
 	bad := strings.Replace(stateJSON, `"providers": ["litellm"]`, `"providers": ["missing"]`, 1)
 	if _, err := desired.Parse([]byte(bad)); err == nil {

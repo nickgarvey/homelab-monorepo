@@ -312,7 +312,8 @@ var serverFields = []string{"resource_version", "source", "scope"}
 
 // SameProfile reports whether an exported profile matches the declared spec:
 // equal once the gateway's own fields are dropped, and ignoring fields the
-// export fills with an empty value that the spec leaves out.
+// export fills with an empty value that the spec leaves out, at any depth (a
+// credential is exported with an empty env_vars and query_param, for one).
 func SameProfile(spec, exported map[string]any) bool {
 	have := map[string]any{}
 	for k, v := range exported {
@@ -321,12 +322,42 @@ func SameProfile(spec, exported map[string]any) bool {
 	for _, k := range serverFields {
 		delete(have, k)
 	}
-	for k, v := range have {
-		if _, declared := spec[k]; !declared && isEmpty(v) {
-			delete(have, k)
+	want := normalise(spec)
+	return reflect.DeepEqual(want, dropUndeclaredEmpty(want, normalise(have)))
+}
+
+// dropUndeclaredEmpty returns have without the empty map fields that want
+// does not have, looking into maps and lists the two have in common.
+func dropUndeclaredEmpty(want, have any) any {
+	switch h := have.(type) {
+	case map[string]any:
+		w, ok := want.(map[string]any)
+		if !ok {
+			return have
 		}
+		out := map[string]any{}
+		for k, v := range h {
+			wv, declared := w[k]
+			switch {
+			case declared:
+				out[k] = dropUndeclaredEmpty(wv, v)
+			case !isEmpty(v):
+				out[k] = v
+			}
+		}
+		return out
+	case []any:
+		w, ok := want.([]any)
+		if !ok || len(w) != len(h) {
+			return have
+		}
+		out := make([]any, len(h))
+		for i := range h {
+			out[i] = dropUndeclaredEmpty(w[i], h[i])
+		}
+		return out
 	}
-	return reflect.DeepEqual(normalise(spec), normalise(have))
+	return have
 }
 
 // normalise round-trips a value through JSON so both sides use the same

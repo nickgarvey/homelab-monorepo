@@ -169,9 +169,25 @@ grants for one audience could match the same ID, if a grant covers
 `/agent/untyped/` (sandboxes created without an agent type, whose creator chose
 no identity), or if a file is missing or invalid. Credential files are read
 again for every grant, so a rotated key goes out as soon as the Secret volume
-updates. They are keys of the `agent-token-credentials` Secret, from the
-SopsSecret in `secret.yaml`; today it holds only two throwaway test values,
-`test-static-token` and `test-jwt-key`, and the committed config has no grants.
+updates. Both Secrets with credential files are mounted in that one
+directory: `agent-token-credentials` (`secret.yaml`), which holds only two
+throwaway test values, `test-static-token` and `test-jwt-key`, that no grant
+uses, and `agent-token-litellm` (`litellm-keys-secret.yaml`), the litellm
+virtual keys.
+
+The committed grants hand out litellm keys, for audience `litellm`:
+
+| Grant | SPIFFE IDs | Key (alias in litellm) |
+|---|---|---|
+| `pi-litellm` | `/agent/pi/` | `litellm-pi` (`pi`: `qwen3.8-flash-next`) |
+| `pi-wakeup-litellm` | `/agent/pi-wakeup/` | `litellm-pi` |
+| `habit-helper-litellm` | `/agent/habit-helper/` | `litellm-habit-helper` (`habit-helper`: `habit-helper`) |
+
+litellm decides what each key may call ("Keys" in
+`manifests/litellm/README.md`). They go out with `expiresIn: 1h`, which only
+sets how long a supervisor caches one: it keeps a granted token for
+`expires_in` less 30 seconds (at most an hour) and asks again after that, or
+for the profile's `cache_ttl` instead if it sets one (`0s`: every request).
 
 **HTTPS.** The certificate (`agent-token-certificate.yaml`) is from the
 spiffe-ca ClusterIssuer, for the Service's names only; the
@@ -255,7 +271,8 @@ image with the spiffe-ca root ("Upgrading" in `manifests/openshell/README.md`
 for pushing and pinning it):
 
 ```sh
-kubectl apply -f manifests/agents/secret.yaml
+kubectl apply -f manifests/agents/secret.yaml -f manifests/agents/litellm-keys-secret.yaml
+kubectl -n agents get secret agent-token-credentials agent-token-litellm   # wait for both
 kubectl apply -f manifests/agents/agent-token-service-account.yaml
 kubectl apply -f manifests/agents/agent-token-certificate.yaml
 kubectl -n agents wait --for=condition=Ready certificate/agent-token-tls

@@ -1,3 +1,8 @@
+# litellm, the OpenAI-compatible proxy in front of the models (configmap.yaml).
+# It answers only calls with a key (README.md, "Keys"): the master key and the
+# Postgres password are in the litellm Secret (secret.yaml), the virtual keys
+# in the litellm database on the shared postgres, which it reaches over TLS,
+# verified against postgres-ca.yaml.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -31,13 +36,49 @@ spec:
             - "4000"
             - "--host"
             - "::"
+          env:
+            - name: LITELLM_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: litellm
+                  key: master-key
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: litellm
+                  key: postgres-password
+            # Prisma's URL parameters: sslcert is the CA that signs the server's
+            # certificate, and sslaccept=strict checks the chain and the name.
+            - name: DATABASE_URL
+              value: postgresql://litellm:$(POSTGRES_PASSWORD)@postgres-rw.postgres.svc:5432/litellm?sslmode=require&sslaccept=strict&sslcert=/etc/postgres-ca/ca.crt
+            # Optional, so litellm starts without it; only the habit-helper
+            # model needs it.
+            - name: DEEPSEEK_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: litellm-deepseek
+                  key: DEEPSEEK_API_KEY
+                  optional: true
           ports:
             - containerPort: 4000
+          # Ready once it is serving and reaches its database, so the Service
+          # sends nothing to it while it starts.
+          readinessProbe:
+            httpGet:
+              path: /health/readiness
+              port: 4000
+            periodSeconds: 10
           volumeMounts:
             - name: config
               mountPath: /etc/litellm
+              readOnly: true
+            - name: postgres-ca
+              mountPath: /etc/postgres-ca
               readOnly: true
       volumes:
         - name: config
           configMap:
             name: litellm-config
+        - name: postgres-ca
+          configMap:
+            name: postgres-ca

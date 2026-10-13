@@ -132,7 +132,10 @@ supervisor pod only (and into the gateway pod). For a provider whose profile
 credential has a `token_grant`, the supervisor fetches a JWT-SVID (audience:
 the profile's `jwt_svid_audience`, or else the token endpoint URL), POSTs it as
 the `client_assertion` of a `client_credentials` grant to `token_endpoint`,
-caches the returned token, and injects it into matching requests. The token
+caches the returned token, and injects it into matching requests. The cache
+is the supervisor's own, per provider credential: a token is kept for the
+profile's `cache_ttl` if set (`0s` turns the cache off), otherwise for the
+answer's `expires_in` (at most an hour) less 30 seconds. The token
 and the socket never reach the workload pod. The token endpoint must be
 `https://` or `http://` to a `<svc>.<ns>.svc[.cluster.local]` name; we use
 `https://`. It is verified against the supervisor image's `SSL_CERT_FILE`,

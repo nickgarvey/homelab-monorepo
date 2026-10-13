@@ -1,3 +1,7 @@
+# litellm's config: the models it serves and its settings. Every call needs a
+# key: the master key, or a virtual key, which may call only the models it is
+# registered with (README.md, "Keys"). Read at start: after a change,
+# kubectl -n litellm rollout restart deploy/litellm.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -13,5 +17,22 @@ data:
           model: openai/qwen3.8-flash-next
           api_base: http://wabbajack.home.garvey.sh:8080/v1
           api_key: sk-unused
+      # DeepSeek V4 Flash, for the pi agent, under its own name so it can move
+      # back to qwen3.8-flash-next (or elsewhere) on its own.
+      - model_name: pi
+        litellm_params:
+          model: deepseek/deepseek-v4-flash
+          api_key: os.environ/DEEPSEEK_API_KEY
+      # DeepSeek V4 Flash, for the habit-helper agent. The key comes from the
+      # litellm-deepseek Secret; until the real one is in, calls to it fail
+      # and everything else works.
+      - model_name: habit-helper
+        litellm_params:
+          model: deepseek/deepseek-v4-flash
+          api_key: os.environ/DEEPSEEK_API_KEY
     litellm_settings:
       drop_params: true
+    general_settings:
+      # From the litellm Secret (deployment.yaml). Virtual keys live in the
+      # litellm database (DATABASE_URL).
+      master_key: os.environ/LITELLM_MASTER_KEY

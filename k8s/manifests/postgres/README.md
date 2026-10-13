@@ -1,8 +1,9 @@
 # postgres
 
 The shared PostgreSQL for the cluster's services, run by the CloudNativePG
-operator (`vendor/cloudnative-pg`). One `Cluster` named `postgres`, two
-instances (primary + streaming replica) on `ceph-rbd`, never on the same node.
+operator (`vendor/cloudnative-pg`). One `Cluster` named `postgres`, a single
+instance on `ceph-rbd`: Ceph replicates the volume, and there is no streaming
+replica, so no failover can promote a copy that is behind.
 Clients connect to `postgres-rw.postgres.svc:5432` with their own role and
 password. There is no LoadBalancer: nothing outside the cluster needs it, and
 every LoadBalancer Service is published in public DNS.
@@ -20,9 +21,9 @@ issue the certificates and secrets this cluster needs to come up.
    kubectl -n cnpg-system rollout status deploy/barman-cloud
    ```
 2. `kubectl apply -f manifests/postgres/namespace.yaml`
-3. `kubectl apply -f manifests/postgres/secret.yaml`, then wait for the
-   sops-secrets-operator to create `postgres-temporal` and
-   `postgres-backups-s3` (`kubectl -n postgres get secret`).
+3. `kubectl apply -f manifests/postgres/secret.yaml -f manifests/postgres/litellm-secret.yaml`,
+   then wait for the sops-secrets-operator to create `postgres-temporal`,
+   `postgres-backups-s3` and `postgres-litellm` (`kubectl -n postgres get secret`).
 4. `kubectl apply -f manifests/postgres/objectstore.yaml -f manifests/postgres/cluster.yaml`
    and wait: `kubectl -n postgres get cluster postgres` shows 2/2 ready.
 5. `kubectl apply -f manifests/postgres/databases.yaml -f manifests/postgres/scheduled-backup.yaml -f manifests/postgres/pod-monitor.yaml`
@@ -31,7 +32,9 @@ issue the certificates and secrets this cluster needs to come up.
 ## Adding an app
 
 1. Add a `kubernetes.io/basic-auth` secret template to `secret.yaml`
-   (`sops secret.yaml`), with `username` and `password`.
+   (`sops secret.yaml`), with `username` and `password`, or put it in a
+   SopsSecret of its own, as `litellm-secret.yaml` is (with a rule for its path
+   in the repo root's `.sops.yaml`).
 2. Add a role under `managed.roles` in `cluster.yaml`, pointing at that secret.
 3. Add a `Database` to `databases.yaml`, owned by the role.
 4. Restrict it to its databases. Add two lines to `postgresql.pg_hba` in
@@ -77,8 +80,10 @@ CloudNativePG recovery docs); try it in a scratch namespace first.
 
 ## Access control
 
-Authentication is per-role scram-sha-256 passwords (the operator's default
-pg_hba rejects everything else). No NetworkPolicy is applied yet.
+Roles log in with a client certificate ("Client certificates" below), except
+`litellm`, which uses a scram-sha-256 password over TLS (`cluster.yaml`
+says why). The operator's default pg_hba rejects everything else. No
+NetworkPolicy is applied yet.
 
 ## Client certificates (SPIFFE CA)
 

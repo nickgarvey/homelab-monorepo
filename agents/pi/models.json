@@ -9,6 +9,22 @@
       },
       "models": [
         {
+          "id": "pi",
+          "name": "DeepSeek V4 Flash (litellm)",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 131072,
+          "maxTokens": 16384,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          }
+        },
+        {
           "id": "qwen3.8-flash-next",
           "name": "Qwen3.8 Flash Next (litellm)",
           "reasoning": true,
