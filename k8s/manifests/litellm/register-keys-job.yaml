@@ -1,0 +1,85 @@
+# Registers the virtual keys in the litellm-virtual-keys Secret (secret.yaml)
+# with litellm, each with its alias and the only models it may call. agent-token
+# hands the same values out (manifests/agents/litellm-keys-secret.yaml). A key
+# litellm already has gets its model list set again; nothing else changes, so
+# the Job is safe to re-run, and it is how a lost database gets the keys back.
+# It waits for litellm to be ready, so it can go in with a litellm rollout. The
+# finished Job deletes itself a day later; re-run it sooner with
+# kubectl -n litellm delete job litellm-register-keys first.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: litellm-register-keys
+  namespace: litellm
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  ttlSecondsAfterFinished: 86400
+  backoffLimit: 2
+  activeDeadlineSeconds: 900
+  template:
+    metadata:
+      labels:
+        app: litellm-register-keys
+        app.kubernetes.io/managed-by: ngarvey-homelab
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: register
+          image: alpine:3.24
+          env:
+            - name: MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: litellm
+                  key: master-key
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              apk add --no-cache curl >/dev/null
+              api=http://litellm.litellm.svc.cluster.local:4000
+              for i in $(seq 120); do
+                curl -fsS -o /dev/null "$api/health/readiness" && break
+                [ "$i" = 120 ] && { echo "litellm not ready"; exit 1; }
+                sleep 5
+              done
+
+              # register <alias> <models as a JSON list>: the key is the file
+              # named <alias>. /key/info is asked by the key's hash (as litellm
+              # stores it), so the key itself never appears in a URL or a log.
+              register() {
+                key=$(cat "/keys/$1")
+                hash=$(printf %s "$key" | sha256sum | cut -d' ' -f1)
+                code=$(curl -sS -o /tmp/info -w '%{http_code}' \
+                  -H "Authorization: Bearer $MASTER_KEY" "$api/key/info?key=$hash")
+                case $code in
+                  200) path=/key/update body="{\"key\":\"$key\",\"models\":$2}" ;;
+                  404) path=/key/generate body="{\"key\":\"$key\",\"key_alias\":\"$1\",\"models\":$2}" ;;
+                  *) echo "$1: key/info answered $code:"; cat /tmp/info; echo; exit 1 ;;
+                esac
+                printf %s "$body" | curl -sS -o /tmp/out -w '%{http_code}\n' \
+                  -H "Authorization: Bearer $MASTER_KEY" -H 'Content-Type: application/json' \
+                  --data-binary @- "$api$path" > /tmp/code
+                if [ "$(cat /tmp/code)" != 200 ]; then
+                  echo "$1: $path answered $(cat /tmp/code):"; cat /tmp/out; echo; exit 1
+                fi
+                echo "$1: $path, models $2"
+              }
+
+              register pi '["qwen3.8-flash-next"]'
+              register habit-helper '["habit-helper"]'
+          volumeMounts:
+            - name: keys
+              mountPath: /keys
+              readOnly: true
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+      volumes:
+        - name: keys
+          secret:
+            secretName: litellm-virtual-keys
