@@ -11,8 +11,18 @@ let
 
   root = pkgs.buildEnv {
     name = "habit-helper-postgrest-root";
-    paths = [ pkgs.postgrest pkgs.tern schema ];
-    pathsToLink = [ "/bin" "/share" ];
+    paths = [
+      pkgs.postgrest
+      pkgs.tern
+      schema
+      # tern (the init container) looks up the running user, which needs a
+      # passwd entry for uid 1000.
+      (pkgs.dockerTools.fakeNss.override {
+        extraPasswdLines = [ "habit:x:1000:1000:Habit Helper:/var/empty:/noshell" ];
+        extraGroupLines = [ "habit:!:1000:" ];
+      })
+    ];
+    pathsToLink = [ "/bin" "/etc" "/share" ];
   };
 in
 pkgs.dockerTools.buildLayeredImage {
