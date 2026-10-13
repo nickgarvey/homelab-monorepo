@@ -1,0 +1,23 @@
+# Sandbox policy for the habit-helper agent, passed at sandbox creation
+# (--policy); it is not in the image. It grants no network access itself: the
+# sandbox reaches only what its providers add, litellm (for pi's node) and
+# PostgREST (for the habit CLI). /sandbox is writable, which covers the
+# wake-up outbox, /sandbox/outbox.
+version: 1
+
+filesystem_policy:
+  include_workdir: true
+  read_only:
+    - /nix/store # everything in the image is a store path; /bin and /usr/bin link into it
+    - /bin
+    - /usr
+    - /etc
+    - /proc/self
+    - /dev/urandom
+  read_write:
+    - /sandbox
+    - /tmp
+    - /dev/null
+
+landlock:
+  compatibility: best_effort

@@ -28,12 +28,6 @@ data:
         static:
           file: /etc/agent-token/credentials/litellm-pi
           expiresIn: 1h
-      - name: pi-wakeup-litellm
-        path: /agent/pi-wakeup/
-        audience: litellm
-        static:
-          file: /etc/agent-token/credentials/litellm-pi
-          expiresIn: 1h
       - name: habit-helper-litellm
         path: /agent/habit-helper/
         audience: litellm

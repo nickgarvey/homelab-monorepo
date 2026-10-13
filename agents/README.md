@@ -150,9 +150,8 @@ temporal workflow query --address 127.0.0.1:7236 --namespace agents \
   --workflow-id wakeup/<type>/<conversation> --type pending
 ```
 
-`pi-wakeup` is pi with a 1h `session.defaultWakeup`, for trying wake-ups out.
-pi's instructions don't mention the outbox, so tell it in the message what to
-write.
+`habit-helper` is the type with wake-ups (`session.defaultWakeup` 24h); its
+instructions say when to ask for one, with `habit wake-at`.
 
 ## agents-chat (temporary)
 
@@ -206,8 +205,8 @@ credential is a `token_grant`, so the sandbox's supervisor trades its
 JWT-SVID (`spiffe://home.garvey.sh/agent/<type>/<sandbox-id>`) at agent-token
 for the key granted to that type and puts it in each request's
 `Authorization` header ("The token service" in
-`k8s/manifests/agents/README.md`). pi and pi-wakeup get litellm's `pi` key,
-which may call `qwen3.8-flash-next` only. A sandbox created without an agent
+`k8s/manifests/agents/README.md`). pi gets litellm's `pi` key, which may
+call `qwen3.8-flash-next` only. A sandbox created without an agent
 type (`openshell sandbox create` by hand) gets no key, so its model calls fail
 with a 502.
 

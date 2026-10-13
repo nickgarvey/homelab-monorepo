@@ -27,7 +27,7 @@ answers 401. There are three kinds:
 
   | Alias | Models | agent-token grants |
   |---|---|---|
-  | `pi` | `qwen3.8-flash-next` | `/agent/pi/`, `/agent/pi-wakeup/` |
+  | `pi` | `qwen3.8-flash-next` | `/agent/pi/` |
   | `habit-helper` | `habit-helper` | `/agent/habit-helper/` |
 
   The values are in two Secrets, `litellm-virtual-keys` here and

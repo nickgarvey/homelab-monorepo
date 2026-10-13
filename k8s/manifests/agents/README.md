@@ -184,7 +184,6 @@ The committed grants hand out litellm keys, for audience `litellm`:
 | Grant | SPIFFE IDs | Key (alias in litellm) |
 |---|---|---|
 | `pi-litellm` | `/agent/pi/` | `litellm-pi` (`pi`: `qwen3.8-flash-next`) |
-| `pi-wakeup-litellm` | `/agent/pi-wakeup/` | `litellm-pi` |
 | `habit-helper-litellm` | `/agent/habit-helper/` | `litellm-habit-helper` (`habit-helper`: `habit-helper`) |
 
 litellm decides what each key may call ("Keys" in

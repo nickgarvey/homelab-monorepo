@@ -1,0 +1,6 @@
+{
+  "defaultProvider": "litellm",
+  "defaultModel": "habit-helper",
+  "defaultThinkingLevel": "low",
+  "theme": "dark"
+}

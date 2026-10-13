@@ -20,13 +20,14 @@
     providers = [ "litellm" ];
   };
 
-  # pi with wake-ups, to try the worker's wake-ups out until an agent type of
-  # its own uses them. To be removed by nix-psvkl.7.
-  types.pi-wakeup = {
-    image = images.pi;
-    policy = ./pi/policy.yaml;
-    providers = [ "litellm" ];
-    session.defaultWakeup = "1h";
+  # Habit Helper (epic nix-psvkl): tracks the user's habits and supports them,
+  # through the habit CLI. Wake-ups back off from daily while the user is
+  # silent: 1d, 1d, 1d, 3d, then 7d.
+  types.habit-helper = {
+    image = images.habitHelper;
+    policy = ./habit-helper/policy.yaml;
+    providers = [ "litellm" "habit-data" ];
+    session.defaultWakeup = "24h";
     session.timezone = "America/Los_Angeles";
   };
 }

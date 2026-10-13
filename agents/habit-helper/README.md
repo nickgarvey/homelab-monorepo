@@ -5,15 +5,32 @@ them (epic nix-psvkl). This directory holds what defines it:
 
 | File | What it is |
 |---|---|
+| `image.nix` | The sandbox image: pi, the `habit` CLI, a shell, and pi's config (`models.json`, `settings.json`) and instructions in `/sandbox/.pi/agent`. `nix build .#habit-helper-image`. |
+| `instructions.md` | The agent's instructions (its `AGENTS.md`): onboarding, the end-of-day check-in, coaching and recovery, going quiet, and scheduling its wake-ups. |
+| `policy.yaml` | Sandbox policy: like pi's; `/sandbox`, which holds the wake-up outbox, is writable. |
 | `habit-data-profile.yaml` | The `habit-data` provider profile: PostgREST, reachable only by the `habit` CLI ("habit-data" in `agents/README.md`). |
 | `schema/` | The database schema, applied by PostgREST's init container (`k8s/manifests/habit-helper/README.md`). |
 | `postgrest-image.nix` | PostgREST's image. |
+
+## The agent type
+
+`habit-helper` in `agents/declaration.nix`: pi on litellm's `habit-helper`
+model (DeepSeek V4 Flash for now, `k8s/manifests/litellm/configmap.yaml`;
+nix-psvkl.11 moves it to Claude), with the `litellm` and `habit-data`
+providers. Its supervisor gets litellm's `habit-helper` key and the PostgREST
+token from agent-token; pi's node may reach only litellm, and the `habit` CLI
+only PostgREST. Wake-ups are on (`session.defaultWakeup` 24h, times in
+`America/Los_Angeles`): the agent asks for its check-ins with `habit
+wake-at`, and while the user is silent the default backs off to weekly
+("Wake-ups" in `agents/README.md`). Nothing delivers a wake-up's reply to the
+user yet; it is in the chat log. Talk to it with
+`nix run .#agents-chat -- habit-helper <conversation>`.
 
 ## The `habit` CLI
 
 The agent's only way to its data. Source `packages/agents/cmd/habit` (Go, in
 the agents module), built static by `packages/agents/habit-cli.nix` as the
-flake output `habit-cli` (`nix build .#habit-cli`), to be installed in the
+flake output `habit-cli` (`nix build .#habit-cli`), installed in the
 agent's image. Its build runs the tests, including an integration test that
 runs every command against PostgREST serving `schema/` on a throwaway
 Postgres, behind a stand-in for the sandbox proxy.

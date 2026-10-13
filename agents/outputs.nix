@@ -65,6 +65,7 @@ let
 
   # What a declaration can refer to.
   images.pi = import ./pi/image.nix { inherit pkgs; };
+  images.habitHelper = import ./habit-helper/image.nix { inherit pkgs; habit = habitCli; };
   profiles.piLitellm = piLitellmProfile;
   profiles.habitData = habitDataProfile;
 
@@ -138,13 +139,13 @@ in
 {
   packages.${system} = lib.mapAttrs (_: checkPins) {
     pi-agent-image = images.pi;
+    habit-helper-image = images.habitHelper;
     pi-agent-litellm-profile = piLitellmProfile;
     agents-desired-state = desiredState ./declaration.nix;
     agents-apply = agentsApply;
     agents-worker-image = agentsWorkerImage;
     agent-token-image = agentTokenImage;
     habit-data-profile = habitDataProfile;
-    # Goes into the habit-helper image (nix-psvkl.7).
     habit-cli = habitCli;
     # Pushed as oci.garvey.sh/habit-helper-postgrest:<tag> and run by
     # k8s/manifests/habit-helper/deployment.yaml.
