@@ -179,7 +179,7 @@ func (g *Grant) check(td spiffeid.TrustDomain) error {
 				return fmt.Errorf("jwt.claims: %s is set by the service", k)
 			}
 		}
-		if _, err := readJWTKey(g.JWT.KeyFile); err != nil {
+		if _, err := ReadJWTKey(g.JWT.KeyFile); err != nil {
 			return err
 		}
 	}

@@ -1,0 +1,49 @@
+# OpenShell provider profile: Habit Helper's data, through PostgREST
+# (k8s/manifests/habit-helper). The supervisor gets a short-lived PostgREST
+# JWT (role habit_agent) from agent-token with the sandbox's JWT-SVID and puts
+# it in the Authorization header, replacing whatever the agent sent; the
+# token never reaches the sandbox. agent-token grants it only to
+# spiffe://home.garvey.sh/agent/habit-helper/* (k8s/manifests/agents,
+# agent-token-configmap.yaml). PostgREST is plain HTTP on its cluster Service
+# name: the proxy's upstream TLS trusts only public roots.
+#
+# The rules allow reads, inserts/upserts and updates; Postgres grants are the
+# real limit (no DELETE, no DDL for habit_agent). agents/outputs.nix fills in
+# `binaries` with the real path of the habit CLI (packages/agents/cmd/habit; a
+# store path, since the sandbox matches the resolved exe), the only program
+# that talks to PostgREST.
+id: habit-data
+display_name: habit-data
+description: Habit Helper's data through PostgREST (k8s/manifests/habit-helper)
+category: data
+
+credentials:
+  - name: access_token
+    description: PostgREST JWT from agent-token, via a JWT-SVID client assertion
+    required: true
+    auth_style: bearer
+    header_name: Authorization
+    token_grant:
+      token_endpoint: https://agent-token.agents.svc.cluster.local/token
+      jwt_svid_audience: spiffe://home.garvey.sh/ns/agents/sa/agent-token
+      client_assertion_type: urn:ietf:params:oauth:client-assertion-type:jwt-spiffe
+      audience: habit-data
+
+endpoints:
+  - host: postgrest.habit-helper.svc.cluster.local
+    port: 3000
+    protocol: rest
+    enforcement: enforce
+    rules:
+      - allow:
+          method: GET
+          path: /**
+      - allow:
+          method: POST
+          path: /**
+      - allow:
+          method: PATCH
+          path: /**
+
+binaries:
+  - @habit@

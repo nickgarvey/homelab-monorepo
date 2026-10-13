@@ -20,7 +20,7 @@ func (g *Grant) issue(id spiffeid.ID, now time.Time) (token string, expiresIn ti
 		token, err := readStatic(g.Static.File)
 		return token, g.Static.ExpiresIn, err
 	}
-	key, err := readJWTKey(g.JWT.KeyFile)
+	key, err := ReadJWTKey(g.JWT.KeyFile)
 	if err != nil {
 		return "", 0, err
 	}
@@ -55,9 +55,9 @@ func readStatic(path string) (string, error) {
 	return s, nil
 }
 
-// readJWTKey reads an HS256 key: the file's contents without surrounding
+// ReadJWTKey reads an HS256 key: the file's contents without surrounding
 // whitespace, the same string PostgREST's jwt-secret is set to.
-func readJWTKey(path string) ([]byte, error) {
+func ReadJWTKey(path string) ([]byte, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err

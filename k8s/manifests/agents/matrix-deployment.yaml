@@ -1,9 +1,12 @@
 # The agents' Matrix bridge (packages/agents, cmd/agents-matrix): Synapse
 # pushes it the events of the agents' users (matrix-service.yaml); it runs
 # each message from an allowed user as a turn of the room's conversation and
-# posts the reply as the agent. It logs in to Temporal with its SVID
-# (spiffe-helper) and acts on Synapse with the registration's as_token
-# (matrix-secret.yaml). It keeps no state, so one replica can be replaced at
+# posts the reply as the agent. It also serves the admin API on port 8010
+# (matrix-service.yaml) to the habit-admin agent's sandboxes, checking their
+# tokens with the key in habit-admin-secret.yaml; the API reaches Habit
+# Helper's PostgREST with a token from agent-token. It logs in
+# to Temporal with its SVID (spiffe-helper) and acts on Synapse with the
+# registration's as_token (matrix-secret.yaml). It keeps no state, so one replica can be replaced at
 # any time; a reply still running when it goes is not posted.
 apiVersion: apps/v1
 kind: Deployment
@@ -69,7 +72,7 @@ spec:
       containers:
         # The agents-worker image, which holds every agents binary.
         - name: bridge
-          image: oci.garvey.sh/agents-worker:lmnlkvxccmwvlddpji3wbcqa2733npl8
+          image: oci.garvey.sh/agents-worker:5b5vk0168yazwfhnbzlllrdb0d1c4d03
           command: ["/bin/agents-matrix"]
           args:
             - --temporal-cert=/run/spiffe/svid.pem
@@ -79,9 +82,14 @@ spec:
             - --state=/etc/agents/desired-state/desired-state.json
             # Who the agents talk to; everyone else is ignored.
             - --allow=@ngarvey:matrix.garvey.sh
+            # The admin API, for Habit Helper's data (manifests/habit-helper)
+            # and wake-ups.
+            - --habit-api=http://postgrest.habit-helper.svc.cluster.local:3000
           ports:
             - containerPort: 8009
               name: appservice
+            - containerPort: 8010
+              name: admin-api
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -97,6 +105,9 @@ spec:
             # Mounted whole (no subPath), so the kubelet's updates reach it.
             - name: desired-state
               mountPath: /etc/agents/desired-state
+              readOnly: true
+            - name: admin-api
+              mountPath: /etc/admin-api
               readOnly: true
           readinessProbe:
             httpGet:
@@ -132,3 +143,8 @@ spec:
         - name: desired-state
           configMap:
             name: agents-desired-state
+        # The admin API's token key (habit-admin-secret.yaml).
+        - name: admin-api
+          secret:
+            secretName: agents-admin-api
+            defaultMode: 0440

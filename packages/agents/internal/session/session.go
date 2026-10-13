@@ -1,4 +1,4 @@
-// Package session holds the chat session activities (design section 7):
+// Package session holds the chat session activities:
 // EnsureSandbox, RunTurn, ArchiveSession, StopSandbox and DeleteSandbox, the
 // wake-up outbox (ReadOutbox and ClearOutbox, wakeup.go), and the reaper's
 // PlanReap, ReapExpired, ReapStuck, ReapOrphan and MarkVanished (reap.go).

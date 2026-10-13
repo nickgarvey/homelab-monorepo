@@ -50,7 +50,7 @@ type Reply struct {
 	Text string
 }
 
-// ChatSession is one conversation (design section 7), with workflow ID
+// ChatSession is one conversation, with workflow ID
 // WorkflowID(type, conversation). Callers send each message as a
 // MessageUpdate, with Update-with-Start and conflict policy UseExisting, and
 // get the reply back. Turns run one at a time, in the order the messages

@@ -5,8 +5,7 @@ An OpenAI-compatible proxy in front of the models the cluster uses
 
 | Model | Behind it |
 |---|---|
-| `qwen3.8-flash-next` | llama.cpp on wabbajack, currently off (its memory goes to Nix builds; `hosts/wabbajack/configuration.nix`) |
-| `pi` | DeepSeek V4 Flash (`deepseek/deepseek-v4-flash`), with the key in `litellm-deepseek`; the pi agent's default |
+| `qwen3.8-flash-next` | llama.cpp on wabbajack |
 | `habit-helper` | DeepSeek V4 Flash (`deepseek/deepseek-v4-flash`), with the key in `litellm-deepseek` |
 
 In-cluster clients use `http://litellm.litellm.svc.cluster.local:4000`. The
@@ -28,7 +27,7 @@ answers 401. There are three kinds:
 
   | Alias | Models | agent-token grants |
   |---|---|---|
-  | `pi` | `pi`, `qwen3.8-flash-next` | `/agent/pi/` |
+  | `pi` | `qwen3.8-flash-next` | `/agent/pi/` |
   | `habit-helper` | `habit-helper` | `/agent/habit-helper/` |
   | `habit-admin` | `habit-admin` | `/agent/habit-admin/` |
 

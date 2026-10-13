@@ -9,19 +9,39 @@
   profiles.litellm = profiles.piLitellm;
   providers.litellm.profile = "litellm";
 
+  # Habit Helper's data through PostgREST; only habit-helper sandboxes get
+  # a token for it (k8s/manifests/habit-helper).
+  profiles.habit-data = profiles.habitData;
+  providers.habit-data.profile = "habit-data";
+
+  # The Matrix bridge's admin API, Habit Helper's admin commands; only
+  # habit-admin sandboxes get a token for it (k8s/manifests/agents).
+  profiles.habit-admin-api = profiles.habitAdminApi;
+  providers.habit-admin-api.profile = "habit-admin-api";
+
   types.pi = {
     image = images.pi;
     policy = ./pi/policy.yaml;
     providers = [ "litellm" ];
   };
 
-  # pi with wake-ups, to try the worker's wake-ups out until an agent type of
-  # its own uses them. To be removed by nix-psvkl.7.
-  types.pi-wakeup = {
-    image = images.pi;
-    policy = ./pi/policy.yaml;
-    providers = [ "litellm" ];
-    session.defaultWakeup = "1h";
+  # Habit Helper (epic nix-psvkl): tracks the user's habits and supports them,
+  # through the habit CLI. Wake-ups back off from daily while the user is
+  # silent: 1d, 1d, 1d, 3d, then 7d.
+  types.habit-helper = {
+    image = images.habitHelper;
+    policy = ./habit-helper/policy.yaml;
+    providers = [ "litellm" "habit-data" ];
+    session.defaultWakeup = "24h";
     session.timezone = "America/Los_Angeles";
+  };
+
+  # Habit Admin (nix-LAjpH.6): the user's plain-words console for Habit
+  # Helper's habits and wake-ups, through the habit-admin CLI. No wake-ups:
+  # it only answers.
+  types.habit-admin = {
+    image = images.habitAdmin;
+    policy = ./habit-admin/policy.yaml;
+    providers = [ "litellm" "habit-admin-api" ];
   };
 }

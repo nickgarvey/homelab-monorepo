@@ -1,5 +1,7 @@
-# Where Synapse pushes the bridge its transactions (the registration's url).
-# In-cluster only; every request carries the registration's hs_token.
+# Where Synapse pushes the bridge its transactions (the registration's url),
+# and where the habit-admin agent's sandboxes reach its admin API
+# (agents/habit-admin/admin-api-profile.yaml). In-cluster only; every request
+# carries the registration's hs_token or an admin API token from agent-token.
 apiVersion: v1
 kind: Service
 metadata:
@@ -17,3 +19,7 @@ spec:
       protocol: TCP
       port: 8009
       targetPort: 8009
+    - name: admin-api
+      protocol: TCP
+      port: 8010
+      targetPort: 8010

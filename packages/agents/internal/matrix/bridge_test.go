@@ -428,3 +428,21 @@ func TestDeliverWithNoRoomPostsNothing(t *testing.T) {
 	}
 	assert.Empty(t, hs.Sent())
 }
+
+func TestConversationWith(t *testing.T) {
+	hs, turns := newFakeHS(), &fakeTurns{}
+	hs.joined[room] = []id.UserID{nick, agent}
+	hs.joined["!other"] = []id.UserID{other, agent}
+	b := newBridge(hs, turns)
+	ctx := context.Background()
+	conv, err := b.ConversationWith(ctx, "habit-helper", nick)
+	require.NoError(t, err)
+	assert.Equal(t, Conversation(room), conv)
+
+	_, err = b.ConversationWith(ctx, "habit-helper", "@nobody:matrix.garvey.sh")
+	assert.ErrorContains(t, err, "Habit Helper has no chat with you")
+
+	hs.joined["!second"] = []id.UserID{nick, agent}
+	_, err = b.ConversationWith(ctx, "habit-helper", nick)
+	assert.ErrorContains(t, err, "in 2 rooms with you")
+}

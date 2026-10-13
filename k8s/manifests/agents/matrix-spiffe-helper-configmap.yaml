@@ -1,7 +1,8 @@
 # spiffe-helper keeps the Matrix bridge's X.509-SVID in /run/spiffe
 # (svid.pem, svid_key.pem, and bundle.pem, the trust domain's root, which also
-# verifies Temporal's frontend). The bridge reads the files again for each
-# handshake.
+# verifies Temporal's frontend and agent-token). The bridge reads the files
+# again for each handshake. jwt_svid.token is a JWT-SVID for agent-token,
+# which the admin chat trades for its PostgREST token.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -17,6 +18,7 @@ data:
     svid_file_name = "svid.pem"
     svid_key_file_name = "svid_key.pem"
     svid_bundle_file_name = "bundle.pem"
+    jwt_svids = [{jwt_audience = "spiffe://home.garvey.sh/ns/agents/sa/agent-token", jwt_svid_file_name = "jwt_svid.token"}]
     health_checks {
       listener_enabled = true
       bind_port = 8081

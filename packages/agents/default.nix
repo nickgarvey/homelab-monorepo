@@ -7,7 +7,8 @@
 # session tests run against a throwaway Postgres started by
 # postgresqlTestHook. Built by agents/outputs.nix.
 #
-# The habit CLI (cmd/habit) is built and tested by habit-cli.nix instead. It
+# The habit and habit-admin CLIs (cmd/habit, cmd/habit-admin) are built and
+# tested by habit-cli.nix and habit-admin-cli.nix instead. They
 # and the Nix files are left out of the source here, so changing them does
 # not change these binaries' store paths or the image tags made from them.
 { lib, buildGoModule, postgresql, postgresqlTestHook }:
@@ -18,7 +19,7 @@ buildGoModule {
     path = ./.;
     name = "agents";
     filter = path: _type:
-      !(builtins.elem (lib.removePrefix (toString ./. + "/") path) [ "cmd/habit" "default.nix" "habit-cli.nix" ]);
+      !(builtins.elem (lib.removePrefix (toString ./. + "/") path) [ "cmd/habit" "cmd/habit-admin" "default.nix" "habit-cli.nix" "habit-admin-cli.nix" ]);
   };
   vendorHash = "sha256-+eZCgrKKASUFtt62xN47o0nPTCmjPHYYVtTYJgJDMWk=";
 

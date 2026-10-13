@@ -1,4 +1,4 @@
-# OpenShell provider profile: lets the pi sandbox's node make model calls to
+# OpenShell provider profile: lets pi's node make model calls to
 # litellm, and nothing else. The proxy allows only listing models and chat
 # completions, so litellm's admin and other APIs stay out of reach. Each call
 # carries litellm's key for the sandbox's agent type: the supervisor gets it

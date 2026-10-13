@@ -1,0 +1,65 @@
+# PostgREST's two logins to the shared postgres: the CN is the postgres role,
+# the URI SAN the pod's SPIFFE ID. Issued by the SPIFFE CA only because
+# manifests/cert-manager/spiffe-policies.yaml (spiffe-habit-helper-api,
+# spiffe-habit-helper-owner) allows exactly these names here.
+#
+# habit_helper_api is what PostgREST logs in as; it can do nothing itself and
+# switches to habit_agent for each request. habit_helper owns the database
+# and its schema, and only the schema init container mounts its certificate.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: habit-helper-api-postgres-client
+  namespace: habit-helper
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  secretName: habit-helper-api-postgres-client
+  commonName: habit_helper_api
+  uris:
+    - spiffe://home.garvey.sh/ns/habit-helper/sa/postgrest
+  usages:
+    - client auth
+    - digital signature
+    - key encipherment
+  # Short lived: libpq reads the files for every new connection, and
+  # PostgREST's pool recycles its connections, so the renewed files from the
+  # mounted Secret are picked up without a restart.
+  duration: 24h
+  renewBefore: 8h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: spiffe-ca
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: habit-helper-owner-postgres-client
+  namespace: habit-helper
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  secretName: habit-helper-owner-postgres-client
+  commonName: habit_helper
+  uris:
+    - spiffe://home.garvey.sh/ns/habit-helper/sa/postgrest
+  usages:
+    - client auth
+    - digital signature
+    - key encipherment
+  # Used once per pod start, by the schema init container.
+  duration: 24h
+  renewBefore: 8h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: spiffe-ca

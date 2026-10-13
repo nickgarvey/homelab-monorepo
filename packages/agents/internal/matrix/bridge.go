@@ -25,6 +25,7 @@ import (
 	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
 
+	"homelab/agents/internal/desired"
 	"homelab/agents/internal/session"
 )
 
@@ -141,7 +142,7 @@ func (b *Bridge) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	for typ := range agents {
+	for _, typ := range desired.SortedKeys(agents) {
 		user := b.AgentUser(typ)
 		if err := b.HS.Register(ctx, user, DisplayName(typ)); err != nil {
 			return fmt.Errorf("registering %s: %w", user, err)
@@ -293,11 +294,11 @@ func (b *Bridge) message(ctx context.Context, evt *event.Event) {
 		// An edit: the turn for the original has run.
 		return
 	}
+	text := strings.TrimSpace(m.Body)
 	agents := b.agentsIn(ctx, evt.RoomID)
 	if len(agents) == 0 {
 		return
 	}
-	text := strings.TrimSpace(m.Body)
 	if m.MsgType != event.MsgText || text == "" {
 		for _, typ := range agents {
 			b.notice(ctx, typ, evt, "I can only read text messages.")
@@ -374,28 +375,61 @@ func (b *Bridge) agentsIn(ctx context.Context, room id.RoomID) []string {
 		return nil
 	}
 	var in []string
-	for typ := range agents {
-		b.mu.Lock()
-		joined, known := b.members[room][typ]
-		b.mu.Unlock()
-		if !known {
-			_, err := b.HS.Members(ctx, b.AgentUser(typ), room)
-			switch {
-			case err == nil:
-				joined = true
-			case errors.Is(err, ErrNotInRoom):
-				joined = false
-			default:
-				b.Log.Error("Asking for the room's members failed", "agent", typ, "room", room, "error", err)
-				continue
-			}
-			b.setMember(room, typ, joined)
-		}
-		if joined {
+	for _, typ := range desired.SortedKeys(agents) {
+		if b.joined(ctx, typ, room) {
 			in = append(in, typ)
 		}
 	}
 	return in
+}
+
+// joined reports whether the agent (or admin) typ is in the room, asking
+// the homeserver the first time.
+func (b *Bridge) joined(ctx context.Context, typ string, room id.RoomID) bool {
+	b.mu.Lock()
+	joined, known := b.members[room][typ]
+	b.mu.Unlock()
+	if known {
+		return joined
+	}
+	_, err := b.HS.Members(ctx, b.AgentUser(typ), room)
+	switch {
+	case err == nil:
+		joined = true
+	case errors.Is(err, ErrNotInRoom):
+		joined = false
+	default:
+		b.Log.Error("Asking for the room's members failed", "agent", typ, "room", room, "error", err)
+		return false
+	}
+	b.setMember(room, typ, joined)
+	return joined
+}
+
+// ConversationWith is the conversation of the agent typ's direct chat with
+// user: the one room both are joined to.
+func (b *Bridge) ConversationWith(ctx context.Context, typ string, user id.UserID) (string, error) {
+	rooms, err := b.HS.JoinedRooms(ctx, b.AgentUser(typ))
+	if err != nil {
+		return "", err
+	}
+	var found []id.RoomID
+	for _, room := range rooms {
+		members, err := b.HS.Members(ctx, b.AgentUser(typ), room)
+		if err != nil {
+			return "", err
+		}
+		if contains(members, user) {
+			found = append(found, room)
+		}
+	}
+	switch len(found) {
+	case 0:
+		return "", fmt.Errorf("%s has no chat with you that you have joined", DisplayName(typ))
+	case 1:
+		return Conversation(found[0]), nil
+	}
+	return "", fmt.Errorf("%s is in %d rooms with you, so I can't tell which chat you mean; leave the ones you don't use", DisplayName(typ), len(found))
 }
 
 func (b *Bridge) setMember(room id.RoomID, typ string, joined bool) {

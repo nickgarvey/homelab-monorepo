@@ -40,7 +40,7 @@ type ReapStep struct {
 }
 
 // SandboxReaper deletes the sandboxes, and so the PVCs, no conversation
-// needs (design section 7, "PV cleanup"), each by its own activity, which
+// needs, each by its own activity, which
 // checks again before it acts:
 //  1. Expired: stopped longer than the type's session retention.
 //  2. Stuck: rows left in deleting.

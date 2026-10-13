@@ -30,6 +30,12 @@ data:
         litellm_params:
           model: deepseek/deepseek-v4-flash
           api_key: os.environ/DEEPSEEK_API_KEY
+      # The same model, for the habit-admin agent, under its own name so either
+      # can move on its own.
+      - model_name: habit-admin
+        litellm_params:
+          model: deepseek/deepseek-v4-flash
+          api_key: os.environ/DEEPSEEK_API_KEY
     litellm_settings:
       drop_params: true
     general_settings:

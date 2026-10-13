@@ -3,7 +3,7 @@
 # agents/declaration.nix, agents-apply, which publishes it, the images of
 # agents-worker, which runs the chat sessions, and of agent-token, the token
 # service for sandbox credentials, and of Habit Helper's PostgREST, and the
-# habit CLI.
+# habit and habit-admin CLIs.
 # Imported by the root flake.nix.
 { self, nixpkgs, ... }:
 let
@@ -63,11 +63,26 @@ let
     substitute ${./habit-helper/habit-data-profile.yaml} $out --replace-fail @habit@ "$habit"
   '';
 
+  # The habit-admin CLI, the habit-admin agent's way to the bridge's admin
+  # API.
+  habitAdminCli = pkgs.callPackage ../packages/agents/habit-admin-cli.nix {
+    agents = agentsGo;
+  };
+
+  # The habit-admin-api profile's binaries entry: the habit-admin CLI,
+  # resolved past symlinks, like habit-data's.
+  habitAdminApiProfile = pkgs.runCommand "habit-admin-api-profile.yaml" { } ''
+    cli=$(readlink -f ${lib.getExe habitAdminCli})
+    substitute ${./habit-admin/admin-api-profile.yaml} $out --replace-fail @habit-admin@ "$cli"
+  '';
+
   # What a declaration can refer to.
   images.pi = import ./pi/image.nix { inherit pkgs; };
   images.habitHelper = import ./habit-helper/image.nix { inherit pkgs; habit = habitCli; };
+  images.habitAdmin = import ./habit-admin/image.nix { inherit pkgs; habitAdmin = habitAdminCli; };
   profiles.piLitellm = piLitellmProfile;
   profiles.habitData = habitDataProfile;
+  profiles.habitAdminApi = habitAdminApiProfile;
 
   # evalAgents <module>: the declaration evaluated against agents/schema.nix.
   evalAgents = declaration: lib.evalModules {
@@ -136,6 +151,9 @@ in
     agent-token-image = agentTokenImage;
     habit-data-profile = habitDataProfile;
     habit-cli = habitCli;
+    habit-admin-image = images.habitAdmin;
+    habit-admin-api-profile = habitAdminApiProfile;
+    habit-admin-cli = habitAdminCli;
     # Pushed as oci.garvey.sh/habit-helper-postgrest:<tag> and run by
     # k8s/manifests/habit-helper/deployment.yaml.
     habit-helper-postgrest-image = import ./habit-helper/postgrest-image.nix { inherit pkgs; };
@@ -145,5 +163,6 @@ in
     agents-declaration-test = import ./declaration-test.nix { inherit pkgs lib images desiredState; };
     agents-go-tests = agentsGo;
     habit-cli-tests = habitCli;
+    habit-admin-cli-tests = habitAdminCli;
   };
 }
