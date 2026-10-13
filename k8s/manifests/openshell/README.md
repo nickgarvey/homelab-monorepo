@@ -18,7 +18,10 @@ ipv6_only)" at start. Still broken upstream: a policy endpoint given as an
 IPv6 literal fails (the supervisor writes the CONNECT host unbracketed), so
 use hostnames. The build also carries
 `patches/openshell-supervisor-template-labels.patch`, which puts the sandbox
-template's labels on the supervisor pod too ("Provider token grants").
+template's labels on the supervisor pod too ("Provider token grants"). The
+supervisor image also trusts the spiffe-ca root, for token endpoints with
+spiffe-ca certificates, so the supervisor stays our build after the patches
+are gone.
 
 ## Apply order (from `k8s/`)
 
@@ -131,8 +134,12 @@ the profile's `jwt_svid_audience`, or else the token endpoint URL), POSTs it as
 the `client_assertion` of a `client_credentials` grant to `token_endpoint`,
 caches the returned token, and injects it into matching requests. The token
 and the socket never reach the workload pod. The token endpoint must be
-`https://` (verified against the supervisor image's system CAs) or `http://`
-to a `<svc>.<ns>.svc[.cluster.local]` name.
+`https://` or `http://` to a `<svc>.<ns>.svc[.cluster.local]` name; we use
+`https://`. It is verified against the supervisor image's `SSL_CERT_FILE`,
+the public CAs plus the spiffe-ca root (`packages/openshell/spiffe-ca.crt`),
+so a spiffe-ca server certificate works. Our token endpoint is agent-token
+("The token service" in `manifests/agents/README.md`). The proxy's own
+upstream TLS does not use that file and trusts only the public roots.
 
 The supervisor's identity is
 `spiffe://home.garvey.sh/agent/<type>/<sandbox-id>`, from the

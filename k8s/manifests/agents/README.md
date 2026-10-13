@@ -107,6 +107,113 @@ All three know the worker by its ServiceAccount, `agents-worker`:
   ("S3 on Ceph RGW" in `manifests/spire/README.md`). Its ARN is
   `arn:aws:iam::RGW77873637642885287:role/nix-managed/agents-worker`.
 
+## The token service
+
+`agent-token` (`packages/agents`, `cmd/agent-token`) hands out credentials to
+SPIFFE identities: an OAuth2 token endpoint for the `client_credentials`
+grant, with a JWT-SVID as the client assertion. It is what OpenShell provider
+profiles with a `token_grant` call ("Provider token grants" in
+`manifests/openshell/README.md`), so a sandbox's model key or data token never
+lives in the sandbox; any in-cluster workload can use it with its own pod SVID
+too. Nothing about where a request comes from counts: pod IPs are reachable
+from the LAN, so the JWT-SVID is the only thing it trusts.
+
+```
+POST https://agent-token.agents.svc.cluster.local/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=client_credentials
+client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-spiffe   (or ...:jwt-bearer)
+client_assertion=<JWT-SVID>
+audience=<what the credential is for>
+```
+
+The JWT-SVID must be signed by a key in the trust domain's JWT bundle (from
+the SPIRE Workload API), be unexpired, have a SPIFFE ID in `home.garvey.sh`,
+and carry exactly one audience,
+`spiffe://home.garvey.sh/ns/agents/sa/agent-token`, the service's own ID. A
+token for several audiences is refused, so no other service that received it
+could replay it here. `scope` is refused. A grant is answered
+`{"access_token": ..., "token_type": "Bearer", "expires_in": <seconds>}` with
+`Cache-Control: no-store`; anything else is an OAuth error,
+`{"error": ..., "error_description": ...}`: `invalid_client` (401) for a bad
+assertion, `invalid_target` (400) when no grant matches, `invalid_request`,
+`unsupported_grant_type` or `invalid_scope` (400) for a malformed request. The
+supervisor logs both fields and answers the agent's request with a 502.
+
+**Grants** are in `agent-token-configmap.yaml`, read at start (restart the
+Deployment after a change; it refuses to start on a bad one). Each maps a
+SPIFFE ID path and a requested `audience` to one credential:
+
+```yaml
+grants:
+  - name: pi-litellm
+    path: /agent/pi/              # ends in "/": every ID below it; otherwise exactly this ID
+    audience: litellm
+    static:                       # a secret from a file, e.g. a litellm virtual key
+      file: /etc/agent-token/credentials/litellm-pi
+      expiresIn: 5m               # the expires_in sent, so how long the supervisor caches it
+  - name: habit-data
+    path: /agent/habit-helper/
+    audience: habit-postgrest
+    jwt:                          # an HS256 JWT signed with the key in keyFile, e.g. for PostgREST
+      keyFile: /etc/agent-token/credentials/postgrest-jwt-key
+      ttl: 5m
+      claims: {role: habit_agent} # plus sub (the SPIFFE ID), iat and exp, set by the service
+```
+
+`expiresIn` and `ttl` default to 5m and may be 1m to 1h. A static secret must
+be a token68 string (what the supervisor accepts); a JWT key at least 32
+bytes, as for PostgREST's `jwt-secret`. The service refuses to start if two
+grants for one audience could match the same ID, if a grant covers
+`/agent/untyped/` (sandboxes created without an agent type, whose creator chose
+no identity), or if a file is missing or invalid. Credential files are read
+again for every grant, so a rotated key goes out as soon as the Secret volume
+updates. They are keys of the `agent-token-credentials` Secret, from the
+SopsSecret in `secret.yaml`; today it holds only two throwaway test values,
+`test-static-token` and `test-jwt-key`, and the committed config has no grants.
+
+**HTTPS.** The certificate (`agent-token-certificate.yaml`) is from the
+spiffe-ca ClusterIssuer, for the Service's names only; the
+`spiffe-agent-token` policy in `manifests/cert-manager/spiffe-policies.yaml`
+allows exactly those, and only here. Our supervisor image trusts the spiffe-ca
+root (`packages/openshell`), which is how a profile's `https://` token endpoint
+verifies. It is a cert-manager certificate rather than the pod's X.509-SVID
+because the supervisor's TLS library (rustls-webpki) refuses certificates
+with a URI SAN under the root's name constraint ("Certificate users" in
+`manifests/openshell/README.md`). The service reloads the files when
+cert-manager renews them.
+
+**Network.** No CiliumNetworkPolicy of its own: the Service is ClusterIP, and
+`manifests/cilium/pod-ingress-default-deny.yaml` already keeps the LAN out of
+the pod while letting the cluster in. A narrower allow-list (only sandbox
+supervisors) could not be expressed without taking the pod out of that policy,
+since allow rules add up, and would shut out the in-cluster workloads the
+service is also for.
+
+A profile using it:
+
+```yaml
+credentials:
+  - name: api_key
+    auth_style: bearer
+    header_name: Authorization
+    token_grant:
+      grant_type: client_credentials
+      token_endpoint: https://agent-token.agents.svc.cluster.local/token
+      jwt_svid_audience: spiffe://home.garvey.sh/ns/agents/sa/agent-token
+      client_assertion_type: urn:ietf:params:oauth:client-assertion-type:jwt-spiffe
+      audience: litellm
+```
+
+The image is `nix build .#agent-token-image`, tagged like the worker's (the
+store hash of `packages/agents`):
+
+```sh
+nix build .#agent-token-image
+skopeo copy docker-archive:result docker://oci.garvey.sh/agent-token:$(nix eval --raw .#agent-token-image.imageTag)
+```
+
 ## Apply (from `k8s/`)
 
 `manifests/cert-manager/spiffe-policies.yaml` first, and the gateway with
@@ -140,6 +247,22 @@ image is pushed:
 ```sh
 kubectl apply -f manifests/agents/spiffe-helper-configmap.yaml
 kubectl apply -f manifests/agents/deployment.yaml
+```
+
+The token service, with `manifests/cert-manager/spiffe-policies.yaml` applied
+and its image pushed. Sandboxes reach it only once their supervisor runs our
+image with the spiffe-ca root ("Upgrading" in `manifests/openshell/README.md`
+for pushing and pinning it):
+
+```sh
+kubectl apply -f manifests/agents/secret.yaml
+kubectl apply -f manifests/agents/agent-token-service-account.yaml
+kubectl apply -f manifests/agents/agent-token-certificate.yaml
+kubectl -n agents wait --for=condition=Ready certificate/agent-token-tls
+kubectl apply -f manifests/agents/agent-token-configmap.yaml
+kubectl apply -f manifests/agents/agent-token-deployment.yaml
+kubectl apply -f manifests/agents/agent-token-service.yaml
+kubectl -n agents rollout status deploy/agent-token
 ```
 
 The RGW role takes effect when joor is deployed. `postgres-1` is whichever
