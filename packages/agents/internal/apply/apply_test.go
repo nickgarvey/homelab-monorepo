@@ -95,7 +95,13 @@ func (w *world) Run(_ context.Context, argv []string, opts runner.Opts) runner.R
 			if w.images[ref] {
 				return ok("{}")
 			}
-			return fail(`level=fatal msg="reading manifest abc in oci.garvey.sh/pi-agent: manifest unknown"`)
+			repo, _, _ := strings.Cut(ref, ":")
+			for r := range w.images {
+				if strings.HasPrefix(r, repo+":") {
+					return fail(`level=fatal msg="reading manifest abc in oci.garvey.sh/pi-agent: manifest unknown"`)
+				}
+			}
+			return fail(`level=fatal msg="Error parsing image name \"docker://` + ref + `\": reading manifest abc in oci.garvey.sh/pi-agent: repository name not known to registry"`)
 		}
 		w.images[ref] = true
 		return change(ok(""))
@@ -280,6 +286,20 @@ func TestChangedProfileIsUpdatedWithItsResourceVersion(t *testing.T) {
 	}
 	if got := w.profiles["litellm"]; got["category"] != "inference" || got["resource_version"] != 2.0 {
 		t.Errorf("profile after update: %v", got)
+	}
+}
+
+// The first run pushes to a repository the registry has never held; this is
+// a new tag in one it has.
+func TestNewTagInKnownRepositoryIsPushed(t *testing.T) {
+	w := newWorld()
+	w.images["oci.garvey.sh/pi-agent:old"] = true
+	a := applier(t, w, false)
+	if err := a.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(a.Actions) == 0 || a.Actions[0] != "push image oci.garvey.sh/pi-agent:abc" {
+		t.Errorf("actions: %q", a.Actions)
 	}
 }
 

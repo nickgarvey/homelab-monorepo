@@ -145,7 +145,9 @@ func (a *Applier) images(ctx context.Context) error {
 		if !res.Failed() {
 			continue
 		}
-		if !strings.Contains(res.Stderr, "manifest unknown") {
+		// zot answers "manifest unknown" for a new tag, and "repository name
+		// not known to registry" for a repository it has never held.
+		if !strings.Contains(res.Stderr, "manifest unknown") && !strings.Contains(res.Stderr, "repository name not known") {
 			return fmt.Errorf("skopeo inspect %s: %s", img.Ref, failure(res))
 		}
 		err := a.change(ctx, "push image "+img.Ref,
