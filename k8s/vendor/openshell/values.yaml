@@ -93,7 +93,7 @@ gateway:
     digest: sha256:a46429242f4041d2b6d886e3b255f9d78d15181bafa0ce025859f7d8e414cbaa
 supervisor:
   image:
-    digest: sha256:c83826c1bc6c646e5827ecdc0ea68b72462a35e53c1435fef8a21a122ad1349b
+    digest: sha256:0faa84144521c65c67b6bd3b32855beef68ca8376d0f67ad38a832a02f92b681
 sandboxRuntime:
   image:
     digest: sha256:561c63acbc7f247c452d83e90d92623403d66a7eed031e23b809ac3d4177b885
