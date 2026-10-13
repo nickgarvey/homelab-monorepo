@@ -79,3 +79,19 @@ spec:
   owner: litellm
   cluster:
     name: postgres
+---
+# Habit Helper's data (k8s/manifests/habit-helper). Its schema and grants come
+# from the migrations in agents/habit-helper/schema/, run as the owner; the
+# first also closes CONNECT to everyone but PostgREST's login.
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: habit-helper
+  namespace: postgres
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  name: habit_helper
+  owner: habit_helper
+  cluster:
+    name: postgres

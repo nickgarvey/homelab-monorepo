@@ -1,0 +1,22 @@
+# PostgREST for sandbox supervisors (the habit-data provider profile,
+# agents/habit-helper/habit-data-profile.yaml), at
+# http://postgrest.habit-helper.svc.cluster.local:3000. Plain HTTP: the
+# supervisor's proxy trusts only public roots for upstream TLS. ClusterIP
+# only; every request needs a JWT from agent-token.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgrest
+  namespace: habit-helper
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  ipFamilies: [IPv6]
+  ipFamilyPolicy: SingleStack
+  selector:
+    app: postgrest
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+      protocol: TCP

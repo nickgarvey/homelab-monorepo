@@ -73,6 +73,24 @@ spec:
         login: true
         passwordSecret:
           name: postgres-litellm
+      # Habit Helper's data (manifests/habit-helper): habit_helper owns the
+      # habit_helper database and runs its migrations; PostgREST logs in as
+      # habit_helper_api, which holds no privileges itself (noinherit) and
+      # switches to habit_agent per request. habit_agent cannot log in; its
+      # grants are in the migrations (agents/habit-helper/schema/).
+      # Certificate login only, like openshell.
+      - name: habit_helper
+        ensure: present
+        login: true
+      - name: habit_agent
+        ensure: present
+        login: false
+      - name: habit_helper_api
+        ensure: present
+        login: true
+        inherit: false
+        inRoles:
+          - habit_agent
   postgresql:
     # A role gets the databases named here and no others. First match wins and
     # the operator puts these before its 'host all all all scram-sha-256', so
@@ -89,6 +107,10 @@ spec:
       - host all agents all reject
       - hostssl litellm litellm all scram-sha-256
       - host all litellm all reject
+      - hostssl habit_helper habit_helper all cert clientname=DN map=spiffe
+      - host all habit_helper all reject
+      - hostssl habit_helper habit_helper_api all cert clientname=DN map=spiffe
+      - host all habit_helper_api all reject
     # A certificate login matches the client certificate's whole subject DN,
     # not just its CN. The client CA signs for the whole trust domain, so only
     # these exact DNs, which come from the policies in
@@ -100,3 +122,5 @@ spec:
       - spiffe "CN=openshell" openshell
       - spiffe "CN=celler" celler
       - spiffe "CN=agents" agents
+      - spiffe "CN=habit_helper" habit_helper
+      - spiffe "CN=habit_helper_api" habit_helper_api

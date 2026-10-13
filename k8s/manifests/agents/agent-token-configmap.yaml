@@ -40,3 +40,13 @@ data:
         static:
           file: /etc/agent-token/credentials/litellm-habit-helper
           expiresIn: 1h
+      # Habit Helper's data: a PostgREST JWT for habit-helper sandboxes
+      # (manifests/habit-helper). Its key is a separate Secret,
+      # agent-token-habit-data-secret.yaml, mounted at /etc/agent-token/habit-data.
+      - name: habit-data
+        path: /agent/habit-helper/
+        audience: habit-data
+        jwt:
+          keyFile: /etc/agent-token/habit-data/postgrest-jwt-key
+          ttl: 5m
+          claims: {role: habit_agent, aud: habit-data}

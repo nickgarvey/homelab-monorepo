@@ -155,11 +155,11 @@ grants:
       expiresIn: 5m               # the expires_in sent, so how long the supervisor caches it
   - name: habit-data
     path: /agent/habit-helper/
-    audience: habit-postgrest
+    audience: habit-data
     jwt:                          # an HS256 JWT signed with the key in keyFile, e.g. for PostgREST
-      keyFile: /etc/agent-token/credentials/postgrest-jwt-key
+      keyFile: /etc/agent-token/habit-data/postgrest-jwt-key
       ttl: 5m
-      claims: {role: habit_agent} # plus sub (the SPIFFE ID), iat and exp, set by the service
+      claims: {role: habit_agent, aud: habit-data} # plus sub (the SPIFFE ID), iat and exp, set by the service
 ```
 
 `expiresIn` and `ttl` default to 5m and may be 1m to 1h. A static secret must
@@ -174,6 +174,10 @@ directory: `agent-token-credentials` (`secret.yaml`), which holds only two
 throwaway test values, `test-static-token` and `test-jwt-key`, that no grant
 uses, and `agent-token-litellm` (`litellm-keys-secret.yaml`), the litellm
 virtual keys.
+The `habit-data` grant (Habit Helper's PostgREST,
+`manifests/habit-helper/README.md`) has its key in a Secret of its own,
+`agent-token-habit-data` from `agent-token-habit-data-secret.yaml`, mounted at
+`/etc/agent-token/habit-data`; PostgREST holds the same key.
 
 The committed grants hand out litellm keys, for audience `litellm`:
 
@@ -276,6 +280,7 @@ kubectl -n agents get secret agent-token-credentials agent-token-litellm   # wai
 kubectl apply -f manifests/agents/agent-token-service-account.yaml
 kubectl apply -f manifests/agents/agent-token-certificate.yaml
 kubectl -n agents wait --for=condition=Ready certificate/agent-token-tls
+kubectl apply -f manifests/agents/agent-token-habit-data-secret.yaml
 kubectl apply -f manifests/agents/agent-token-configmap.yaml
 kubectl apply -f manifests/agents/agent-token-deployment.yaml
 kubectl apply -f manifests/agents/agent-token-service.yaml

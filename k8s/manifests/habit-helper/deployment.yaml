@@ -1,0 +1,121 @@
+# PostgREST serving schema habit of the habit_helper database to Habit
+# Helper's sandboxes (README.md). No anonymous role: a request needs an HS256
+# JWT signed with the key agent-token signs habit-data tokens with, carrying
+# aud habit-data; PostgREST then runs it as the JWT's role, which only
+# habit_agent can be. The image is agents/habit-helper/postgrest-image.nix.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgrest
+  namespace: habit-helper
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgrest
+  template:
+    metadata:
+      labels:
+        app: postgrest
+        app.kubernetes.io/managed-by: ngarvey-homelab
+    spec:
+      serviceAccountName: postgrest
+      securityContext:
+        runAsNonRoot: true
+        # The image runs as 1000; this lets it read the keys (0440).
+        fsGroup: 1000
+      # The schema migrations (agents/habit-helper/schema/, in the image), as
+      # the database owner, before PostgREST starts. tern applies the ones not
+      # yet applied, each in a transaction, under an advisory lock, so two pods
+      # starting at once do not race; on a current schema it does nothing.
+      initContainers:
+        - name: schema
+          image: &image oci.garvey.sh/habit-helper-postgrest:dhaa6jkwh8zsx9v87m8042vrn3625dxw
+          imagePullPolicy: IfNotPresent
+          command: [/bin/tern]
+          args:
+            - migrate
+            - --migrations=/share/habit-helper/schema
+            - --conn-string=host=postgres-rw.postgres.svc port=5432 dbname=habit_helper user=habit_helper sslmode=verify-full sslrootcert=/etc/habit-pg/owner/ca.crt sslcert=/etc/habit-pg/owner/tls.crt sslkey=/etc/habit-pg/owner/tls.key
+          securityContext: &containerSecurity
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: owner-postgres-client
+              mountPath: /etc/habit-pg/owner
+              readOnly: true
+      containers:
+        - name: postgrest
+          image: *image
+          imagePullPolicy: IfNotPresent
+          env:
+            # libpq: the server certificate is checked against the spiffe-ca
+            # root (ca.crt) for the Service name; the client certificate is
+            # the login. libpq reads the files for each new connection.
+            - name: PGRST_DB_URI
+              value: host=postgres-rw.postgres.svc port=5432 dbname=habit_helper user=habit_helper_api sslmode=verify-full sslrootcert=/etc/habit-pg/api/ca.crt sslcert=/etc/habit-pg/api/tls.crt sslkey=/etc/habit-pg/api/tls.key
+            - { name: PGRST_DB_SCHEMAS, value: habit }
+            - { name: PGRST_DB_EXTRA_SEARCH_PATH, value: "" }
+            # Configuration only from here, never from role settings in the
+            # database.
+            - { name: PGRST_DB_CONFIG, value: "false" }
+            - { name: PGRST_DB_POOL, value: "5" }
+            # No PGRST_DB_ANON_ROLE: requests without a JWT get 401.
+            - { name: PGRST_JWT_SECRET, value: "@/etc/postgrest/jwt/jwt-secret" }
+            # A JWT with another aud is refused. PostgREST accepts one with no
+            # aud at all, but agent-token always sets it.
+            - { name: PGRST_JWT_AUD, value: habit-data }
+            - { name: PGRST_SERVER_HOST, value: "!6" }
+            - { name: PGRST_SERVER_PORT, value: "3000" }
+            # /live, /ready, /metrics and /schema_cache; nothing secret.
+            - { name: PGRST_ADMIN_SERVER_PORT, value: "3001" }
+            # One line per request: method, path, status.
+            - { name: PGRST_LOG_LEVEL, value: info }
+          ports:
+            - containerPort: 3000
+              name: http
+            - containerPort: 3001
+              name: admin
+          securityContext: *containerSecurity
+          volumeMounts:
+            - name: api-postgres-client
+              mountPath: /etc/habit-pg/api
+              readOnly: true
+            # Read at start: after the key changes, restart the Deployment.
+            - name: jwt
+              mountPath: /etc/postgrest/jwt
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 3001
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: 3001
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 256Mi
+      volumes:
+        - name: api-postgres-client
+          secret:
+            secretName: habit-helper-api-postgres-client
+            # 0440, root:1000. libpq refuses a key readable by anyone else.
+            defaultMode: 0440
+        - name: owner-postgres-client
+          secret:
+            secretName: habit-helper-owner-postgres-client
+            defaultMode: 0440
+        - name: jwt
+          secret:
+            secretName: postgrest-jwt
+            defaultMode: 0440

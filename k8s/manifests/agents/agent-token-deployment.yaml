@@ -63,6 +63,9 @@ spec:
             - name: credentials
               mountPath: /etc/agent-token/credentials
               readOnly: true
+            - name: habit-data
+              mountPath: /etc/agent-token/habit-data
+              readOnly: true
           # Ready once it holds the trust domain's JWT bundle.
           readinessProbe:
             httpGet:
@@ -101,3 +104,8 @@ spec:
                   name: agent-token-credentials
               - secret:
                   name: agent-token-litellm
+        # The habit-data grant's JWT key (agent-token-habit-data-secret.yaml).
+        - name: habit-data
+          secret:
+            secretName: agent-token-habit-data
+            defaultMode: 0440
