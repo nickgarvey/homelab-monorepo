@@ -92,7 +92,12 @@ spec:
           secret:
             secretName: agent-token-tls
             defaultMode: 0440
+        # Both credential Secrets in one directory (agent-token-configmap.yaml).
         - name: credentials
-          secret:
-            secretName: agent-token-credentials
+          projected:
             defaultMode: 0440
+            sources:
+              - secret:
+                  name: agent-token-credentials
+              - secret:
+                  name: agent-token-litellm

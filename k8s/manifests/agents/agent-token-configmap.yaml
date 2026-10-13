@@ -1,7 +1,8 @@
 # agent-token's grants: which SPIFFE IDs, asking for which audience, get
 # which credential (format in packages/agents/internal/token/config.go, and
 # "The token service" in README.md). The credential files are keys of the
-# agent-token-credentials Secret (secret.yaml), mounted at
+# agent-token-credentials (secret.yaml) and agent-token-litellm
+# (litellm-keys-secret.yaml) Secrets, both mounted at
 # /etc/agent-token/credentials. Read at start: after a change,
 # kubectl -n agents rollout restart deploy/agent-token.
 apiVersion: v1
@@ -16,4 +17,26 @@ data:
     trustDomain: home.garvey.sh
     # The jwt_svid_audience every caller asks SPIRE for.
     audience: spiffe://home.garvey.sh/ns/agents/sa/agent-token
-    grants: []
+    grants:
+      # litellm virtual keys (manifests/litellm, "Keys"), each limited by
+      # litellm to its models. Static keys: expiresIn only sets how long a
+      # supervisor caches one (less 30s); revoking a key in litellm takes
+      # effect at once.
+      - name: pi-litellm
+        path: /agent/pi/
+        audience: litellm
+        static:
+          file: /etc/agent-token/credentials/litellm-pi
+          expiresIn: 1h
+      - name: pi-wakeup-litellm
+        path: /agent/pi-wakeup/
+        audience: litellm
+        static:
+          file: /etc/agent-token/credentials/litellm-pi
+          expiresIn: 1h
+      - name: habit-helper-litellm
+        path: /agent/habit-helper/
+        audience: litellm
+        static:
+          file: /etc/agent-token/credentials/litellm-habit-helper
+          expiresIn: 1h
