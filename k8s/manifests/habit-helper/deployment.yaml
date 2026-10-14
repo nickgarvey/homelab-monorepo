@@ -32,7 +32,7 @@ spec:
       # starting at once do not race; on a current schema it does nothing.
       initContainers:
         - name: schema
-          image: &image oci.garvey.sh/habit-helper-postgrest:jihz4pyzc3wsx3519gly2jbrxvm5dybc
+          image: &image oci.garvey.sh/habit-helper-postgrest:hbwy0294yk30fammllfvha5vdk88rmfc
           imagePullPolicy: IfNotPresent
           command: [/bin/tern]
           args:
