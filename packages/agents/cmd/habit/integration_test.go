@@ -1,55 +1,29 @@
 package main
 
 import (
-	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
-	"fmt"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
 	"net/url"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"homelab/agents/internal/habittest"
 )
 
 // The integration test runs every command against PostgREST serving the
-// habit-helper schema on a throwaway Postgres, as in the cluster: roles
-// habit_helper (owner, applies the migrations), habit_agent and
-// habit_helper_api (PostgREST's NOINHERIT login), no anonymous role, JWTs
-// with role habit_agent and aud habit-data. In front of PostgREST a proxy
-// stands in for the sandbox supervisor: it injects the token and allows only
-// GET, POST and PATCH, like the habit-data profile.
-//
-// The habit-cli build runs it (packages/agents/habit-cli.nix): it needs
-// AGENTS_TEST_POSTGRES (postgresqlTestHook's Postgres), HABIT_TEST_SCHEMA
-// (agents/habit-helper/schema) and postgrest on PATH.
-
-const testJWTKey = "integration-test-key-0123456789abcdef0123456789abcdef"
+// habit-helper schema on a throwaway Postgres (internal/habittest), with
+// tokens for role habit_agent. In front of PostgREST a proxy stands in for
+// the sandbox supervisor: it injects the token and allows only GET, POST and
+// PATCH, like the habit-data profile.
 
 func TestIntegration(t *testing.T) {
-	schema := os.Getenv("HABIT_TEST_SCHEMA")
-	if os.Getenv("AGENTS_TEST_POSTGRES") == "" || schema == "" {
-		t.Skip("needs AGENTS_TEST_POSTGRES and HABIT_TEST_SCHEMA; the habit-cli Nix build runs it")
-	}
-	postgrestBin, err := exec.LookPath("postgrest")
-	if err != nil {
-		t.Fatal("postgrest is not on PATH")
-	}
-	ctx := context.Background()
-	setupDatabase(t, ctx, schema)
-	pgrst := startPostgREST(t, postgrestBin)
+	pgrst := habittest.Start(t)
 
 	sup := &supervisor{t: t, target: pgrst}
 	srv := httptest.NewServer(sup)
@@ -324,132 +298,65 @@ func (s *supervisor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	u, _ := url.Parse(s.target)
 	p := httputil.NewSingleHostReverseProxy(u)
-	r.Header.Set("Authorization", "Bearer "+testJWT(s.t, map[string]any{
-		"role": "habit_agent", "aud": "habit-data", "sub": "spiffe://home.garvey.sh/agent/habit-helper/test",
-		"exp": time.Now().Add(5 * time.Minute).Unix(),
-	}))
+	r.Header.Set("Authorization", "Bearer "+habittest.Token(s.t, "habit_agent"))
 	p.ServeHTTP(w, r)
 }
 
-func testJWT(t *testing.T, claims map[string]any) string {
-	enc := base64.RawURLEncoding
-	h := enc.EncodeToString([]byte(`{"alg":"HS256","typ":"JWT"}`))
-	c, err := json.Marshal(claims)
-	if err != nil {
-		t.Fatal(err)
+// An archived habit (set by habit_admin, the admin chat's role) is gone for
+// the coach: no command sees it or can change it, and its role can neither
+// archive nor delete.
+func TestArchivedHabitIsHiddenFromTheCoach(t *testing.T) {
+	pgrst := habittest.Start(t)
+	srv := httptest.NewServer(&supervisor{t: t, target: pgrst})
+	defer srv.Close()
+	it := &itApp{testApp: newTestApp(t, srv.URL, time.Now())}
+	today := dayOf(it.now.In(mustLoc(t))).String()
+	for _, name := range []string{"walk", "stretch"} {
+		it.ok("add", name, "--cue", "if I finish lunch, then I "+name, "--motivation", "m", "--prep", "p")
 	}
-	signing := h + "." + enc.EncodeToString(c)
-	mac := hmac.New(sha256.New, []byte(testJWTKey))
-	mac.Write([]byte(signing))
-	return signing + "." + enc.EncodeToString(mac.Sum(nil))
-}
+	it.ok("log", "walk", today, "done")
+	it.ok("note", "walk", "motivation", "fresh air")
 
-// setupDatabase makes the roles and database as k8s/manifests/postgres does
-// and applies the migrations as the owner, each file in a transaction, as
-// tern does.
-func setupDatabase(t *testing.T, ctx context.Context, schemaDir string) {
-	admin, err := pgx.Connect(ctx, "user=postgres dbname=postgres")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer admin.Close(ctx)
-	for _, q := range []string{
-		"CREATE ROLE habit_helper LOGIN",
-		"CREATE ROLE habit_agent NOLOGIN",
-		"CREATE ROLE habit_helper_api LOGIN NOINHERIT",
-		"GRANT habit_agent TO habit_helper_api",
-		"CREATE DATABASE habit_helper OWNER habit_helper",
-	} {
-		if _, err := admin.Exec(ctx, q); err != nil {
-			t.Fatalf("%s: %v", q, err)
-		}
-	}
-	owner, err := pgx.Connect(ctx, "user=habit_helper dbname=habit_helper")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer owner.Close(ctx)
-	files, err := filepath.Glob(filepath.Join(schemaDir, "*.sql"))
-	if err != nil || len(files) == 0 {
-		t.Fatalf("no migrations in %s: %v", schemaDir, err)
-	}
-	sort.Strings(files)
-	for _, f := range files {
-		sql, err := os.ReadFile(f)
+	send := func(token, method, path, body string) int {
+		t.Helper()
+		req, _ := http.NewRequest(method, pgrst+path, strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatal(err)
 		}
-		tx, err := owner.Begin(ctx)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := tx.Exec(ctx, string(sql)); err != nil {
-			t.Fatalf("%s: %v", f, err)
-		}
-		if err := tx.Commit(ctx); err != nil {
-			t.Fatal(err)
-		}
+		resp.Body.Close()
+		return resp.StatusCode
 	}
-}
+	coach, admin := habittest.Token(t, "habit_agent"), habittest.Token(t, "habit_admin")
 
-func freePort(t *testing.T) int {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
+	// The coach cannot archive, nor delete.
+	if code := send(coach, "PATCH", "/habits?name=eq.walk", `{"archived_at":"2026-10-14T00:00:00Z"}`); code < 400 {
+		t.Errorf("coach archiving: HTTP %d", code)
 	}
-	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port
-}
+	if code := send(coach, "POST", "/rpc/delete_habit", `{"habit_name":"walk"}`); code < 400 {
+		t.Errorf("coach deleting: HTTP %d", code)
+	}
 
-// startPostgREST runs PostgREST configured like k8s/manifests/habit-helper's
-// Deployment, and returns its URL once it is ready.
-func startPostgREST(t *testing.T, bin string) string {
-	port, admin := freePort(t), freePort(t)
-	host := os.Getenv("PGHOST")
-	cmd := exec.Command(bin)
-	cmd.Env = append(os.Environ(),
-		"PGRST_DB_URI=postgresql:///habit_helper?host="+url.QueryEscape(host)+"&user=habit_helper_api",
-		"PGRST_DB_SCHEMAS=habit",
-		"PGRST_DB_EXTRA_SEARCH_PATH=",
-		"PGRST_DB_CONFIG=false",
-		"PGRST_DB_POOL=5",
-		"PGRST_JWT_SECRET="+testJWTKey,
-		"PGRST_JWT_AUD=habit-data",
-		"PGRST_SERVER_HOST=127.0.0.1",
-		fmt.Sprintf("PGRST_SERVER_PORT=%d", port),
-		fmt.Sprintf("PGRST_ADMIN_SERVER_PORT=%d", admin),
-		"PGRST_LOG_LEVEL=warn",
-		"LC_ALL=C.UTF-8",
-	)
-	logFile := filepath.Join(t.TempDir(), "postgrest.log")
-	lf, err := os.Create(logFile)
-	if err != nil {
-		t.Fatal(err)
+	if code := send(admin, "PATCH", "/habits?name=eq.walk", `{"archived_at":"2026-10-14T00:00:00Z"}`); code >= 300 {
+		t.Fatalf("admin archiving: HTTP %d", code)
 	}
-	cmd.Stdout, cmd.Stderr = lf, lf
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
+	if out := it.ok("list", "--all"); strings.Contains(out, "walk") || !strings.Contains(out, "stretch") {
+		t.Errorf("list --all after archiving walk: %q", out)
 	}
-	t.Cleanup(func() {
-		cmd.Process.Kill()
-		cmd.Wait()
-		lf.Close()
-		if t.Failed() {
-			log, _ := os.ReadFile(logFile)
-			t.Logf("postgrest log:\n%s", log)
-		}
-	})
-	ready := fmt.Sprintf("http://127.0.0.1:%d/ready", admin)
-	for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline); time.Sleep(100 * time.Millisecond) {
-		resp, err := http.Get(ready)
-		if err == nil {
-			resp.Body.Close()
-			if resp.StatusCode == 200 {
-				return fmt.Sprintf("http://127.0.0.1:%d", port)
-			}
-		}
+	if out := it.ok("summary"); strings.Contains(out, "walk") {
+		t.Errorf("summary: %q", out)
 	}
-	log, _ := os.ReadFile(logFile)
-	t.Fatalf("PostgREST did not get ready:\n%s", log)
-	return ""
+	it.fail(1, `no habit "walk"`, "log", "walk", today, "missed")
+	it.fail(1, `no habit "walk"`, "show", "walk")
+	it.fail(1, "", "add", "walk", "--cue", "if I wake, then I walk", "--motivation", "m", "--prep", "p")
+
+	// Unarchived, it is back with its entries and notes.
+	if code := send(admin, "PATCH", "/habits?name=eq.walk", `{"archived_at":null}`); code >= 300 {
+		t.Fatalf("admin unarchiving: HTTP %d", code)
+	}
+	if out := it.ok("show", "walk"); !strings.Contains(out, "fresh air") {
+		t.Errorf("show after unarchiving: %q", out)
+	}
 }

@@ -10,7 +10,9 @@ buildGoModule {
   version = "0.1.0";
   src = ./.;
   inherit (agents) vendorHash;
-  subPackages = [ "cmd/habit" ];
+  # internal/habitadmin, the admin chat, tests its store against the same
+  # PostgREST.
+  subPackages = [ "cmd/habit" "internal/habitadmin" ];
   ldflags = [ "-s" "-w" ];
 
   nativeCheckInputs = [ postgresql postgresqlTestHook postgrest ];

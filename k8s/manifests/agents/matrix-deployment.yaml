@@ -1,9 +1,10 @@
 # The agents' Matrix bridge (packages/agents, cmd/agents-matrix): Synapse
 # pushes it the events of the agents' users (matrix-service.yaml); it runs
 # each message from an allowed user as a turn of the room's conversation and
-# posts the reply as the agent. It logs in to Temporal with its SVID
-# (spiffe-helper) and acts on Synapse with the registration's as_token
-# (matrix-secret.yaml). It keeps no state, so one replica can be replaced at
+# posts the reply as the agent. It is also the admin chat, @habit-admin, which
+# reaches Habit Helper's PostgREST with a token from agent-token. It logs in
+# to Temporal with its SVID (spiffe-helper) and acts on Synapse with the
+# registration's as_token (matrix-secret.yaml). It keeps no state, so one replica can be replaced at
 # any time; a reply still running when it goes is not posted.
 apiVersion: apps/v1
 kind: Deployment
@@ -79,6 +80,9 @@ spec:
             - --state=/etc/agents/desired-state/desired-state.json
             # Who the agents talk to; everyone else is ignored.
             - --allow=@ngarvey:matrix.garvey.sh
+            # The admin chat, @habit-admin, for Habit Helper's data
+            # (manifests/habit-helper) and wake-ups.
+            - --habit-api=http://postgrest.habit-helper.svc.cluster.local:3000
           ports:
             - containerPort: 8009
               name: appservice

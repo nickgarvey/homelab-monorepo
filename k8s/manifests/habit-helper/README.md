@@ -13,8 +13,9 @@ Habit Helper's data: the `habit_helper` database on the shared postgres
 | Role | Login | What it can do |
 |---|---|---|
 | `habit_helper` | certificate `CN=habit_helper` | Owns the database and its schemas; only the schema init container uses it. |
-| `habit_helper_api` | certificate `CN=habit_helper_api` | PostgREST's login. `NOINHERIT` and granted nothing but `CONNECT` and membership in `habit_agent`, so on its own it can read nothing. |
-| `habit_agent` | none | `SELECT`, `INSERT`, `UPDATE` on the tables in schema `habit`. No `DELETE`, `TRUNCATE`, DDL or temporary tables. |
+| `habit_helper_api` | certificate `CN=habit_helper_api` | PostgREST's login. `NOINHERIT` and granted nothing but `CONNECT` and membership in `habit_agent` and `habit_admin`, so on its own it can read nothing; a request's JWT names the role. |
+| `habit_agent` | none | The coach's sandboxes. `SELECT`, `INSERT`, `UPDATE` on the tables in schema `habit`, on habits that are not archived and their rows only (row-level security), and it cannot archive. No `DELETE`, `TRUNCATE`, DDL or temporary tables. |
+| `habit_admin` | none | The admin chat (`@habit-admin` in the Matrix bridge). `SELECT`, `INSERT`, `UPDATE`, `DELETE` on every row, archived ones included, and `/rpc/delete_habit`, which deletes a habit and its rows in one transaction. |
 
 The roles are managed by CloudNativePG (`manifests/postgres/cluster.yaml`),
 which also has their `pg_hba` and `pg_ident` lines; both certificates are
@@ -41,7 +42,7 @@ Schema `habit`:
 
 | Table | Key | Columns |
 |---|---|---|
-| `habits` | `name` | `cue` ("if <event>, then <behavior>"), `motivation`, `preparation`, `status` (`active`, `paused`, `retired`), `created_at`, `updated_at` |
+| `habits` | `name` | `cue` ("if <event>, then <behavior>"), `motivation`, `preparation`, `status` (`active`, `paused`, `retired`), `archived_at` (set: hidden from `habit_agent`, with its rows; the status is kept for unarchiving), `created_at`, `updated_at` |
 | `entries` | `habit`, `day` | `outcome` (`done`, `missed`), `why`, `created_at`, `updated_at` |
 | `notes` | `id` | `habit`, `kind` (`motivation`, `cue`, `prep`), `body`, `at` |
 | `cadence` | `habit` | `interval_days` (1 to 60), `next_check`, `streak`, `misses`, `last_check`, `reason`, `updated_at` |

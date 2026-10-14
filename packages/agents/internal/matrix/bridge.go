@@ -2,7 +2,9 @@
 // application service, registered with Synapse, that owns one Matrix user
 // per agent type (@habit-helper:matrix.garvey.sh). A room is one
 // conversation of each agent in it. Text from an allowed user becomes the
-// conversation's next message, and the agent's reply is posted back.
+// conversation's next message, and the agent's reply is posted back. One
+// more user, the admin (@habit-admin), is no agent: it answers commands
+// (Commands) at once.
 //
 // The bridge keeps no state of its own: the conversation ID comes from the
 // room ID (Conversation), and which agents are in a room is asked of the
@@ -25,6 +27,7 @@ import (
 	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
 
+	"homelab/agents/internal/desired"
 	"homelab/agents/internal/session"
 )
 
@@ -66,6 +69,11 @@ type Turns interface {
 	StopWakeups(ctx context.Context, conv session.Conversation) error
 }
 
+// Commands answers the admin user's messages: text in, reply out.
+type Commands interface {
+	Run(ctx context.Context, user, text string) string
+}
+
 // typingTimeout is how long one typing notice lasts; the bridge renews it
 // every typingRenew while a turn runs.
 const (
@@ -86,7 +94,11 @@ type Bridge struct {
 	// Agents returns the agent types the bridge serves now: those published
 	// whose Matrix user is in the registration's namespace.
 	Agents func() (map[string]bool, error)
-	Log    *slog.Logger
+	// Admin, if set, answers the messages of the user AdminName (a
+	// localpart in the registration's namespace that is no agent type).
+	Admin     Commands
+	AdminName string
+	Log       *slog.Logger
 
 	mu sync.Mutex
 	// members caches which agents are joined to which rooms.
@@ -141,7 +153,11 @@ func (b *Bridge) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	for typ := range agents {
+	bots := desired.SortedKeys(agents)
+	if b.Admin != nil {
+		bots = append(bots, b.AdminName)
+	}
+	for _, typ := range bots {
 		user := b.AgentUser(typ)
 		if err := b.HS.Register(ctx, user, DisplayName(typ)); err != nil {
 			return fmt.Errorf("registering %s: %w", user, err)
@@ -153,6 +169,11 @@ func (b *Bridge) Start(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// isAdmin: the user is the admin's.
+func (b *Bridge) isAdmin(user id.UserID) bool {
+	return b.Admin != nil && user == b.AgentUser(b.AdminName)
 }
 
 func (b *Bridge) ensureDM(ctx context.Context, typ string, with id.UserID) error {
@@ -214,7 +235,11 @@ func (b *Bridge) Wait() { b.inflight.Wait() }
 func (b *Bridge) member(ctx context.Context, evt *event.Event) {
 	m := evt.Content.AsMember()
 	target := id.UserID(evt.GetStateKey())
-	if typ, ok := b.agentType(target); ok {
+	typ, ok := b.agentType(target)
+	if b.isAdmin(target) {
+		typ, ok = b.AdminName, true
+	}
+	if ok {
 		switch m.Membership {
 		case event.MembershipInvite:
 			if !b.Allowed[evt.Sender] {
@@ -238,19 +263,23 @@ func (b *Bridge) member(ctx context.Context, evt *event.Event) {
 			b.setMember(evt.RoomID, typ, true)
 		case event.MembershipLeave, event.MembershipBan:
 			b.setMember(evt.RoomID, typ, false)
-			b.stopWakeups(ctx, typ, evt.RoomID)
+			if !b.isAdmin(target) {
+				b.stopWakeups(ctx, typ, evt.RoomID)
+			}
 		}
 		return
 	}
-	// An allowed user left: the agents leave too, which ends the
-	// conversations' wake-ups.
+	// An allowed user left: the agents and the admin leave too, which ends
+	// the conversations' wake-ups.
 	if b.Allowed[target] && (m.Membership == event.MembershipLeave || m.Membership == event.MembershipBan) {
-		for _, typ := range b.agentsIn(ctx, evt.RoomID) {
+		for _, typ := range b.botsIn(ctx, evt.RoomID) {
 			if err := b.HS.Leave(ctx, b.AgentUser(typ), evt.RoomID); err != nil {
 				b.Log.Error("Leaving failed", "agent", typ, "room", evt.RoomID, "error", err)
 			}
 			b.setMember(evt.RoomID, typ, false)
-			b.stopWakeups(ctx, typ, evt.RoomID)
+			if typ != b.AdminName {
+				b.stopWakeups(ctx, typ, evt.RoomID)
+			}
 		}
 	}
 }
@@ -279,7 +308,7 @@ func (b *Bridge) refuseEncrypted(ctx context.Context, room id.RoomID) {
 	if told {
 		return
 	}
-	for _, typ := range b.agentsIn(ctx, room) {
+	for _, typ := range b.botsIn(ctx, room) {
 		content := &event.MessageEventContent{MsgType: event.MsgNotice, Body: encryptedNotice}
 		if err := b.HS.Send(ctx, b.AgentUser(typ), room, content, "encrypted-"+string(room)); err != nil {
 			b.Log.Error("Posting the encryption notice failed", "agent", typ, "room", room, "error", err)
@@ -293,11 +322,16 @@ func (b *Bridge) message(ctx context.Context, evt *event.Event) {
 		// An edit: the turn for the original has run.
 		return
 	}
+	text := strings.TrimSpace(m.Body)
+	if b.Admin != nil && b.joined(ctx, b.AdminName, evt.RoomID) {
+		if m.MsgType == event.MsgText && text != "" {
+			b.command(ctx, evt, text)
+		}
+	}
 	agents := b.agentsIn(ctx, evt.RoomID)
 	if len(agents) == 0 {
 		return
 	}
-	text := strings.TrimSpace(m.Body)
 	if m.MsgType != event.MsgText || text == "" {
 		for _, typ := range agents {
 			b.notice(ctx, typ, evt, "I can only read text messages.")
@@ -374,28 +408,88 @@ func (b *Bridge) agentsIn(ctx context.Context, room id.RoomID) []string {
 		return nil
 	}
 	var in []string
-	for typ := range agents {
-		b.mu.Lock()
-		joined, known := b.members[room][typ]
-		b.mu.Unlock()
-		if !known {
-			_, err := b.HS.Members(ctx, b.AgentUser(typ), room)
-			switch {
-			case err == nil:
-				joined = true
-			case errors.Is(err, ErrNotInRoom):
-				joined = false
-			default:
-				b.Log.Error("Asking for the room's members failed", "agent", typ, "room", room, "error", err)
-				continue
-			}
-			b.setMember(room, typ, joined)
-		}
-		if joined {
+	for _, typ := range desired.SortedKeys(agents) {
+		if b.joined(ctx, typ, room) {
 			in = append(in, typ)
 		}
 	}
 	return in
+}
+
+// botsIn is agentsIn and the admin, if it is in the room.
+func (b *Bridge) botsIn(ctx context.Context, room id.RoomID) []string {
+	in := b.agentsIn(ctx, room)
+	if b.Admin != nil && b.joined(ctx, b.AdminName, room) {
+		in = append(in, b.AdminName)
+	}
+	return in
+}
+
+// joined reports whether the agent (or admin) typ is in the room, asking
+// the homeserver the first time.
+func (b *Bridge) joined(ctx context.Context, typ string, room id.RoomID) bool {
+	b.mu.Lock()
+	joined, known := b.members[room][typ]
+	b.mu.Unlock()
+	if known {
+		return joined
+	}
+	_, err := b.HS.Members(ctx, b.AgentUser(typ), room)
+	switch {
+	case err == nil:
+		joined = true
+	case errors.Is(err, ErrNotInRoom):
+		joined = false
+	default:
+		b.Log.Error("Asking for the room's members failed", "agent", typ, "room", room, "error", err)
+		return false
+	}
+	b.setMember(room, typ, joined)
+	return joined
+}
+
+// command runs a message to the admin and posts its reply as a notice.
+func (b *Bridge) command(ctx context.Context, evt *event.Event, text string) {
+	user := b.AgentUser(b.AdminName)
+	log := b.Log.With("room", evt.RoomID, "event", evt.ID)
+	if err := b.HS.MarkRead(ctx, user, evt.RoomID, evt.ID); err != nil {
+		log.Warn("Marking the command read failed", "error", err)
+	}
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+	reply := b.Admin.Run(ctx, string(evt.Sender), text)
+	log.Info("Ran an admin command", "command", strings.Fields(text + " ")[0])
+	content := format.RenderMarkdown(reply, true, false)
+	content.MsgType = event.MsgNotice
+	if err := b.HS.Send(ctx, user, evt.RoomID, &content, "admin-"+string(evt.ID)); err != nil {
+		log.Error("Posting the admin's reply failed", "error", err)
+	}
+}
+
+// ConversationWith is the conversation of the agent typ's direct chat with
+// user: the one room both are joined to.
+func (b *Bridge) ConversationWith(ctx context.Context, typ string, user id.UserID) (string, error) {
+	rooms, err := b.HS.JoinedRooms(ctx, b.AgentUser(typ))
+	if err != nil {
+		return "", err
+	}
+	var found []id.RoomID
+	for _, room := range rooms {
+		members, err := b.HS.Members(ctx, b.AgentUser(typ), room)
+		if err != nil {
+			return "", err
+		}
+		if contains(members, user) {
+			found = append(found, room)
+		}
+	}
+	switch len(found) {
+	case 0:
+		return "", fmt.Errorf("%s has no chat with you that you have joined", DisplayName(typ))
+	case 1:
+		return Conversation(found[0]), nil
+	}
+	return "", fmt.Errorf("%s is in %d rooms with you, so I can't tell which chat you mean; leave the ones you don't use", DisplayName(typ), len(found))
 }
 
 func (b *Bridge) setMember(room id.RoomID, typ string, joined bool) {

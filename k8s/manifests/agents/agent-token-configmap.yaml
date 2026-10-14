@@ -44,3 +44,13 @@ data:
           keyFile: /etc/agent-token/habit-data/postgrest-jwt-key
           ttl: 5m
           claims: {role: habit_agent, aud: habit-data}
+      # The admin chat in the Matrix bridge (matrix-deployment.yaml): role
+      # habit_admin, which also sees archived habits and may delete
+      # (agents/habit-helper/schema/002_admin.sql).
+      - name: habit-admin
+        path: /ns/agents/sa/agents-matrix
+        audience: habit-data
+        jwt:
+          keyFile: /etc/agent-token/habit-data/postgrest-jwt-key
+          ttl: 5m
+          claims: {role: habit_admin, aud: habit-data}

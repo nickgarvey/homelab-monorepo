@@ -39,7 +39,9 @@ Postgres, behind a stand-in for the sandbox proxy.
 Output is short plain text, or JSON with `--json`. A mistake on the command
 line exits 2 with what is wrong and the usage; a refused or failed request
 exits 1 with a message saying what to do. Nothing deletes: habits are retired,
-and a day is corrected by logging it again.
+and a day is corrected by logging it again. Archiving and deleting for good
+are the admin chat's (`@habit-admin`, "Matrix" in `agents/README.md`); the
+CLI never sees an archived habit.
 
 | Command | What it does |
 |---|---|

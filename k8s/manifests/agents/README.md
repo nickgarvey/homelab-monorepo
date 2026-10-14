@@ -251,6 +251,10 @@ skopeo copy docker-archive:result docker://oci.garvey.sh/agent-token:$(nix eval 
   That hop is plaintext inside the cluster; the bridge refuses a transaction
   without the `hs_token`. Synapse has the same registration as
   `appservice-agents.yaml` in `manifests/matrix/secret.yaml`.
+- **Habit Helper's PostgREST**, for the admin chat: spiffe-helper also keeps
+  a JWT-SVID for agent-token (`/run/spiffe/jwt_svid.token`), which the
+  `habit-admin` grant (`agent-token-configmap.yaml`) trades for a 5-minute
+  PostgREST token with role `habit_admin`.
 
 Its state is in Matrix and Temporal only, so it can be restarted at any time;
 a turn running at the time still finishes, but its reply is not posted. A

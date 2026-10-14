@@ -76,13 +76,17 @@ spec:
       # Habit Helper's data (manifests/habit-helper): habit_helper owns the
       # habit_helper database and runs its migrations; PostgREST logs in as
       # habit_helper_api, which holds no privileges itself (noinherit) and
-      # switches to habit_agent per request. habit_agent cannot log in; its
-      # grants are in the migrations (agents/habit-helper/schema/).
+      # switches per request to habit_agent (the coach's sandboxes) or
+      # habit_admin (the admin chat). Neither can log in; their grants are in
+      # the migrations (agents/habit-helper/schema/).
       # Certificate login only, like openshell.
       - name: habit_helper
         ensure: present
         login: true
       - name: habit_agent
+        ensure: present
+        login: false
+      - name: habit_admin
         ensure: present
         login: false
       - name: habit_helper_api
@@ -91,6 +95,7 @@ spec:
         inherit: false
         inRoles:
           - habit_agent
+          - habit_admin
       # Synapse, the Matrix homeserver (manifests/matrix); certificate login
       # only, like openshell.
       - name: synapse
