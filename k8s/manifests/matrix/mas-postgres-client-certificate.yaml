@@ -1,0 +1,35 @@
+# MAS's login to the shared postgres: the CN is the postgres role, the URI
+# SAN its SPIFFE ID. Issued by the SPIFFE CA only because
+# manifests/cert-manager/spiffe-policies.yaml allows exactly this name here.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: mas-postgres-client
+  namespace: matrix
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  secretName: mas-postgres-client
+  commonName: mas
+  uris:
+    - spiffe://home.garvey.sh/ns/matrix/sa/mas
+  usages:
+    - client auth
+    - digital signature
+    - key encipherment
+  # Short lived: MAS (sqlx) reads the files for every new connection, so MAS
+  # picks up the renewed ones from the mounted Secret without a restart.
+  # Connections already open stay up (postgres checks the certificate only at
+  # login).
+  duration: 24h
+  renewBefore: 8h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    # rustls, in MAS, reads PKCS#8.
+    encoding: PKCS8
+    rotationPolicy: Always
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: spiffe-ca

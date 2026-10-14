@@ -1,0 +1,18 @@
+# matrix-auth.home.garvey.sh's public certificate, through acme-dns (DNS-01;
+# the account is in manifests/acme-dns/secret.yaml, the delegation CNAME in
+# modules/networking/dns.nix). MAS serves it itself on 443. It reads the files
+# only at start, so restart it after a renewal (README.md).
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: mas-tls
+  namespace: matrix
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  secretName: mas-tls
+  dnsNames:
+    - matrix-auth.home.garvey.sh
+  issuerRef:
+    name: letsencrypt-acmedns-staging
+    kind: ClusterIssuer

@@ -141,6 +141,7 @@ rules:
       - spiffe-habit-helper-api
       - spiffe-habit-helper-owner
       - spiffe-synapse
+      - spiffe-mas
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -619,6 +620,41 @@ spec:
     uris:
       values:
         - spiffe://home.garvey.sh/ns/matrix/sa/synapse
+    usages:
+      - client auth
+      - digital signature
+      - key encipherment
+    isCA: false
+  constraints:
+    privateKey:
+      algorithm: ECDSA
+      minSize: 256
+      maxSize: 521
+  selector:
+    issuerRef:
+      group: cert-manager.io
+      kind: ClusterIssuer
+      name: spiffe-ca
+    namespace:
+      matchNames:
+        - matrix
+---
+apiVersion: policy.cert-manager.io/v1alpha1
+kind: CertificateRequestPolicy
+metadata:
+  name: spiffe-mas
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  # The Matrix Authentication Service's client certificate for postgres
+  # (manifests/matrix): the subject is exactly CN=mas, the DN postgres maps to
+  # the role.
+  allowed:
+    commonName:
+      value: mas
+    uris:
+      values:
+        - spiffe://home.garvey.sh/ns/matrix/sa/mas
     usages:
       - client auth
       - digital signature

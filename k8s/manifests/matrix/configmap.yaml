@@ -16,19 +16,18 @@ data:
     # Setting it also makes Synapse serve /.well-known/matrix/client.
     public_baseurl: https://matrix.garvey.sh/
 
-    # The client API only, over TLS on 443 with the public certificate. No
-    # federation listener: the server federates with nobody.
+    # The client API only, on loopback: the Caddy in this pod serves it over
+    # TLS on 443 (caddy-configmap.yaml). No federation listener: the server
+    # federates with nobody.
     listeners:
-      - port: 443
+      - port: 8008
         type: http
-        tls: true
-        bind_addresses: ["::"]
-        x_forwarded: false
+        tls: false
+        bind_addresses: ["::1"]
+        x_forwarded: true
         resources:
           - names: [client]
             compress: false
-    tls_certificate_path: /etc/synapse/tls/tls.crt
-    tls_private_key_path: /etc/synapse/tls/tls.key
 
     # Federation off: no remote server is allowed, and no key servers are
     # asked for other servers' keys.
@@ -61,7 +60,15 @@ data:
     # Previews would have Synapse fetch any URL posted in a room.
     url_preview_enabled: false
 
-    # No accounts are made here: logins come through MAS (nix-X35bb.2).
+    # Every login goes through the Matrix Authentication Service
+    # (mas-configmap.yaml), which makes the accounts: Synapse checks access
+    # tokens with it and has no passwords or registration of its own.
+    matrix_authentication_service:
+      enabled: true
+      endpoint: https://matrix-auth.home.garvey.sh/
+      secret_path: /etc/synapse/mas/synapse-secret
+    password_config:
+      enabled: false
     enable_registration: false
     report_stats: false
 

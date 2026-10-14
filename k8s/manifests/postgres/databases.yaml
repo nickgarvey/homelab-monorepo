@@ -113,3 +113,18 @@ spec:
   localeCType: C
   cluster:
     name: postgres
+---
+# The Matrix Authentication Service's state (manifests/matrix): users, their
+# Authelia links, sessions and tokens.
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: mas
+  namespace: postgres
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  name: mas
+  owner: mas
+  cluster:
+    name: postgres

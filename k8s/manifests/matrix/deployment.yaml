@@ -1,7 +1,8 @@
 # Synapse, the Matrix homeserver for matrix.garvey.sh (README.md). One process,
 # no workers. Its state is in the synapse database on the shared postgres and
-# its media on the synapse-media volume; it serves the client API over TLS on
-# 443 itself, with the certificate in certificate.yaml.
+# its media on the synapse-media volume. A Caddy in the pod serves it over TLS
+# on 443, with the certificate in certificate.yaml, and sends logins to MAS
+# (caddy-configmap.yaml).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -30,18 +31,45 @@ spec:
         runAsGroup: 1000
         # Lets the image's user read the keys (0440) and write the media volume.
         fsGroup: 1000
-        # Lets the non-root process bind 443.
+        # Lets the non-root Caddy bind 443.
         sysctls:
           - name: net.ipv4.ip_unprivileged_port_start
             value: "443"
       containers:
+        # Caddy loads the certificate only at start, so restart the pod after
+        # each renewal (README.md).
+        - name: caddy
+          image: caddy:2-alpine
+          command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile"]
+          ports:
+            - containerPort: 443
+              name: https
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: caddy-config
+              mountPath: /etc/caddy
+              readOnly: true
+            - name: caddy-data
+              mountPath: /data
+            - name: caddy-state
+              mountPath: /config
+            - name: tls
+              mountPath: /certs
+              readOnly: true
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
         - name: synapse
           image: oci.garvey.sh/matrix-synapse:1.162.0-2lq4ph2
           args:
             - --config-path=/etc/synapse/config/homeserver.yaml
-          ports:
-            - containerPort: 443
-              name: https
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -54,8 +82,9 @@ spec:
             - name: secrets
               mountPath: /etc/synapse/secrets
               readOnly: true
-            - name: tls
-              mountPath: /etc/synapse/tls
+            # The secret Synapse shares with MAS.
+            - name: mas
+              mountPath: /etc/synapse/mas
               readOnly: true
             # Mounted whole (no subPath), so renewed certificates reach the
             # files.
@@ -66,6 +95,7 @@ spec:
               mountPath: /var/lib/synapse/media
             - name: tmp
               mountPath: /tmp
+          # Through Caddy, so the probes cover both containers.
           readinessProbe:
             httpGet:
               path: /health
@@ -89,9 +119,23 @@ spec:
         - name: config
           configMap:
             name: synapse
+        - name: caddy-config
+          configMap:
+            name: synapse-caddy
+        - name: caddy-data
+          emptyDir: {}
+        - name: caddy-state
+          emptyDir: {}
         - name: secrets
           secret:
             secretName: synapse
+            defaultMode: 0440
+        - name: mas
+          secret:
+            secretName: mas
+            items:
+              - key: synapse-secret
+                path: synapse-secret
             defaultMode: 0440
         - name: tls
           secret:

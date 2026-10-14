@@ -74,6 +74,13 @@ data:
               - email_verified
               - preferred_username
               - name
+          # MAS (manifests/matrix) reads the Matrix localpart, name and email
+          # from the ID token.
+          matrix:
+            id_token:
+              - preferred_username
+              - name
+              - email
           # The OpenShell gateway reads roles from the access token (JWT).
           openshell-cli:
             access_token:
@@ -105,6 +112,13 @@ data:
                   - group:temporal-default-read
                   - group:temporal-default-write
                   - group:temporal-default-admin
+          # Matrix: only ngarvey has an account there.
+          matrix:
+            default_policy: deny
+            rules:
+              - policy: two_factor
+                subject:
+                  - user:ngarvey
         lifespans:
           custom:
             # Refresh tokens slide: each refresh issues a new one valid this long
@@ -192,5 +206,30 @@ data:
             grant_types:
               - authorization_code
             access_token_signed_response_alg: RS256
+            userinfo_signed_response_alg: none
+            token_endpoint_auth_method: client_secret_basic
+          # The Matrix Authentication Service (manifests/matrix), which every
+          # Matrix login goes through. The callback ends in the ID of its
+          # upstream provider (manifests/matrix/mas-configmap.yaml).
+          - client_id: matrix
+            client_name: Matrix
+            claims_policy: matrix
+            # pbkdf2 digest of the plaintext in manifests/matrix/mas-secret.yaml.
+            client_secret: '$pbkdf2-sha512$310000$Bxj00wnzWtURaAyUsnp01Q$cYhinB6pPiIzWSc8a8D65cUheb886Ll3vyOp.A9aLEfKTIvwW0ycKsvkhBy4q1tnSCV6631OLvIRH4kSOYEN1w'
+            public: false
+            authorization_policy: matrix
+            require_pkce: true
+            pkce_challenge_method: S256
+            redirect_uris:
+              - https://matrix-auth.home.garvey.sh/upstream/callback/01M4WBV9TZT3FMTQ60T0P7NRDK
+            scopes:
+              - openid
+              - profile
+              - email
+            response_types:
+              - code
+            grant_types:
+              - authorization_code
+            access_token_signed_response_alg: none
             userinfo_signed_response_alg: none
             token_endpoint_auth_method: client_secret_basic
