@@ -14,5 +14,5 @@ spec:
   dnsNames:
     - matrix-auth.home.garvey.sh
   issuerRef:
-    name: letsencrypt-acmedns-staging
+    name: letsencrypt-acmedns-prod
     kind: ClusterIssuer
