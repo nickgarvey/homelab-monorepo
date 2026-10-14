@@ -69,7 +69,7 @@ spec:
       containers:
         # The agents-worker image, which holds every agents binary.
         - name: bridge
-          image: oci.garvey.sh/agents-worker:fcmdvhvmwk890zba8ik7zm4lsqqh5dfr
+          image: oci.garvey.sh/agents-worker:zza1gvykcrgcwcpficra75lmv72zpah3
           command: ["/bin/agents-matrix"]
           args:
             - --temporal-cert=/run/spiffe/svid.pem

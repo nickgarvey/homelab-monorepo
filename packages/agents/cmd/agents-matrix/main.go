@@ -81,7 +81,9 @@ func run(tc *temporalconn.Config, registration, homeserver, server string, port 
 		Registration:     reg,
 		HomeserverDomain: server,
 		HomeserverURL:    homeserver,
-		HostConfig:       appservice.HostConfig{Hostname: "::", Port: port},
+		// An empty host is every address; mautrix joins host and port
+		// without brackets, so "::" would not parse.
+		HostConfig: appservice.HostConfig{Hostname: "", Port: port},
 	})
 	if err != nil {
 		return err
