@@ -12,8 +12,7 @@ import (
 	"homelab/agents/internal/session"
 )
 
-// TemporalTurns runs turns in the conversations' ChatSession workflows, as
-// agents-chat does.
+// TemporalTurns runs turns in the conversations' ChatSession workflows.
 type TemporalTurns struct {
 	Client client.Client
 }

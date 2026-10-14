@@ -22,9 +22,9 @@ token from agent-token; pi's node may reach only litellm, and the `habit` CLI
 only PostgREST. Wake-ups are on (`session.defaultWakeup` 24h, times in
 `America/Los_Angeles`): the agent asks for its check-ins with `habit
 wake-at`, and while the user is silent the default backs off to weekly
-("Wake-ups" in `agents/README.md`). Nothing delivers a wake-up's reply to the
-user yet; it is in the chat log. Talk to it with
-`nix run .#agents-chat -- habit-helper <conversation>`.
+("Wake-ups" in `agents/README.md`). Talk to it on Matrix, as
+`@habit-helper:matrix.garvey.sh` ("Matrix" in `agents/README.md`); its
+wake-up replies are posted there.
 
 ## The `habit` CLI
 

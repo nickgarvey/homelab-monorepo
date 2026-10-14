@@ -1,7 +1,6 @@
 # The agents Go module: agents-apply (cmd/agents-apply), which publishes the
 # agent types declared in agents/declaration.nix, agents-worker
-# (cmd/agents-worker), which runs the chat sessions on Temporal, and
-# agents-chat (cmd/agents-chat), a terminal client for a conversation,
+# (cmd/agents-worker), which runs the chat sessions on Temporal,
 # agents-matrix (cmd/agents-matrix), the Matrix bridge, and agent-token
 # (cmd/agent-token), which trades JWT-SVIDs for credentials.
 # buildGoModule runs `go test`, so the tests gate the build; the store and

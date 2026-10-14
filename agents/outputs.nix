@@ -2,8 +2,8 @@
 # agents run on the OpenShell gateway, the desired state built from
 # agents/declaration.nix, agents-apply, which publishes it, the images of
 # agents-worker, which runs the chat sessions, and of agent-token, the token
-# service for sandbox credentials, and of Habit Helper's PostgREST, the habit
-# CLI, and the agents-chat app.
+# service for sandbox credentials, and of Habit Helper's PostgREST, and the
+# habit CLI.
 # Imported by the root flake.nix.
 { self, nixpkgs, ... }:
 let
@@ -124,17 +124,6 @@ let
       exec ${lib.getExe agentsGo} --state ${desiredState ./declaration.nix} "$@"
     '';
   };
-
-  # agents-chat (`nix run .#agents-chat -- <type> <conversation>`) is a
-  # stand-in until the Matrix transport works, so it has a deadline: after
-  # it, the app and `nix flake check` stop evaluating.
-  chatExpired = lib.max self.lastModified nixpkgs.lastModified >= 1801440000; # 2027-02-01T00:00:00Z
-  checkChat = lib.throwIf chatExpired ''
-    agents-chat expired on 2027-01-31. Remove it now that Matrix works
-    (packages/agents/cmd/agents-chat, the agents-chat app and this check in
-    agents/outputs.nix, and its section in agents/README.md), or push the
-    deadline out deliberately.
-  '';
 in
 {
   packages.${system} = lib.mapAttrs (_: checkPins) {
@@ -152,13 +141,7 @@ in
     habit-helper-postgrest-image = import ./habit-helper/postgrest-image.nix { inherit pkgs; };
   };
 
-  apps.${system}.agents-chat = {
-    type = "app";
-    program = checkChat (lib.getExe' agentsGo "agents-chat");
-    meta.description = "Talk to an agent conversation through the Temporal break-glass port-forward (temporary)";
-  };
-
-  checks.${system} = lib.mapAttrs (_: drv: checkPins (checkChat drv)) {
+  checks.${system} = lib.mapAttrs (_: checkPins) {
     agents-declaration-test = import ./declaration-test.nix { inherit pkgs lib images desiredState; };
     agents-go-tests = agentsGo;
     habit-cli-tests = habitCli;

@@ -139,7 +139,7 @@ any turn already queued.
   `wakeup`, and the reply as written. A reply of exactly `<silent>` means the
   agent chose to say nothing, and is posted nowhere. Any other reply of a
   conversation from a Matrix room (ID `matrix-…`) is posted there as the
-  agent ("Matrix"); one from `agents-chat` is only in the chat log. The
+  agent ("Matrix"); one from any other conversation is only in the chat log. The
   worker's log says which (`Wake-up turn replied; posted to the room`, `…
   no room to post it to`, or `Wake-up turn ended silent`).
 - **Ending.** A `Wakeup` ends at its next wake-up once the type is no longer
@@ -193,31 +193,6 @@ as them.
 - **Adding a type** to Matrix: add its user to the registration's users
   namespace, in both copies (`k8s/manifests/agents/README.md`, "The Matrix
   bridge"), restart Synapse and the bridge.
-
-## agents-chat (temporary)
-
-A terminal client for one conversation, from before the Matrix bridge; it is
-removed once Matrix is in daily use. `agents/outputs.nix` stops evaluating it,
-and fails `nix flake check`, after 2027-01-31; past that, delete
-`packages/agents/cmd/agents-chat`, the `agents-chat` app and its check in
-`agents/outputs.nix` and this section, or push the deadline out deliberately.
-
-It uses the Temporal break-glass path ("Ports" in
-`k8s/manifests/temporal/README.md`), so it needs your cluster access and no
-identity of its own:
-
-```sh
-kubectl -n temporal port-forward deploy/temporal 7236:7236 &
-nix run .#agents-chat -- pi <conversation>                 # a line per message; Ctrl-D ends
-nix run .#agents-chat -- pi <conversation> -m "hello"      # one message, reply on stdout
-```
-
-Each message is the `message` Update, with Update-with-Start, as in "Sessions";
-it waits for the reply, which for a new sandbox includes creating it. It
-starts by printing the conversation's pending wake-up, from the `Wakeup`'s
-`pending` query, on stderr. Wake-up replies are not shown: they are in the
-chat log (`messages`, role `wakeup` for the prompt). `--address` and
-`--namespace` default to `127.0.0.1:7236` and `agents`.
 
 ## habit-data
 

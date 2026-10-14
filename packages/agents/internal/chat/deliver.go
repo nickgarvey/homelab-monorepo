@@ -15,8 +15,8 @@ const (
 	DeliverTaskQueue = "agents-matrix"
 	DeliverActivity  = "DeliverReply"
 	// MatrixPrefix begins the conversation ID of every Matrix room
-	// (matrix.Conversation). Other conversations (agents-chat's) have no
-	// room to deliver to.
+	// (matrix.Conversation). Other conversations have no room to deliver
+	// to.
 	MatrixPrefix = "matrix-"
 )
 
