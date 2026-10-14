@@ -38,6 +38,9 @@ func (s *Synapse) Leave(ctx context.Context, user id.UserID, room id.RoomID) err
 	return err
 }
 
+// Members asks for the joined members as user. Synapse answers an
+// application service for any room with a member in its namespace, so
+// user's own membership is read from the answer, not from the status.
 func (s *Synapse) Members(ctx context.Context, user id.UserID, room id.RoomID) ([]id.UserID, error) {
 	resp, err := s.client(user).JoinedMembers(ctx, room)
 	if errors.Is(err, mautrix.MForbidden) {
@@ -45,6 +48,9 @@ func (s *Synapse) Members(ctx context.Context, user id.UserID, room id.RoomID) (
 	}
 	if err != nil {
 		return nil, err
+	}
+	if _, ok := resp.Joined[user]; !ok {
+		return nil, ErrNotInRoom
 	}
 	members := make([]id.UserID, 0, len(resp.Joined))
 	for u := range resp.Joined {
