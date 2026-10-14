@@ -1,0 +1,104 @@
+# Synapse's configuration. Secrets are files from the synapse Secret
+# (secret.yaml), mounted at /etc/synapse/secrets. Read at start: after a
+# change, kubectl -n matrix rollout restart deploy/synapse.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: synapse
+  namespace: matrix
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+data:
+  homeserver.yaml: |
+    # The name in every Matrix ID (@ngarvey:matrix.garvey.sh). It can never
+    # change without starting the server over.
+    server_name: matrix.garvey.sh
+    # Setting it also makes Synapse serve /.well-known/matrix/client.
+    public_baseurl: https://matrix.garvey.sh/
+
+    # The client API only, on loopback: the Caddy in this pod serves it over
+    # TLS on 443 (caddy-configmap.yaml). No federation listener: the server
+    # federates with nobody.
+    listeners:
+      - port: 8008
+        type: http
+        tls: false
+        bind_addresses: ["::1"]
+        x_forwarded: true
+        resources:
+          - names: [client]
+            compress: false
+
+    # Federation off: no remote server is allowed, and no key servers are
+    # asked for other servers' keys.
+    federation_domain_whitelist: []
+    trusted_key_servers: []
+    suppress_key_server_warning: true
+
+    database:
+      name: psycopg2
+      args:
+        host: postgres-rw.postgres.svc
+        port: 5432
+        dbname: synapse
+        user: synapse
+        # Certificate login (manifests/postgres, pg_hba); the server is
+        # checked against the SPIFFE CA in the same Secret.
+        sslmode: verify-full
+        sslrootcert: /etc/synapse/postgres/ca.crt
+        sslcert: /etc/synapse/postgres/tls.crt
+        sslkey: /etc/synapse/postgres/tls.key
+        cp_min: 2
+        cp_max: 10
+
+    signing_key_path: /etc/synapse/secrets/signing.key
+    macaroon_secret_key_path: /etc/synapse/secrets/macaroon_secret_key
+    form_secret_path: /etc/synapse/secrets/form_secret
+
+    media_store_path: /var/lib/synapse/media
+    max_upload_size: 50M
+    # Previews would have Synapse fetch any URL posted in a room.
+    url_preview_enabled: false
+
+    # Every login goes through the Matrix Authentication Service
+    # (mas-configmap.yaml), which makes the accounts: Synapse checks access
+    # tokens with it and has no passwords or registration of its own.
+    matrix_authentication_service:
+      enabled: true
+      endpoint: https://matrix-auth.home.garvey.sh/
+      secret_path: /etc/synapse/mas/synapse-secret
+    password_config:
+      enabled: false
+    enable_registration: false
+
+    # The agents' Matrix bridge (k8s/manifests/agents, agents-matrix): an
+    # application service that owns the agents' users. Its registration,
+    # with the tokens, is in secret.yaml.
+    app_service_config_files:
+      - /etc/synapse/secrets/appservice-agents.yaml
+    report_stats: false
+
+    # Push notifications carry only the room and event IDs, never the
+    # message or sender: the phone fetches the event from here. They go
+    # through Element's push gateway and Google or Apple on the way.
+    push:
+      include_content: false
+
+    log_config: /etc/synapse/config/log.yaml
+
+  log.yaml: |
+    version: 1
+    formatters:
+      precise:
+        format: "%(asctime)s - %(name)s - %(lineno)d - %(levelname)s - %(request)s - %(message)s"
+    handlers:
+      console:
+        class: logging.StreamHandler
+        formatter: precise
+    loggers:
+      synapse.storage.SQL:
+        level: INFO
+    root:
+      level: INFO
+      handlers: [console]
+    disable_existing_loggers: false

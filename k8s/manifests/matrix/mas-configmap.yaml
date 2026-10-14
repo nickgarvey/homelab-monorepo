@@ -1,0 +1,113 @@
+# The Matrix Authentication Service's configuration. MAS handles every Matrix
+# login: clients sign in through it, and it sends the browser on to Authelia.
+# Secrets are files from the mas Secret (mas-secret.yaml), mounted at
+# /etc/mas/secrets. Read at start: after a change,
+# kubectl -n matrix rollout restart deploy/mas.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mas
+  namespace: matrix
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+data:
+  config.yaml: |
+    http:
+      public_base: https://matrix-auth.home.garvey.sh/
+      listeners:
+        - name: web
+          resources:
+            - name: discovery
+            - name: human
+            - name: oauth
+            # /login, /logout and /refresh for clients without OAuth 2.0
+            # login; the Caddy in Synapse's pod sends them here.
+            - name: compat
+            - name: graphql
+            - name: assets
+              path: /share/matrix-authentication-service/assets/
+            - name: health
+          binds:
+            - address: "[::]:443"
+          tls:
+            certificate_file: /etc/mas/tls/tls.crt
+            key_file: /etc/mas/tls/tls.key
+
+    database:
+      host: postgres-rw.postgres.svc
+      port: 5432
+      database: mas
+      username: mas
+      # Certificate login (manifests/postgres, pg_hba); the server is checked
+      # against the SPIFFE CA in the same Secret.
+      ssl_mode: verify-full
+      ssl_ca_file: /etc/mas/postgres/ca.crt
+      ssl_certificate_file: /etc/mas/postgres/tls.crt
+      ssl_key_file: /etc/mas/postgres/tls.key
+
+    templates:
+      path: /share/matrix-authentication-service/templates/
+      assets_manifest: /share/matrix-authentication-service/manifest.json
+      translations_path: /share/matrix-authentication-service/translations/
+    policy:
+      wasm_module: /share/matrix-authentication-service/policy.wasm
+      data:
+        # May ask for Synapse admin (the urn:synapse:admin:* scope).
+        admin_users:
+          - ngarvey
+
+    matrix:
+      kind: synapse
+      homeserver: matrix.garvey.sh
+      # Synapse's admin API, through the Caddy in its pod.
+      endpoint: https://matrix.garvey.sh/
+      secret_file: /etc/mas/secrets/synapse-secret
+
+    secrets:
+      encryption_file: /etc/mas/secrets/encryption
+      keys:
+        - kid: rsa
+          key_file: /etc/mas/secrets/rsa.key
+        - kid: ec
+          key_file: /etc/mas/secrets/ec.key
+
+    # Logins come only from Authelia: no passwords here, and so no
+    # registration, password reset or email login.
+    passwords:
+      enabled: false
+    account:
+      # Authelia owns the email and name.
+      email_change_allowed: false
+      displayname_change_allowed: true
+      account_deactivation_allowed: false
+    email:
+      from: '"Matrix" <matrix@garvey.sh>'
+      reply_to: '"Matrix" <matrix@garvey.sh>'
+      transport: blackhole
+
+    upstream_oauth2:
+      providers:
+        # Authelia's client "matrix" (manifests/authelia/configmap.yaml), which
+        # lets in only ngarvey.
+        - id: 01M4WBV9TZT3FMTQ60T0P7NRDK
+          human_name: Authelia
+          issuer: https://auth.home.garvey.sh
+          client_id: matrix
+          client_secret_file: /etc/mas/secrets/authelia-client-secret
+          token_endpoint_auth_method: client_secret_basic
+          scope: "openid profile email"
+          pkce_method: always
+          claims_imports:
+            # The Authelia username is the Matrix localpart:
+            # ngarvey -> @ngarvey:matrix.garvey.sh.
+            localpart:
+              action: require
+              template: "{{ user.preferred_username }}"
+            displayname:
+              action: force
+              template: "{{ user.name }}"
+            email:
+              action: force
+              template: "{{ user.email }}"
+            # Nothing to choose, so no confirmation page on first login.
+            skip_confirmation: true

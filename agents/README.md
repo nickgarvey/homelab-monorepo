@@ -137,9 +137,11 @@ any turn already queued.
   The header is not stored in the chat log.
 - **Replies.** The wake-up's prompt is stored in `messages` with role
   `wakeup`, and the reply as written. A reply of exactly `<silent>` means the
-  agent chose to say nothing. Nothing delivers wake-up replies to the user
-  yet: they are in the chat log and in the worker's log (`Wake-up turn
-  replied`, or `Wake-up turn ended silent`).
+  agent chose to say nothing, and is posted nowhere. Any other reply of a
+  conversation from a Matrix room (ID `matrix-…`) is posted there as the
+  agent ("Matrix"); one from any other conversation is only in the chat log. The
+  worker's log says which (`Wake-up turn replied; posted to the room`, `…
+  no room to post it to`, or `Wake-up turn ended silent`).
 - **Ending.** A `Wakeup` ends at its next wake-up once the type is no longer
   published or has no `session.defaultWakeup`.
 
@@ -150,34 +152,61 @@ temporal workflow query --address 127.0.0.1:7236 --namespace agents \
   --workflow-id wakeup/<type>/<conversation> --type pending
 ```
 
-`pi-wakeup` is pi with a 1h `session.defaultWakeup`, for trying wake-ups out.
-pi's instructions don't mention the outbox, so tell it in the message what to
-write.
+`habit-helper` is the type with wake-ups (`session.defaultWakeup` 24h); its
+instructions say when to ask for one, with `habit wake-at`.
 
-## agents-chat (temporary)
+## Matrix
 
-A terminal client for one conversation, for talking to agents until the Matrix
-transport works; then it is removed. `agents/outputs.nix` stops evaluating it,
-and fails `nix flake check`, after 2027-01-31; past that, delete
-`packages/agents/cmd/agents-chat`, the `agents-chat` app and its check in
-`agents/outputs.nix` and this section, or push the deadline out deliberately.
+The agents are on Matrix (`matrix.garvey.sh`, `k8s/manifests/matrix`), each
+type as its own user: `@habit-helper:matrix.garvey.sh`, `@pi:matrix.garvey.sh`.
+The bridge, `agents-matrix` (`packages/agents/internal/matrix`), is a Synapse
+application service: Synapse pushes it the events of those users, and it acts
+as them.
 
-It uses the Temporal break-glass path ("Ports" in
-`k8s/manifests/temporal/README.md`), so it needs your cluster access and no
-identity of its own:
+- **Rooms.** At start, each agent makes sure it has a direct chat with each
+  allowed user (`--allow`, now only `@ngarvey:matrix.garvey.sh`), creating one
+  and inviting them if not. It also joins any room an allowed user invites it
+  to. Invites from anyone else, and their messages, are ignored.
+- **One room is one conversation** of each agent in it: the conversation ID is
+  `matrix-` and the room ID's opaque part (`Conversation`), so the bridge keeps
+  no table.
+- **A text message** from an allowed user is the conversation's next
+  `message` Update, with Update-with-Start as in "Sessions" and the event ID
+  as the Update ID, so a message the bridge reads twice runs one turn. The
+  agent marks it read, shows typing until the reply, and posts the reply
+  rendered from Markdown; a `<silent>` reply posts nothing. A failed turn
+  posts a short notice instead. Anything but text gets a notice; edits are
+  ignored.
+- **No encryption.** The direct chats the agents create are unencrypted, and
+  only the agent may turn encryption on. In an encrypted room (Element X
+  encrypts the direct chats it creates) the agent says once that it cannot
+  read it.
+- **Leaving.** When an allowed user leaves a room, its agents leave too; an
+  agent that leaves or is removed cancels its conversation's `Wakeup`.
+- **Wake-up replies.** After a wake-up turn the `Wakeup` workflow runs
+  `DeliverReply` on the `agents-matrix` task queue, which only the bridge
+  serves, so the worker never holds the appservice token. The bridge finds
+  the room among the agent's joined rooms and posts the reply; the Matrix
+  transaction ID is `wakeup-` and the `Wakeup` run's ID, so a retry posts
+  nothing more. If the bridge is down the reply waits up to an hour for it,
+  then is only in the chat log, as is one whose agent has left the room.
+- **Adding a type** to Matrix: add its user to the registration's users
+  namespace, in both copies (`k8s/manifests/agents/README.md`, "The Matrix
+  bridge"), restart Synapse and the bridge.
 
-```sh
-kubectl -n temporal port-forward deploy/temporal 7236:7236 &
-nix run .#agents-chat -- pi <conversation>                 # a line per message; Ctrl-D ends
-nix run .#agents-chat -- pi <conversation> -m "hello"      # one message, reply on stdout
-```
+## habit-data
 
-Each message is the `message` Update, with Update-with-Start, as in "Sessions";
-it waits for the reply, which for a new sandbox includes creating it. It
-starts by printing the conversation's pending wake-up, from the `Wakeup`'s
-`pending` query, on stderr. Wake-up replies are not shown: they are in the
-chat log (`messages`, role `wakeup` for the prompt). `--address` and
-`--namespace` default to `127.0.0.1:7236` and `agents`.
+The `habit-data` provider is Habit Helper's data: PostgREST in front of the
+`habit_helper` database (`k8s/manifests/habit-helper/`). Its profile,
+`habit-helper/habit-data-profile.yaml`, has a `token_grant`: the supervisor
+trades the sandbox's JWT-SVID with agent-token for a 5 minute PostgREST JWT
+and injects it, so no secret is in the sandbox, and only sandboxes with the
+`habit-helper` type get one. Requests may read, insert and update; the
+schema is `habit-helper/schema/`, applied by PostgREST's init container. Like
+pi's litellm profile it is a template: `binaries` is the store path of the
+`habit` CLI (`nix build .#habit-cli`), which `nix build .#habit-data-profile`
+fills in, so the CLI is the only program in the sandbox that reaches the
+data. The CLI is documented in `habit-helper/README.md`.
 
 ## pi
 
@@ -192,8 +221,8 @@ credential is a `token_grant`, so the sandbox's supervisor trades its
 JWT-SVID (`spiffe://home.garvey.sh/agent/<type>/<sandbox-id>`) at agent-token
 for the key granted to that type and puts it in each request's
 `Authorization` header ("The token service" in
-`k8s/manifests/agents/README.md`). pi and pi-wakeup get litellm's `pi` key,
-which may call `qwen3.8-flash-next` only. A sandbox created without an agent
+`k8s/manifests/agents/README.md`). pi gets litellm's `pi` key, which may
+call `qwen3.8-flash-next` only. A sandbox created without an agent
 type (`openshell sandbox create` by hand) gets no key, so its model calls fail
 with a 502.
 

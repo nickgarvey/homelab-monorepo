@@ -1,0 +1,49 @@
+# Anyone may reach the LoadBalancer Service in service.yaml on its target port.
+# Allow-only: the deny comes from manifests/cilium/pod-ingress-default-deny.yaml.
+# Only the LAN can get here: inbound IPv6 from the internet is default-deny at
+# the router, and no port is forwarded.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: synapse-lb-ingress
+  namespace: matrix
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  description: "LoadBalancer target port open to all"
+  enableDefaultDeny:
+    ingress: false
+  endpointSelector:
+    matchLabels:
+      app: synapse
+  ingress:
+    - fromEntities:
+        - all
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+---
+# The same for MAS (mas-service.yaml). Browsers, clients, Synapse and the
+# Caddy in Synapse's pod all reach it on the LoadBalancer address.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: mas-lb-ingress
+  namespace: matrix
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  description: "LoadBalancer target port open to all"
+  enableDefaultDeny:
+    ingress: false
+  endpointSelector:
+    matchLabels:
+      app: mas
+  ingress:
+    - fromEntities:
+        - all
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP

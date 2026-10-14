@@ -138,6 +138,10 @@ rules:
       - spiffe-agents-worker
       - spiffe-agents-postgres
       - spiffe-agent-token
+      - spiffe-habit-helper-api
+      - spiffe-habit-helper-owner
+      - spiffe-synapse
+      - spiffe-mas
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -459,6 +463,77 @@ spec:
 apiVersion: policy.cert-manager.io/v1alpha1
 kind: CertificateRequestPolicy
 metadata:
+  name: spiffe-habit-helper-api
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  # PostgREST's client certificate for postgres
+  # (manifests/habit-helper/postgres-client-certificates.yaml): CN is the
+  # postgres role and no other subject field is allowed, so the subject is
+  # exactly CN=habit_helper_api, the DN postgres maps to the role.
+  allowed:
+    commonName:
+      value: habit_helper_api
+    uris:
+      values:
+        - spiffe://home.garvey.sh/ns/habit-helper/sa/postgrest
+    usages:
+      - client auth
+      - digital signature
+      - key encipherment
+    isCA: false
+  constraints:
+    privateKey:
+      algorithm: ECDSA
+      minSize: 256
+      maxSize: 521
+  selector:
+    issuerRef:
+      group: cert-manager.io
+      kind: ClusterIssuer
+      name: spiffe-ca
+    namespace:
+      matchNames:
+        - habit-helper
+---
+apiVersion: policy.cert-manager.io/v1alpha1
+kind: CertificateRequestPolicy
+metadata:
+  name: spiffe-habit-helper-owner
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  # The habit_helper database owner's client certificate, used by PostgREST's
+  # schema init container (manifests/habit-helper/postgres-client-certificates.yaml):
+  # the subject is exactly CN=habit_helper.
+  allowed:
+    commonName:
+      value: habit_helper
+    uris:
+      values:
+        - spiffe://home.garvey.sh/ns/habit-helper/sa/postgrest
+    usages:
+      - client auth
+      - digital signature
+      - key encipherment
+    isCA: false
+  constraints:
+    privateKey:
+      algorithm: ECDSA
+      minSize: 256
+      maxSize: 521
+  selector:
+    issuerRef:
+      group: cert-manager.io
+      kind: ClusterIssuer
+      name: spiffe-ca
+    namespace:
+      matchNames:
+        - habit-helper
+---
+apiVersion: policy.cert-manager.io/v1alpha1
+kind: CertificateRequestPolicy
+metadata:
   name: spiffe-spire-ca
   labels:
     app.kubernetes.io/managed-by: ngarvey-homelab
@@ -529,3 +604,72 @@ subjects:
   - kind: ServiceAccount
     name: spire-server
     namespace: spire
+---
+apiVersion: policy.cert-manager.io/v1alpha1
+kind: CertificateRequestPolicy
+metadata:
+  name: spiffe-synapse
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  # Synapse's client certificate for postgres (manifests/matrix): the subject
+  # is exactly CN=synapse, the DN postgres maps to the role.
+  allowed:
+    commonName:
+      value: synapse
+    uris:
+      values:
+        - spiffe://home.garvey.sh/ns/matrix/sa/synapse
+    usages:
+      - client auth
+      - digital signature
+      - key encipherment
+    isCA: false
+  constraints:
+    privateKey:
+      algorithm: ECDSA
+      minSize: 256
+      maxSize: 521
+  selector:
+    issuerRef:
+      group: cert-manager.io
+      kind: ClusterIssuer
+      name: spiffe-ca
+    namespace:
+      matchNames:
+        - matrix
+---
+apiVersion: policy.cert-manager.io/v1alpha1
+kind: CertificateRequestPolicy
+metadata:
+  name: spiffe-mas
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  # The Matrix Authentication Service's client certificate for postgres
+  # (manifests/matrix): the subject is exactly CN=mas, the DN postgres maps to
+  # the role.
+  allowed:
+    commonName:
+      value: mas
+    uris:
+      values:
+        - spiffe://home.garvey.sh/ns/matrix/sa/mas
+    usages:
+      - client auth
+      - digital signature
+      - key encipherment
+    isCA: false
+  constraints:
+    privateKey:
+      algorithm: ECDSA
+      minSize: 256
+      maxSize: 521
+  selector:
+    issuerRef:
+      group: cert-manager.io
+      kind: ClusterIssuer
+      name: spiffe-ca
+    namespace:
+      matchNames:
+        - matrix

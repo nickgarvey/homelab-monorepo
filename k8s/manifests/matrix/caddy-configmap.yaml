@@ -1,0 +1,30 @@
+# The TLS front of Synapse's pod on 443, for matrix.garvey.sh. Synapse itself
+# listens on [::1]:8008 only. Logins, logouts and token refreshes go to MAS,
+# whose compatibility layer serves them for clients without OAuth 2.0 login
+# (Synapse has no /login of its own once MAS handles auth); everything else
+# goes to Synapse.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: synapse-caddy
+  namespace: matrix
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+data:
+  Caddyfile: |
+    {
+      auto_https off
+      admin off
+    }
+    :443 {
+      tls /certs/tls.crt /certs/tls.key
+      @mas path_regexp ^/_matrix/client/[^/]+/(login|logout|refresh)(/|$)
+      handle @mas {
+        reverse_proxy https://matrix-auth.home.garvey.sh {
+          header_up Host {upstream_hostport}
+        }
+      }
+      handle {
+        reverse_proxy http://[::1]:8008
+      }
+    }

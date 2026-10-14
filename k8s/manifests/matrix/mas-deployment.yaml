@@ -1,0 +1,97 @@
+# The Matrix Authentication Service for matrix.garvey.sh (README.md): every
+# Matrix login, through Authelia. Its state is in the mas database on the
+# shared postgres; it serves matrix-auth.home.garvey.sh over TLS on 443
+# itself, with the certificate in mas-certificate.yaml.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mas
+  namespace: matrix
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mas
+  template:
+    metadata:
+      labels:
+        app: mas
+        app.kubernetes.io/managed-by: ngarvey-homelab
+    spec:
+      serviceAccountName: mas
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        # Lets the image's user read the keys (0440).
+        fsGroup: 1000
+        # Lets the non-root process bind 443.
+        sysctls:
+          - name: net.ipv4.ip_unprivileged_port_start
+            value: "443"
+      containers:
+        - name: mas
+          image: oci.garvey.sh/matrix-authentication-service:1.26.0-acw64l2
+          # Applies pending migrations and syncs the config (the Authelia
+          # provider) into the database at start.
+          args: [server]
+          ports:
+            - containerPort: 443
+              name: https
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/mas/config
+              readOnly: true
+            - name: secrets
+              mountPath: /etc/mas/secrets
+              readOnly: true
+            - name: tls
+              mountPath: /etc/mas/tls
+              readOnly: true
+            # Mounted whole (no subPath), so renewed certificates reach the
+            # files.
+            - name: postgres-client
+              mountPath: /etc/mas/postgres
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 443
+              scheme: HTTPS
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 443
+              scheme: HTTPS
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              memory: 512Mi
+      volumes:
+        - name: config
+          configMap:
+            name: mas
+        - name: secrets
+          secret:
+            secretName: mas
+            defaultMode: 0440
+        - name: tls
+          secret:
+            secretName: mas-tls
+            defaultMode: 0440
+        - name: postgres-client
+          secret:
+            secretName: mas-postgres-client
+            defaultMode: 0440

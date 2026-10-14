@@ -1,0 +1,156 @@
+# Synapse, the Matrix homeserver for matrix.garvey.sh (README.md). One process,
+# no workers. Its state is in the synapse database on the shared postgres and
+# its media on the synapse-media volume. A Caddy in the pod serves it over TLS
+# on 443, with the certificate in certificate.yaml, and sends logins to MAS
+# (caddy-configmap.yaml).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: synapse
+  namespace: matrix
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  replicas: 1
+  # The media volume is ReadWriteOnce: the old pod goes before the new one.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: synapse
+  template:
+    metadata:
+      labels:
+        app: synapse
+        app.kubernetes.io/managed-by: ngarvey-homelab
+    spec:
+      serviceAccountName: synapse
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        # Lets the image's user read the keys (0440) and write the media volume.
+        fsGroup: 1000
+        # Lets the non-root Caddy bind 443.
+        sysctls:
+          - name: net.ipv4.ip_unprivileged_port_start
+            value: "443"
+      containers:
+        # Caddy loads the certificate only at start, so restart the pod after
+        # each renewal (README.md).
+        - name: caddy
+          image: caddy:2-alpine
+          command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile"]
+          ports:
+            - containerPort: 443
+              name: https
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+              # The image's caddy binary carries this file capability, and
+              # the kernel refuses to run it when the capability is not in
+              # the bounding set.
+              add: [NET_BIND_SERVICE]
+          volumeMounts:
+            - name: caddy-config
+              mountPath: /etc/caddy
+              readOnly: true
+            - name: caddy-data
+              mountPath: /data
+            - name: caddy-state
+              mountPath: /config
+            - name: tls
+              mountPath: /certs
+              readOnly: true
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+        - name: synapse
+          image: oci.garvey.sh/matrix-synapse:1.162.0-2lq4ph2
+          args:
+            - --config-path=/etc/synapse/config/homeserver.yaml
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/synapse/config
+              readOnly: true
+            - name: secrets
+              mountPath: /etc/synapse/secrets
+              readOnly: true
+            # The secret Synapse shares with MAS.
+            - name: mas
+              mountPath: /etc/synapse/mas
+              readOnly: true
+            # Mounted whole (no subPath), so renewed certificates reach the
+            # files.
+            - name: postgres-client
+              mountPath: /etc/synapse/postgres
+              readOnly: true
+            - name: media
+              mountPath: /var/lib/synapse/media
+            - name: tmp
+              mountPath: /tmp
+          # Through Caddy, so the probes cover both containers.
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 443
+              scheme: HTTPS
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 443
+              scheme: HTTPS
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 2Gi
+      volumes:
+        - name: config
+          configMap:
+            name: synapse
+        - name: caddy-config
+          configMap:
+            name: synapse-caddy
+        - name: caddy-data
+          emptyDir: {}
+        - name: caddy-state
+          emptyDir: {}
+        - name: secrets
+          secret:
+            secretName: synapse
+            defaultMode: 0440
+        - name: mas
+          secret:
+            secretName: mas
+            items:
+              - key: synapse-secret
+                path: synapse-secret
+            defaultMode: 0440
+        - name: tls
+          secret:
+            secretName: synapse-tls
+            defaultMode: 0440
+        - name: postgres-client
+          secret:
+            secretName: synapse-postgres-client
+            defaultMode: 0440
+        - name: media
+          persistentVolumeClaim:
+            claimName: synapse-media
+        - name: tmp
+          emptyDir: {}

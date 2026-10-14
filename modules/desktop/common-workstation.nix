@@ -148,6 +148,8 @@ in
       dig
       dmidecode
       efibootmgr
+      # Matrix client for matrix.garvey.sh (k8s/manifests/matrix/README.md).
+      element-desktop
       gh
       ghostty
       google-chrome

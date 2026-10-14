@@ -2,7 +2,8 @@
 # agents run on the OpenShell gateway, the desired state built from
 # agents/declaration.nix, agents-apply, which publishes it, the images of
 # agents-worker, which runs the chat sessions, and of agent-token, the token
-# service for sandbox credentials, and the agents-chat app.
+# service for sandbox credentials, and of Habit Helper's PostgREST, and the
+# habit CLI.
 # Imported by the root flake.nix.
 { self, nixpkgs, ... }:
 let
@@ -48,9 +49,25 @@ let
     substitute ${./pi/litellm-profile.yaml} $out --replace-fail @node@ "$node"
   '';
 
+  # The habit CLI, Habit Helper's only way to its data; its build runs the
+  # integration test against PostgREST with this schema.
+  habitCli = pkgs.callPackage ../packages/agents/habit-cli.nix {
+    agents = agentsGo;
+    schema = ./habit-helper/schema;
+  };
+
+  # The habit-data profile's binaries entry: the habit CLI, resolved past
+  # symlinks (the sandbox matches the exe a connection comes from).
+  habitDataProfile = pkgs.runCommand "habit-data-profile.yaml" { } ''
+    habit=$(readlink -f ${lib.getExe habitCli})
+    substitute ${./habit-helper/habit-data-profile.yaml} $out --replace-fail @habit@ "$habit"
+  '';
+
   # What a declaration can refer to.
   images.pi = import ./pi/image.nix { inherit pkgs; };
+  images.habitHelper = import ./habit-helper/image.nix { inherit pkgs; habit = habitCli; };
   profiles.piLitellm = piLitellmProfile;
+  profiles.habitData = habitDataProfile;
 
   # evalAgents <module>: the declaration evaluated against agents/schema.nix.
   evalAgents = declaration: lib.evalModules {
@@ -107,36 +124,26 @@ let
       exec ${lib.getExe agentsGo} --state ${desiredState ./declaration.nix} "$@"
     '';
   };
-
-  # agents-chat (`nix run .#agents-chat -- <type> <conversation>`) is a
-  # stand-in until the Matrix transport works, so it has a deadline: after
-  # it, the app and `nix flake check` stop evaluating.
-  chatExpired = lib.max self.lastModified nixpkgs.lastModified >= 1801440000; # 2027-02-01T00:00:00Z
-  checkChat = lib.throwIf chatExpired ''
-    agents-chat expired on 2027-01-31. Remove it now that Matrix works
-    (packages/agents/cmd/agents-chat, the agents-chat app and this check in
-    agents/outputs.nix, and its section in agents/README.md), or push the
-    deadline out deliberately.
-  '';
 in
 {
   packages.${system} = lib.mapAttrs (_: checkPins) {
     pi-agent-image = images.pi;
+    habit-helper-image = images.habitHelper;
     pi-agent-litellm-profile = piLitellmProfile;
     agents-desired-state = desiredState ./declaration.nix;
     agents-apply = agentsApply;
     agents-worker-image = agentsWorkerImage;
     agent-token-image = agentTokenImage;
+    habit-data-profile = habitDataProfile;
+    habit-cli = habitCli;
+    # Pushed as oci.garvey.sh/habit-helper-postgrest:<tag> and run by
+    # k8s/manifests/habit-helper/deployment.yaml.
+    habit-helper-postgrest-image = import ./habit-helper/postgrest-image.nix { inherit pkgs; };
   };
 
-  apps.${system}.agents-chat = {
-    type = "app";
-    program = checkChat (lib.getExe' agentsGo "agents-chat");
-    meta.description = "Talk to an agent conversation through the Temporal break-glass port-forward (temporary)";
-  };
-
-  checks.${system} = lib.mapAttrs (_: drv: checkPins (checkChat drv)) {
+  checks.${system} = lib.mapAttrs (_: checkPins) {
     agents-declaration-test = import ./declaration-test.nix { inherit pkgs lib images desiredState; };
     agents-go-tests = agentsGo;
+    habit-cli-tests = habitCli;
   };
 }
