@@ -233,6 +233,48 @@ nix build .#agent-token-image
 skopeo copy docker-archive:result docker://oci.garvey.sh/agent-token:$(nix eval --raw .#agent-token-image.imageTag)
 ```
 
+## The Matrix bridge
+
+`agents-matrix` (`matrix-*.yaml`; what it does is in `agents/README.md`,
+"Matrix") runs the agents-worker image with its own ServiceAccount,
+`agents-matrix`:
+
+- **Temporal**: its X.509-SVID
+  (`spiffe://home.garvey.sh/ns/agents/sa/agents-matrix`, kept fresh by
+  spiffe-helper) has `write` in the namespace `agents`, for Update-with-Start
+  on the `ChatSession`s and cancelling `Wakeup`s.
+- **Synapse**: the appservice registration (`matrix-secret.yaml`) holds the
+  `as_token` the bridge acts as the agents' users with, and the `hs_token`
+  Synapse sends with each transaction to
+  `http://agents-matrix.agents.svc.cluster.local:8009` (`matrix-service.yaml`).
+  That hop is plaintext inside the cluster; the bridge refuses a transaction
+  without the `hs_token`. Synapse has the same registration as
+  `appservice-agents.yaml` in `manifests/matrix/secret.yaml`.
+
+Its state is in Matrix and Temporal only, so it can be restarted at any time;
+a turn running at the time still finishes, but its reply is not posted.
+
+To change the registration (a new agent type's user, new tokens), change both
+copies the same way, decrypting only into a pipe:
+
+```sh
+sops -d manifests/agents/matrix-secret.yaml \
+  | yq '.spec.secretTemplates[0].stringData["registration.yaml"]'   # check the current namespace
+# Edit with `sops manifests/agents/matrix-secret.yaml`, then copy it into Synapse's:
+REG=$(sops -d manifests/agents/matrix-secret.yaml | yq '.spec.secretTemplates[0].stringData["registration.yaml"]')
+sops -d manifests/matrix/secret.yaml \
+  | REG="$REG" yq '.spec.secretTemplates[0].stringData["appservice-agents.yaml"] = strenv(REG)' \
+  | sops -e --filename-override manifests/matrix/secret.yaml --input-type yaml --output-type yaml /dev/stdin \
+  > manifests/matrix/secret.yaml.new && mv manifests/matrix/secret.yaml.new manifests/matrix/secret.yaml
+unset REG
+kubectl apply -f manifests/agents/matrix-secret.yaml -f manifests/matrix/secret.yaml
+kubectl -n matrix rollout restart deploy/synapse
+kubectl -n agents rollout restart deploy/agents-matrix
+```
+
+(`sops --set` on a key of `manifests/matrix/secret.yaml` mangles the comment
+above the list item, so the pipe it is.)
+
 ## Apply (from `k8s/`)
 
 `manifests/cert-manager/spiffe-policies.yaml` first, and the gateway with
@@ -288,3 +330,19 @@ kubectl -n agents rollout status deploy/agent-token
 
 The RGW role takes effect when joor is deployed. `postgres-1` is whichever
 instance is primary (`kubectl -n postgres get cluster postgres`).
+
+The Matrix bridge, with Synapse and MAS running (`manifests/matrix`) and the
+agents-worker image that has `agents-matrix` pushed:
+
+```sh
+kubectl apply -f manifests/temporal/authz-configmap.yaml
+kubectl -n temporal rollout restart deploy/temporal
+kubectl apply -f manifests/matrix/secret.yaml -f manifests/matrix/configmap.yaml
+kubectl -n matrix rollout restart deploy/synapse
+kubectl apply -f manifests/agents/matrix-secret.yaml
+kubectl -n agents get secret agents-matrix        # wait for it
+kubectl apply -f manifests/agents/matrix-service-account.yaml \
+  -f manifests/agents/matrix-spiffe-helper-configmap.yaml \
+  -f manifests/agents/matrix-service.yaml -f manifests/agents/matrix-deployment.yaml
+kubectl -n agents rollout status deploy/agents-matrix
+```

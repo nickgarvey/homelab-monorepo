@@ -1,0 +1,25 @@
+# spiffe-helper keeps the Matrix bridge's X.509-SVID in /run/spiffe
+# (svid.pem, svid_key.pem, and bundle.pem, the trust domain's root, which also
+# verifies Temporal's frontend). The bridge reads the files again for each
+# handshake.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agents-matrix-spiffe-helper
+  namespace: agents
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+data:
+  helper.conf: |
+    agent_address = "/spiffe-workload-api/spire-agent.sock"
+    cert_dir = "/run/spiffe"
+    daemon_mode = true
+    svid_file_name = "svid.pem"
+    svid_key_file_name = "svid_key.pem"
+    svid_bundle_file_name = "bundle.pem"
+    health_checks {
+      listener_enabled = true
+      bind_port = 8081
+      liveness_path = "/live"
+      readiness_path = "/ready"
+    }

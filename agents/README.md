@@ -153,10 +153,44 @@ temporal workflow query --address 127.0.0.1:7236 --namespace agents \
 `habit-helper` is the type with wake-ups (`session.defaultWakeup` 24h); its
 instructions say when to ask for one, with `habit wake-at`.
 
+## Matrix
+
+The agents are on Matrix (`matrix.garvey.sh`, `k8s/manifests/matrix`), each
+type as its own user: `@habit-helper:matrix.garvey.sh`, `@pi:matrix.garvey.sh`.
+The bridge, `agents-matrix` (`packages/agents/internal/matrix`), is a Synapse
+application service: Synapse pushes it the events of those users, and it acts
+as them.
+
+- **Rooms.** At start, each agent makes sure it has a direct chat with each
+  allowed user (`--allow`, now only `@ngarvey:matrix.garvey.sh`), creating one
+  and inviting them if not. It also joins any room an allowed user invites it
+  to. Invites from anyone else, and their messages, are ignored.
+- **One room is one conversation** of each agent in it: the conversation ID is
+  `matrix-` and the room ID's opaque part (`Conversation`), so the bridge keeps
+  no table.
+- **A text message** from an allowed user is the conversation's next
+  `message` Update, with Update-with-Start as in "Sessions" and the event ID
+  as the Update ID, so a message the bridge reads twice runs one turn. The
+  agent marks it read, shows typing until the reply, and posts the reply
+  rendered from Markdown; a `<silent>` reply posts nothing. A failed turn
+  posts a short notice instead. Anything but text gets a notice; edits are
+  ignored.
+- **No encryption.** The direct chats the agents create are unencrypted, and
+  only the agent may turn encryption on. In an encrypted room (Element X
+  encrypts the direct chats it creates) the agent says once that it cannot
+  read it.
+- **Leaving.** When an allowed user leaves a room, its agents leave too; an
+  agent that leaves or is removed cancels its conversation's `Wakeup`.
+- **Wake-up replies** are not posted yet (nix-LAjpH.2): they are in the chat
+  log, as with `agents-chat`.
+- **Adding a type** to Matrix: add its user to the registration's users
+  namespace, in both copies (`k8s/manifests/agents/README.md`, "The Matrix
+  bridge"), restart Synapse and the bridge.
+
 ## agents-chat (temporary)
 
-A terminal client for one conversation, for talking to agents until the Matrix
-transport works; then it is removed. `agents/outputs.nix` stops evaluating it,
+A terminal client for one conversation, from before the Matrix bridge; it is
+removed once Matrix is in daily use. `agents/outputs.nix` stops evaluating it,
 and fails `nix flake check`, after 2027-01-31; past that, delete
 `packages/agents/cmd/agents-chat`, the `agents-chat` app and its check in
 `agents/outputs.nix` and this section, or push the deadline out deliberately.

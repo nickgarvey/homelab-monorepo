@@ -1,0 +1,19 @@
+# Where Synapse pushes the bridge its transactions (the registration's url).
+# In-cluster only; every request carries the registration's hs_token.
+apiVersion: v1
+kind: Service
+metadata:
+  name: agents-matrix
+  namespace: agents
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  ipFamilies: [IPv6]
+  ipFamilyPolicy: SingleStack
+  selector:
+    app: agents-matrix
+  ports:
+    - name: appservice
+      protocol: TCP
+      port: 8009
+      targetPort: 8009

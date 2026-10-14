@@ -1,0 +1,134 @@
+# The agents' Matrix bridge (packages/agents, cmd/agents-matrix): Synapse
+# pushes it the events of the agents' users (matrix-service.yaml); it runs
+# each message from an allowed user as a turn of the room's conversation and
+# posts the reply as the agent. It logs in to Temporal with its SVID
+# (spiffe-helper) and acts on Synapse with the registration's as_token
+# (matrix-secret.yaml). It keeps no state, so one replica can be replaced at
+# any time; a reply still running when it goes is not posted.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agents-matrix
+  namespace: agents
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  replicas: 1
+  # Two bridges would both answer each message.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: agents-matrix
+  template:
+    metadata:
+      labels:
+        app: agents-matrix
+        app.kubernetes.io/managed-by: ngarvey-homelab
+    spec:
+      serviceAccountName: agents-matrix
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        # Lets the image's user read the registration (0440).
+        fsGroup: 1000
+      initContainers:
+        # Native sidecar: starts before the bridge and keeps its SVID files
+        # fresh.
+        - name: spiffe-helper
+          image: ghcr.io/spiffe/spiffe-helper:0.11.0
+          restartPolicy: Always
+          args: ["-config", "/etc/spiffe-helper/helper.conf"]
+          volumeMounts:
+            - name: spiffe-workload-api
+              mountPath: /spiffe-workload-api
+              readOnly: true
+            - name: spiffe-helper-config
+              mountPath: /etc/spiffe-helper
+              readOnly: true
+            - name: svid
+              mountPath: /run/spiffe
+          startupProbe:
+            httpGet:
+              path: /ready
+              port: 8081
+            periodSeconds: 2
+            failureThreshold: 60
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: 8081
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+      containers:
+        # The agents-worker image, which holds every agents binary.
+        - name: bridge
+          image: oci.garvey.sh/agents-worker:fcmdvhvmwk890zba8ik7zm4lsqqh5dfr
+          command: ["/bin/agents-matrix"]
+          args:
+            - --temporal-cert=/run/spiffe/svid.pem
+            - --temporal-key=/run/spiffe/svid_key.pem
+            - --temporal-ca=/run/spiffe/bundle.pem
+            - --registration=/etc/agents-matrix/registration.yaml
+            - --state=/etc/agents/desired-state/desired-state.json
+            # Who the agents talk to; everyone else is ignored.
+            - --allow=@ngarvey:matrix.garvey.sh
+          ports:
+            - containerPort: 8009
+              name: appservice
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: svid
+              mountPath: /run/spiffe
+              readOnly: true
+            - name: registration
+              mountPath: /etc/agents-matrix
+              readOnly: true
+            # Mounted whole (no subPath), so the kubelet's updates reach it.
+            - name: desired-state
+              mountPath: /etc/agents/desired-state
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /_matrix/mau/ready
+              port: 8009
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /_matrix/mau/live
+              port: 8009
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+      volumes:
+        - name: spiffe-workload-api
+          csi:
+            driver: csi.spiffe.io
+            readOnly: true
+        - name: spiffe-helper-config
+          configMap:
+            name: agents-matrix-spiffe-helper
+        - name: svid
+          emptyDir:
+            medium: Memory
+        - name: registration
+          secret:
+            secretName: agents-matrix
+            defaultMode: 0440
+        - name: desired-state
+          configMap:
+            name: agents-desired-state

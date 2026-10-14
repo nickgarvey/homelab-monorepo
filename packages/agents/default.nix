@@ -1,8 +1,9 @@
 # The agents Go module: agents-apply (cmd/agents-apply), which publishes the
 # agent types declared in agents/declaration.nix, agents-worker
 # (cmd/agents-worker), which runs the chat sessions on Temporal, and
-# agents-chat (cmd/agents-chat), a terminal client for a conversation, and
-# agent-token (cmd/agent-token), which trades JWT-SVIDs for credentials.
+# agents-chat (cmd/agents-chat), a terminal client for a conversation,
+# agents-matrix (cmd/agents-matrix), the Matrix bridge, and agent-token
+# (cmd/agent-token), which trades JWT-SVIDs for credentials.
 # buildGoModule runs `go test`, so the tests gate the build; the store and
 # session tests run against a throwaway Postgres started by
 # postgresqlTestHook. Built by agents/outputs.nix.
@@ -20,7 +21,7 @@ buildGoModule {
     filter = path: _type:
       !(builtins.elem (lib.removePrefix (toString ./. + "/") path) [ "cmd/habit" "default.nix" "habit-cli.nix" ]);
   };
-  vendorHash = "sha256-SjKDfVWPpasVPu6PFT058ryHC95sLL5/CkypVPV3rVw=";
+  vendorHash = "sha256-+eZCgrKKASUFtt62xN47o0nPTCmjPHYYVtTYJgJDMWk=";
 
   nativeCheckInputs = [ postgresql postgresqlTestHook ];
   # storetest gives each test package its own database.

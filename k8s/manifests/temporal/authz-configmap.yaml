@@ -25,6 +25,11 @@ data:
       spiffe://home.garvey.sh/ns/agents/sa/agents-worker:
         namespaces:
           agents: write
+      # The agents' Matrix bridge (manifests/agents): starts conversation
+      # turns and cancels a room's wake-ups when it is left.
+      spiffe://home.garvey.sh/ns/agents/sa/agents-matrix:
+        namespaces:
+          agents: write
       # The Ceph backup worker (manifests/ceph-backup), in its Temporal namespace.
       spiffe://home.garvey.sh/ns/ceph-backup/sa/ceph-backup-worker:
         namespaces:
