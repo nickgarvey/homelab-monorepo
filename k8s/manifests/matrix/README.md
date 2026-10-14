@@ -53,6 +53,28 @@ record.
   `as_token` itself, before asking MAS. MAS has no
   `m.login.application_service` login, which only encrypted bridges need.
 
+## Clients
+
+- **Desktop:** Element Desktop (`element-desktop`, installed on the
+  workstations by `modules/desktop/common-workstation.nix`). Sign in with
+  homeserver `matrix.garvey.sh`; it opens MAS in the browser, then Authelia.
+- **Android:** Element X. Same homeserver; the login opens in the phone's
+  browser.
+- **What a device needs.** `matrix.garvey.sh` has no public DNS record and
+  only an IPv6 address on the LAN. A device must use the router's DNS
+  (Android's Private DNS and browsers' secure DNS go around it) and have an
+  IPv6 route to the LAN; otherwise the app spins at "checking homeserver"
+  without a request ever reaching Synapse. `matrix-auth.home.garvey.sh` does
+  resolve publicly, so a half-working login points at the first name. Off
+  the LAN, nothing works until the phone's route to the LAN is up.
+- **Push notifications** (Element X): the app registers a pusher with
+  Synapse for Element's push gateway (`matrix.org`'s Sygnal), which reaches
+  the phone through Firebase. Synapse sends only room and event IDs
+  (`push.include_content: false`); the phone then fetches the message from
+  Synapse, so it shows only once the phone can reach the LAN. The pushers
+  Synapse holds:
+  `kubectl -n postgres exec postgres-1 -c postgres -- psql -U postgres -d synapse -c 'select user_name, app_id, app_display_name, device_display_name, data from pushers'`.
+
 ## Setup (from `k8s/`, once)
 
 1. Postgres roles and databases. Synapse and MAS log in with client

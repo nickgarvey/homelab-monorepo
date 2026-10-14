@@ -72,6 +72,12 @@ data:
     enable_registration: false
     report_stats: false
 
+    # Push notifications carry only the room and event IDs, never the
+    # message or sender: the phone fetches the event from here. They go
+    # through Element's push gateway and Google or Apple on the way.
+    push:
+      include_content: false
+
     log_config: /etc/synapse/config/log.yaml
 
   log.yaml: |
