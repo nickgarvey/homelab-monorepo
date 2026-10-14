@@ -242,7 +242,8 @@ skopeo copy docker-archive:result docker://oci.garvey.sh/agent-token:$(nix eval 
 - **Temporal**: its X.509-SVID
   (`spiffe://home.garvey.sh/ns/agents/sa/agents-matrix`, kept fresh by
   spiffe-helper) has `write` in the namespace `agents`, for Update-with-Start
-  on the `ChatSession`s and cancelling `Wakeup`s.
+  on the `ChatSession`s, cancelling `Wakeup`s, and polling the
+  `agents-matrix` task queue, where it posts wake-up replies.
 - **Synapse**: the appservice registration (`matrix-secret.yaml`) holds the
   `as_token` the bridge acts as the agents' users with, and the `hs_token`
   Synapse sends with each transaction to
@@ -252,7 +253,8 @@ skopeo copy docker-archive:result docker://oci.garvey.sh/agent-token:$(nix eval 
   `appservice-agents.yaml` in `manifests/matrix/secret.yaml`.
 
 Its state is in Matrix and Temporal only, so it can be restarted at any time;
-a turn running at the time still finishes, but its reply is not posted.
+a turn running at the time still finishes, but its reply is not posted. A
+wake-up reply waits in Temporal for the bridge, up to an hour.
 
 To change the registration (a new agent type's user, new tokens), change both
 copies the same way, decrypting only into a pipe:

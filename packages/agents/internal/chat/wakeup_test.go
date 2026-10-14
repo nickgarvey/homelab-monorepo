@@ -3,10 +3,12 @@ package chat
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/mock"
+	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/converter"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
@@ -30,16 +32,33 @@ type wakeupWorld struct {
 	turnTakes time.Duration
 	turnErr   error
 	disabled  bool
+	reply     string
+	// delivers records each DeliverActivity; it takes deliverTakes and
+	// returns deliverErr.
+	delivers     []DeliverInput
+	deliverTakes time.Duration
+	deliverErr   error
 	// turns and turnAt record each RunWakeupTurn, as it returns.
 	turns  []WakeupTurnInput
 	turnAt []time.Time
 }
 
 func newWakeupWorld(t *testing.T, start time.Time) *wakeupWorld {
-	w := &wakeupWorld{t: t, turnTakes: time.Minute}
+	w := &wakeupWorld{t: t, turnTakes: time.Minute, reply: "ok", deliverTakes: time.Second}
 	w.env = w.NewTestWorkflowEnvironment()
 	w.env.SetStartTime(start)
 	w.env.RegisterActivity(&Activities{})
+	w.env.RegisterActivityWithOptions(func(context.Context, DeliverInput) (DeliverResult, error) {
+		return DeliverResult{}, nil
+	}, activity.RegisterOptions{Name: DeliverActivity})
+	w.env.OnActivity(DeliverActivity, mock.Anything, mock.Anything).AfterFn(func() time.Duration { return w.deliverTakes }).Return(
+		func(_ context.Context, in DeliverInput) (DeliverResult, error) {
+			w.delivers = append(w.delivers, in)
+			if w.deliverErr != nil {
+				return DeliverResult{}, w.deliverErr
+			}
+			return DeliverResult{Delivered: true}, nil
+		})
 	w.env.OnActivity("RunWakeupTurn", mock.Anything, mock.Anything).AfterFn(func() time.Duration { return w.turnTakes }).Return(
 		func(_ context.Context, in WakeupTurnInput) (WakeupTurnResult, error) {
 			w.turns = append(w.turns, in)
@@ -47,7 +66,7 @@ func newWakeupWorld(t *testing.T, start time.Time) *wakeupWorld {
 			if w.turnErr != nil {
 				return WakeupTurnResult{}, w.turnErr
 			}
-			return WakeupTurnResult{Reply: "ok", Disabled: w.disabled, DefaultSeconds: int(day / time.Second)}, nil
+			return WakeupTurnResult{Reply: w.reply, Disabled: w.disabled, DefaultSeconds: int(day / time.Second)}, nil
 		})
 	return w
 }
@@ -236,5 +255,64 @@ func TestWakeupEndsWhenDisabled(t *testing.T) {
 	w.env.ExecuteWorkflow(Wakeup, newInput())
 	if !w.env.IsWorkflowCompleted() || w.env.GetWorkflowError() != nil {
 		t.Errorf("completed %v, error %v", w.env.IsWorkflowCompleted(), w.env.GetWorkflowError())
+	}
+}
+
+func matrixInput() WakeupInput {
+	in := newInput()
+	in.Conversation = "matrix-AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_abcde"
+	return in
+}
+
+func TestWakeupReplyIsPostedToTheRoom(t *testing.T) {
+	w := newWakeupWorld(t, wakeupStart)
+	w.reply = "Did you walk today?"
+	w.run(matrixInput())
+	if len(w.delivers) != 1 {
+		t.Fatalf("delivers %+v", w.delivers)
+	}
+	d := w.delivers[0]
+	if d.Type != "pi" || d.Conversation != matrixInput().Conversation || d.Reply != "Did you walk today?" ||
+		!strings.HasPrefix(d.TxnID, "wakeup-") || len(d.TxnID) <= len("wakeup-") {
+		t.Errorf("deliver %+v", d)
+	}
+}
+
+func TestSilentOrRoomlessWakeupPostsNothing(t *testing.T) {
+	for name, c := range map[string]struct {
+		in    WakeupInput
+		reply string
+	}{
+		"silent":  {matrixInput(), "<silent>"},
+		"empty":   {matrixInput(), "  "},
+		"no room": {newInput(), "Did you walk today?"},
+	} {
+		w := newWakeupWorld(t, wakeupStart)
+		w.reply = c.reply
+		w.run(c.in)
+		if len(w.delivers) != 0 {
+			t.Errorf("%s: delivers %+v", name, w.delivers)
+		}
+	}
+}
+
+func TestFailedDeliveryStillSetsTheNext(t *testing.T) {
+	w := newWakeupWorld(t, wakeupStart)
+	w.deliverErr = temporal.NewNonRetryableApplicationError("synapse down", "Down", nil)
+	next := w.run(matrixInput())
+	if next.Pending == nil || next.Silent != 1 || len(w.delivers) != 1 {
+		t.Errorf("next %+v, delivers %+v", next, w.delivers)
+	}
+}
+
+func TestRequestDuringDeliveryIsKept(t *testing.T) {
+	w := newWakeupWorld(t, wakeupStart)
+	w.deliverTakes = time.Hour
+	set := &session.Wakeup{At: wakeupStart.Add(3 * day), Note: "later"}
+	// The default wake-up is at day; its turn takes a minute, the delivery an hour.
+	w.report(day+30*time.Minute, TurnReport{User: true, Set: set})
+	next := w.run(matrixInput())
+	if next.Pending == nil || !next.Pending.At.Equal(set.At) || next.Pending.Note != "later" {
+		t.Errorf("next %+v", next.Pending)
 	}
 }

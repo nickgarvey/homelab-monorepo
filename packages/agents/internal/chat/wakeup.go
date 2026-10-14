@@ -81,8 +81,9 @@ func floor(defaultSeconds, silent int) time.Duration {
 // Wakeup holds a conversation's one pending wake-up, with workflow ID
 // WakeupID(type, conversation). CollectOutbox starts it with
 // Signal-with-Start after a turn of a type with wake-ups. When the pending
-// time comes it runs a wake-up turn in the ChatSession (RunWakeupTurn) and
-// sets the next: the one the turn asked for; or, if the turn failed, the
+// time comes it runs a wake-up turn in the ChatSession (RunWakeupTurn),
+// posts a reply that is not silent to the conversation's Matrix room
+// (deliver), and sets the next: the one the turn asked for; or, if the turn failed, the
 // same again an hour later; or else the floor, which backs off while the
 // user is silent. A request from any turn replaces the pending wake-up; one
 // that arrives during a wake-up turn is kept for after it. It
@@ -132,7 +133,6 @@ func Wakeup(ctx workflow.Context, in WakeupInput) error {
 		var res WakeupTurnResult
 		err := workflow.ExecuteActivity(workflow.WithActivityOptions(ctx, wakeupTurnOptions),
 			(*Activities).RunWakeupTurn, WakeupTurnInput{Type: w.Type, Conversation: w.Conversation, Wakeup: due}).Get(ctx, &res)
-		w.running = false
 		log := workflow.GetLogger(ctx)
 		switch {
 		case err != nil:
@@ -145,14 +145,15 @@ func Wakeup(ctx workflow.Context, in WakeupInput) error {
 			if res.DefaultSeconds > 0 {
 				w.DefaultSeconds = res.DefaultSeconds
 			}
-			// Nothing delivers a wake-up's reply to the user yet: it is in
-			// the chat log, and here.
-			if session.IsSilent(res.Reply) {
+			if session.IsSilent(res.Reply) || strings.TrimSpace(res.Reply) == "" {
 				log.Info("Wake-up turn ended silent", "wakeup", due)
 			} else {
-				log.Info("Wake-up turn replied", "wakeup", due, "reply", res.Reply)
+				// Still running: a request made meanwhile is kept for
+				// after.
+				w.deliver(ctx, res.Reply)
 			}
 		}
+		w.running = false
 
 		now := workflow.Now(ctx)
 		switch {

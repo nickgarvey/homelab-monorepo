@@ -26,7 +26,8 @@ data:
         namespaces:
           agents: write
       # The agents' Matrix bridge (manifests/agents): starts conversation
-      # turns and cancels a room's wake-ups when it is left.
+      # turns, cancels a room's wake-ups when it is left, and serves the
+      # agents-matrix task queue (wake-up replies).
       spiffe://home.garvey.sh/ns/agents/sa/agents-matrix:
         namespaces:
           agents: write

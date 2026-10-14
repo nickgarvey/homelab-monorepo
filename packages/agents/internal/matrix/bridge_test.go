@@ -16,6 +16,7 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
+	"homelab/agents/internal/chat"
 	"homelab/agents/internal/session"
 )
 
@@ -390,4 +391,40 @@ func TestStartCreatesTheDirectChatOnce(t *testing.T) {
 	hs.joined[hs.created[0]] = append(hs.joined[hs.created[0]], nick)
 	require.NoError(t, b.Start(ctx))
 	assert.Len(t, hs.created, 1)
+}
+
+func TestDeliverPostsInTheConversationsRoom(t *testing.T) {
+	hs, turns := newFakeHS(), &fakeTurns{}
+	elsewhere := id.RoomID("!elsewhere0000000000000000000000000000000000")
+	hs.joined[elsewhere] = []id.UserID{nick, agent}
+	hs.joined[room] = []id.UserID{nick, agent}
+	b := newBridge(hs, turns)
+	res, err := b.Deliver(context.Background(), chat.DeliverInput{
+		Type: "habit-helper", Conversation: Conversation(room), Reply: "Time for a **walk**?", TxnID: "wakeup-run1",
+	})
+	require.NoError(t, err)
+	assert.True(t, res.Delivered)
+	require.Len(t, hs.Sent(), 1)
+	s := hs.Sent()[0]
+	assert.Equal(t, agent, s.user)
+	assert.Equal(t, room, s.room)
+	assert.Equal(t, "wakeup-run1", s.txnID)
+	assert.Equal(t, "Time for a <strong>walk</strong>?", s.content.FormattedBody)
+}
+
+func TestDeliverWithNoRoomPostsNothing(t *testing.T) {
+	hs, turns := newFakeHS(), &fakeTurns{}
+	hs.joined[room] = []id.UserID{nick}
+	b := newBridge(hs, turns)
+	for _, in := range []chat.DeliverInput{
+		// The agent left the room.
+		{Type: "habit-helper", Conversation: Conversation(room), Reply: "hi", TxnID: "t"},
+		// A type the bridge does not serve.
+		{Type: "pi", Conversation: Conversation(room), Reply: "hi", TxnID: "t"},
+	} {
+		res, err := b.Deliver(context.Background(), in)
+		require.NoError(t, err)
+		assert.False(t, res.Delivered, in.Type)
+	}
+	assert.Empty(t, hs.Sent())
 }

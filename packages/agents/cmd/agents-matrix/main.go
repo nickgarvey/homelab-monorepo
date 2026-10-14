@@ -1,7 +1,8 @@
 // agents-matrix is the Matrix bridge for the agents (packages/agents/internal/
 // matrix): an application service that Synapse pushes events to, which runs
 // each message from an allowed user as a turn of the room's conversation and
-// posts the reply as the agent. It logs in to Temporal with its own SVID
+// posts the reply as the agent. It also serves chat.DeliverActivity on its
+// own task queue, which posts wake-up replies. It logs in to Temporal with its own SVID
 // (k8s/manifests/agents/README.md, "The Matrix bridge") and to Synapse with
 // the registration's as_token.
 package main
@@ -19,9 +20,12 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.temporal.io/sdk/activity"
+	"go.temporal.io/sdk/worker"
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/id"
 
+	"homelab/agents/internal/chat"
 	"homelab/agents/internal/desired"
 	"homelab/agents/internal/matrix"
 	"homelab/agents/internal/temporalconn"
@@ -130,6 +134,13 @@ func run(tc *temporalconn.Config, registration, homeserver, server string, port 
 		as.Stop()
 		return err
 	}
+	w := worker.New(c, chat.DeliverTaskQueue, worker.Options{})
+	w.RegisterActivityWithOptions(b.Deliver, activity.RegisterOptions{Name: chat.DeliverActivity})
+	if err := w.Start(); err != nil {
+		as.Stop()
+		return fmt.Errorf("temporal worker: %w", err)
+	}
+	defer w.Stop()
 	as.Ready = true
 	agents, _ := b.Agents()
 	log.Info("Bridging", "agents", desired.SortedKeys(agents), "allowed", allow)

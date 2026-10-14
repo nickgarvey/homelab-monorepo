@@ -137,9 +137,11 @@ any turn already queued.
   The header is not stored in the chat log.
 - **Replies.** The wake-up's prompt is stored in `messages` with role
   `wakeup`, and the reply as written. A reply of exactly `<silent>` means the
-  agent chose to say nothing. Nothing delivers wake-up replies to the user
-  yet: they are in the chat log and in the worker's log (`Wake-up turn
-  replied`, or `Wake-up turn ended silent`).
+  agent chose to say nothing, and is posted nowhere. Any other reply of a
+  conversation from a Matrix room (ID `matrix-…`) is posted there as the
+  agent ("Matrix"); one from `agents-chat` is only in the chat log. The
+  worker's log says which (`Wake-up turn replied; posted to the room`, `…
+  no room to post it to`, or `Wake-up turn ended silent`).
 - **Ending.** A `Wakeup` ends at its next wake-up once the type is no longer
   published or has no `session.defaultWakeup`.
 
@@ -181,8 +183,13 @@ as them.
   read it.
 - **Leaving.** When an allowed user leaves a room, its agents leave too; an
   agent that leaves or is removed cancels its conversation's `Wakeup`.
-- **Wake-up replies** are not posted yet (nix-LAjpH.2): they are in the chat
-  log, as with `agents-chat`.
+- **Wake-up replies.** After a wake-up turn the `Wakeup` workflow runs
+  `DeliverReply` on the `agents-matrix` task queue, which only the bridge
+  serves, so the worker never holds the appservice token. The bridge finds
+  the room among the agent's joined rooms and posts the reply; the Matrix
+  transaction ID is `wakeup-` and the `Wakeup` run's ID, so a retry posts
+  nothing more. If the bridge is down the reply waits up to an hour for it,
+  then is only in the chat log, as is one whose agent has left the room.
 - **Adding a type** to Matrix: add its user to the registration's users
   namespace, in both copies (`k8s/manifests/agents/README.md`, "The Matrix
   bridge"), restart Synapse and the bridge.
