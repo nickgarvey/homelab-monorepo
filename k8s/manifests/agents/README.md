@@ -1,8 +1,7 @@
 # agents
 
-The agents worker's namespace (design: `docs/agent-sessions-design.md`). The
-worker runs agent sessions in OpenShell sandboxes; the agents themselves are in
-the repo root's `agents/`.
+The agents worker's namespace. The worker runs agent sessions in OpenShell
+sandboxes; the agents themselves are in the repo root's `agents/`.
 
 ## The worker
 
@@ -179,12 +178,14 @@ The `habit-data` grant (Habit Helper's PostgREST,
 `agent-token-habit-data` from `agent-token-habit-data-secret.yaml`, mounted at
 `/etc/agent-token/habit-data`; PostgREST holds the same key.
 
-The committed grants hand out litellm keys, for audience `litellm`:
+The committed grants:
 
-| Grant | SPIFFE IDs | Key (alias in litellm) |
-|---|---|---|
-| `pi-litellm` | `/agent/pi/` | `litellm-pi` (`pi`: `qwen3.8-flash-next`) |
-| `habit-helper-litellm` | `/agent/habit-helper/` | `litellm-habit-helper` (`habit-helper`: `habit-helper`) |
+| Grant | SPIFFE IDs | Audience | Credential |
+|---|---|---|---|
+| `pi-litellm` | `/agent/pi/` | `litellm` | `litellm-pi` (alias `pi`: `qwen3.8-flash-next`) |
+| `habit-helper-litellm` | `/agent/habit-helper/` | `litellm` | `litellm-habit-helper` (alias `habit-helper`: `habit-helper`) |
+| `habit-data` | `/agent/habit-helper/` | `habit-data` | JWT with `role: habit_agent` |
+| `habit-admin` | `/ns/agents/sa/agents-matrix` (the bridge's pod) | `habit-data` | JWT with `role: habit_admin` |
 
 litellm decides what each key may call ("Keys" in
 `manifests/litellm/README.md`). They go out with `expiresIn: 1h`, which only

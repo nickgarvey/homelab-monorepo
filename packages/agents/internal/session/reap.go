@@ -14,7 +14,7 @@ import (
 // publishes none.
 const DefaultRetention = 7 * 24 * time.Hour
 
-// ReapPlan is what the reaper (design section 7, "PV cleanup") found to do.
+// ReapPlan is what the reaper found to do.
 // Each entry is acted on by its own activity, which checks again before it
 // deletes anything, so a plan gone stale is safe.
 type ReapPlan struct {

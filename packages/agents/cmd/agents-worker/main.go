@@ -1,6 +1,6 @@
-// agents-worker runs the agent chat sessions (docs/agent-sessions-design.md,
-// section 7): the ChatSession, SessionCoordinator, SandboxReaper and Wakeup
-// workflows and their activities, on task queue "agents" in Temporal namespace
+// agents-worker runs the agent chat sessions: the ChatSession,
+// SessionCoordinator, SandboxReaper and Wakeup workflows and their
+// activities, on task queue "agents" in Temporal namespace
 // agents, and keeps the sandbox-reaper Schedule that runs SandboxReaper
 // hourly. It reaches the OpenShell gateway as user agents-worker, Postgres as
 // role agents and RGW as role agents-worker, each with its own certificate or

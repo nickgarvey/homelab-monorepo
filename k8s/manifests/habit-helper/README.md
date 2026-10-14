@@ -5,8 +5,8 @@ Habit Helper's data: the `habit_helper` database on the shared postgres
 `http://postgrest.habit-helper.svc.cluster.local:3000` to sandboxes of the
 `habit-helper` agent type, through the `habit-data` provider
 (`agents/habit-helper/habit-data-profile.yaml` at the repo root), to the
-`habit` CLI only (`agents/habit-helper/README.md`). The agent type comes later
-(nix-psvkl.7).
+`habit` CLI only (`agents/habit-helper/README.md`), and to the admin chat
+(`@habit-admin` in the Matrix bridge, `manifests/agents/README.md`).
 
 ## Roles
 
@@ -79,7 +79,8 @@ curl -s -X PATCH "$P/cadence?habit=eq.meditate" -H 'Content-Type: application/js
   -d '{"interval_days":3,"next_check":"2026-10-16","reason":"asked for fewer check-ins"}'
 ```
 
-`DELETE` is refused by the provider profile and, behind it, by Postgres.
+For the coach, `DELETE` is refused by the provider profile and, behind it, by
+Postgres.
 
 ## PostgREST
 
@@ -91,11 +92,14 @@ migrations). Configured by environment only (`PGRST_DB_CONFIG=false`).
   answered 401. A JWT must be HS256 with the key in `secret.yaml`
   (`postgrest-jwt`), unexpired, and if it has an `aud`, `habit-data`. PostgREST
   runs the request as the JWT's `role`; `habit_helper_api` can only become
-  `habit_agent`, so any other role is refused. The only other holder of the
-  key is agent-token (`manifests/agents/agent-token-habit-data-secret.yaml`),
-  whose `habit-data` grant gives `spiffe://home.garvey.sh/agent/habit-helper/*`
-  a token with `role: habit_agent`, `aud: habit-data`, `sub` = the SPIFFE ID
-  and a 5 minute lifetime ("The token service" in `manifests/agents/README.md`).
+  `habit_agent` or `habit_admin`, so any other role is refused. The only other
+  holder of the key is agent-token
+  (`manifests/agents/agent-token-habit-data-secret.yaml`), whose `habit-data`
+  grant gives `spiffe://home.garvey.sh/agent/habit-helper/*` a token with
+  `role: habit_agent`, and whose `habit-admin` grant gives the Matrix bridge
+  (`spiffe://home.garvey.sh/ns/agents/sa/agents-matrix`) one with
+  `role: habit_admin`; both have `aud: habit-data`, `sub` = the SPIFFE ID and a
+  5 minute lifetime ("The token service" in `manifests/agents/README.md`).
 - **Transport.** Plain HTTP on the ClusterIP Service: the sandbox
   supervisor's proxy verifies upstream TLS against the public roots only, so
   a spiffe-ca certificate here would be refused. The token crosses the pod
@@ -140,7 +144,7 @@ database, then this namespace:
 ```sh
 kubectl apply -f manifests/cert-manager/spiffe-policies.yaml
 kubectl apply -f manifests/postgres/cluster.yaml -f manifests/postgres/databases.yaml
-kubectl -n postgres get cluster postgres -o jsonpath='{.status.managedRolesStatus.byStatus.reconciled}'   # lists the three roles
+kubectl -n postgres get cluster postgres -o jsonpath='{.status.managedRolesStatus.byStatus.reconciled}'   # lists the four roles
 kubectl apply -f manifests/habit-helper/namespace.yaml
 kubectl apply -f manifests/habit-helper/secret.yaml
 kubectl apply -f manifests/habit-helper/service-account.yaml
