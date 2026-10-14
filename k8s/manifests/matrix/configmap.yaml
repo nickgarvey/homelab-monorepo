@@ -1,0 +1,85 @@
+# Synapse's configuration. Secrets are files from the synapse Secret
+# (secret.yaml), mounted at /etc/synapse/secrets. Read at start: after a
+# change, kubectl -n matrix rollout restart deploy/synapse.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: synapse
+  namespace: matrix
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+data:
+  homeserver.yaml: |
+    # The name in every Matrix ID (@ngarvey:matrix.garvey.sh). It can never
+    # change without starting the server over.
+    server_name: matrix.garvey.sh
+    # Setting it also makes Synapse serve /.well-known/matrix/client.
+    public_baseurl: https://matrix.garvey.sh/
+
+    # The client API only, over TLS on 443 with the public certificate. No
+    # federation listener: the server federates with nobody.
+    listeners:
+      - port: 443
+        type: http
+        tls: true
+        bind_addresses: ["::"]
+        x_forwarded: false
+        resources:
+          - names: [client]
+            compress: false
+    tls_certificate_path: /etc/synapse/tls/tls.crt
+    tls_private_key_path: /etc/synapse/tls/tls.key
+
+    # Federation off: no remote server is allowed, and no key servers are
+    # asked for other servers' keys.
+    federation_domain_whitelist: []
+    trusted_key_servers: []
+    suppress_key_server_warning: true
+
+    database:
+      name: psycopg2
+      args:
+        host: postgres-rw.postgres.svc
+        port: 5432
+        dbname: synapse
+        user: synapse
+        # Certificate login (manifests/postgres, pg_hba); the server is
+        # checked against the SPIFFE CA in the same Secret.
+        sslmode: verify-full
+        sslrootcert: /etc/synapse/postgres/ca.crt
+        sslcert: /etc/synapse/postgres/tls.crt
+        sslkey: /etc/synapse/postgres/tls.key
+        cp_min: 2
+        cp_max: 10
+
+    signing_key_path: /etc/synapse/secrets/signing.key
+    macaroon_secret_key_path: /etc/synapse/secrets/macaroon_secret_key
+    form_secret_path: /etc/synapse/secrets/form_secret
+
+    media_store_path: /var/lib/synapse/media
+    max_upload_size: 50M
+    # Previews would have Synapse fetch any URL posted in a room.
+    url_preview_enabled: false
+
+    # No accounts are made here: logins come through MAS (nix-X35bb.2).
+    enable_registration: false
+    report_stats: false
+
+    log_config: /etc/synapse/config/log.yaml
+
+  log.yaml: |
+    version: 1
+    formatters:
+      precise:
+        format: "%(asctime)s - %(name)s - %(lineno)d - %(levelname)s - %(request)s - %(message)s"
+    handlers:
+      console:
+        class: logging.StreamHandler
+        formatter: precise
+    loggers:
+      synapse.storage.SQL:
+        level: INFO
+    root:
+      level: INFO
+      handlers: [console]
+    disable_existing_loggers: false

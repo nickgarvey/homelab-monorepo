@@ -91,6 +91,11 @@ spec:
         inherit: false
         inRoles:
           - habit_agent
+      # Synapse, the Matrix homeserver (manifests/matrix); certificate login
+      # only, like openshell.
+      - name: synapse
+        ensure: present
+        login: true
   postgresql:
     # A role gets the databases named here and no others. First match wins and
     # the operator puts these before its 'host all all all scram-sha-256', so
@@ -111,6 +116,8 @@ spec:
       - host all habit_helper all reject
       - hostssl habit_helper habit_helper_api all cert clientname=DN map=spiffe
       - host all habit_helper_api all reject
+      - hostssl synapse synapse all cert clientname=DN map=spiffe
+      - host all synapse all reject
     # A certificate login matches the client certificate's whole subject DN,
     # not just its CN. The client CA signs for the whole trust domain, so only
     # these exact DNs, which come from the policies in
@@ -124,3 +131,4 @@ spec:
       - spiffe "CN=agents" agents
       - spiffe "CN=habit_helper" habit_helper
       - spiffe "CN=habit_helper_api" habit_helper_api
+      - spiffe "CN=synapse" synapse

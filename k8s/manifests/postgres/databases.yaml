@@ -95,3 +95,21 @@ spec:
   owner: habit_helper
   cluster:
     name: postgres
+---
+# Synapse's state (manifests/matrix). Synapse refuses a database whose
+# collation and ctype are not C.
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: synapse
+  namespace: postgres
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  name: synapse
+  owner: synapse
+  encoding: UTF8
+  localeCollate: C
+  localeCType: C
+  cluster:
+    name: postgres

@@ -1,0 +1,17 @@
+# matrix.garvey.sh's public certificate, through acme-dns (DNS-01; the account
+# is in manifests/acme-dns/secret.yaml). Synapse serves it itself on 443. It
+# reads the files only at start, so restart it after a renewal (README.md).
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: synapse-tls
+  namespace: matrix
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  secretName: synapse-tls
+  dnsNames:
+    - matrix.garvey.sh
+  issuerRef:
+    name: letsencrypt-acmedns-staging
+    kind: ClusterIssuer

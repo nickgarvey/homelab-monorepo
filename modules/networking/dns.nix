@@ -74,5 +74,7 @@ in rec {
     "oci.garvey.sh" = "2001:470:482f:2::5000";
     "jellyfin.garvey.sh" = "2001:470:482f:2::5001";
     "temporal.garvey.sh" = "2001:470:482f:2::5002";
+    # Synapse (k8s/manifests/matrix). Nothing public points at it yet.
+    "matrix.garvey.sh" = "2001:470:482f:2::5010";
   };
 }

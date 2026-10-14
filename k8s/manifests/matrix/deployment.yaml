@@ -1,0 +1,108 @@
+# Synapse, the Matrix homeserver for matrix.garvey.sh (README.md). One process,
+# no workers. Its state is in the synapse database on the shared postgres and
+# its media on the synapse-media volume; it serves the client API over TLS on
+# 443 itself, with the certificate in certificate.yaml.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: synapse
+  namespace: matrix
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  replicas: 1
+  # The media volume is ReadWriteOnce: the old pod goes before the new one.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: synapse
+  template:
+    metadata:
+      labels:
+        app: synapse
+        app.kubernetes.io/managed-by: ngarvey-homelab
+    spec:
+      serviceAccountName: synapse
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        # Lets the image's user read the keys (0440) and write the media volume.
+        fsGroup: 1000
+        # Lets the non-root process bind 443.
+        sysctls:
+          - name: net.ipv4.ip_unprivileged_port_start
+            value: "443"
+      containers:
+        - name: synapse
+          image: oci.garvey.sh/matrix-synapse:1.162.0-2lq4ph2
+          args:
+            - --config-path=/etc/synapse/config/homeserver.yaml
+          ports:
+            - containerPort: 443
+              name: https
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/synapse/config
+              readOnly: true
+            - name: secrets
+              mountPath: /etc/synapse/secrets
+              readOnly: true
+            - name: tls
+              mountPath: /etc/synapse/tls
+              readOnly: true
+            # Mounted whole (no subPath), so renewed certificates reach the
+            # files.
+            - name: postgres-client
+              mountPath: /etc/synapse/postgres
+              readOnly: true
+            - name: media
+              mountPath: /var/lib/synapse/media
+            - name: tmp
+              mountPath: /tmp
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 443
+              scheme: HTTPS
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 443
+              scheme: HTTPS
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 2Gi
+      volumes:
+        - name: config
+          configMap:
+            name: synapse
+        - name: secrets
+          secret:
+            secretName: synapse
+            defaultMode: 0440
+        - name: tls
+          secret:
+            secretName: synapse-tls
+            defaultMode: 0440
+        - name: postgres-client
+          secret:
+            secretName: synapse-postgres-client
+            defaultMode: 0440
+        - name: media
+          persistentVolumeClaim:
+            claimName: synapse-media
+        - name: tmp
+          emptyDir: {}
