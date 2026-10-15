@@ -134,13 +134,6 @@ var AllHosts = []Host{
 		ConnChecks: []ConnCheck{CheckSSH},
 	},
 	{
-		// aarch64; the closure comes from the binary cache, so this is cheap.
-		// Unplugged: built on every run, deployed only when named.
-		Name: "nelkir", FlakeName: "nelkir",
-		Order: 51, Groups: []string{"media"}, Default: false,
-		ConnChecks: []ConnCheck{CheckSSH},
-	},
-	{
 		Name: "dragonsreach", FlakeName: "dragonsreach",
 		SSHAddress: "10.28.0.1",
 		Order:      99,

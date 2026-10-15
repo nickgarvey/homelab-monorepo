@@ -187,47 +187,11 @@ eyes and hands:
 NativeShell bridge is down and *all* input is dead — see `patches/UPSTREAMABLE_FIXES.md`, and
 note the Qt QML disk-cache trap documented there before you conclude a patch didn't work.
 
-## TV power control, and the missing "Switch to Desktop"
+## Do not use "Switch to Desktop"
 
-guevenne can turn the TV itself off. An AMD HDMI output exposes no `/dev/cec*`,
-so it cannot speak CEC; nelkir is wired to the same TV and does it on guevenne's
-behalf. From a shell:
-
-```sh
-tv status      # on | standby | unknown
-tv standby
-tv on
-```
-
-That opens a plain TCP connection to nelkir on port 5555, one verb per
-connection, handled by a systemd socket unit (`modules/services/cec-control.nix`)
-that shells out to `cec-ctl`. nelkir only accepts commands from guevenne's
-addresses, taken from `lan-hosts.nix`. No secrets, nothing in `~` -- unlike the
-items above, this survives a rebuild with no manual steps.
-
-**In Steam, the Power menu's "Switch to Desktop" entry is gone, replaced by
-"Turn Off TV".** That is deliberate, not damage: greetd offers no desktop
-session on this host, so the original entry only ever stranded you. It is done
-at runtime by `steam-tv-menu`, a systemd *user* service that drives Steam's
-Chromium UI over its CEF debugging port. It repurposes that row rather than
-adding one because Steam's controller navigation only visits rows in its own
-React registry -- an appended row renders but the controller walks straight past
-it.
-
-Two consequences worth knowing before debugging it:
-
-- **A Steam update can break it at any time.** It depends on Steam's DOM and an
-  undocumented debug port. `tv standby` from a shell is unaffected; only the
-  menu entry is at risk. If the entry vanishes, check
-  `journalctl --user -u steam-tv-menu`.
-- **`nixos-rebuild switch` does not restart systemd user services.** After
-  changing that service you need `systemctl --user restart steam-tv-menu` or a
-  reboot, or you will be testing the old code and concluding your change did
-  nothing. It starts from the current package on boot, so this only bites live
-  updates.
-
-`tv status` returns `unknown` for a few seconds after any power transition --
-the TV does not answer the CEC power query immediately. It settles.
+Steam's Power menu offers "Switch to Desktop", but greetd has no desktop session on
+this host, so choosing it leaves the TV black. Reboot to recover (see "Restarting the
+Steam session" below).
 
 ## If the hardware changed
 

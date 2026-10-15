@@ -21,7 +21,6 @@ Cloudflare CNAME `_acme-challenge.temporal.garvey.sh` points at
 
 ```bash
 kubectl apply -f manifests/temporal/namespace.yaml
-kubectl apply -f manifests/temporal/secret.yaml
 kubectl apply -f manifests/temporal/certificate.yaml
 kubectl apply -f manifests/temporal/service-account.yaml
 kubectl apply -f manifests/temporal/postgres-client-certificate.yaml
@@ -56,8 +55,8 @@ postgres, as the `temporal` role. There is no password: the pod presents the cli
 certificate in `postgres-client-certificate.yaml` (CN `temporal`, URI SAN
 `spiffe://home.garvey.sh/ns/temporal/sa/temporal`, from the cluster CA, 24h), and
 `manifests/postgres/cluster.yaml` accepts only that for the role. The server certificate
-is verified against the same CA. The role's password in `temporal-db` (`secret.yaml`) is
-unused.
+is verified against the same CA. The role has a password
+(`manifests/postgres/secret.yaml`), which nothing uses.
 
 The init containers run `temporal-sql-tool update-schema` with the schemas embedded in the
 image (`--schema-name postgresql/v12/temporal` and `.../visibility`), so the schema always

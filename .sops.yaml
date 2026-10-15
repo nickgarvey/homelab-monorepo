@@ -232,8 +232,7 @@ creation_rules:
   # prometheus-remote-write: the password the Vector agent on every host sends
   # to prometheus.home.garvey.sh/api/v1/write (modules/services/vector-agent.nix).
   # Prometheus's Caddy sidecar holds only the bcrypt hash
-  # (k8s/manifests/prometheus/secret.yaml). nelkir is missing until its host key
-  # is added.
+  # (k8s/manifests/prometheus/secret.yaml).
   - path_regex: secrets/prometheus-remote-write.yaml
     key_groups:
     - age:
@@ -305,7 +304,7 @@ creation_rules:
     - age:
       - *ngarvey
       - *dragonsreach
-  # The Temporal UI's OIDC client secret, kept apart from temporal/secret.yaml.
+  # The Temporal UI's OIDC client secret.
   - path_regex: k8s/manifests/temporal/ui-oidc-secret\.yaml$
     encrypted_regex: "^(data|stringData)$"
     key_groups:

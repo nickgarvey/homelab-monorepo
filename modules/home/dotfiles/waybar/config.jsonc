@@ -36,7 +36,7 @@
     "custom/kanata": {
         "exec": "kanata-waybar-status",
         "return-type": "json",
-        "interval": 5,
+        "interval": 1,
         "signal": 8,
         "tooltip": true,
         "on-click": "kanata-restart"

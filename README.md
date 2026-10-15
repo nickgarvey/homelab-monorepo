@@ -31,7 +31,6 @@ Conventions for working in the repo are in [`AGENTS.md`](AGENTS.md).
 | [`guevenne`](hosts/guevenne) | ASUS Zenbook S 16 (UM5606WA) | AMD Ryzen AI 9 365 | 22 GB | Radeon 880M iGPU | Micron 2400 1 TB NVMe |
 | [`dragonsreach`](hosts/dragonsreach) | Topton Fanless PC| Intel N150 | 16 GB | iGPU (Alder Lake-N) | Samsung 870 QVO 1 TB SATA |
 | [`skyforge`](hosts/skyforge) | Raspberry Pi 5 | Broadcom BCM2712 | — | VideoCore VII | microSD |
-| [`nelkir`](hosts/nelkir) | Raspberry Pi 4 Model B | Broadcom BCM2711 | — | VideoCore VI | microSD |
 
 ### Kubernetes Hosts
 

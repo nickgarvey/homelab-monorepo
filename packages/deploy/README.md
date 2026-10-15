@@ -113,7 +113,6 @@ Summary:
 | dovahkiin | 40 | – | build only | deploys only when named explicitly |
 | guevenne | 41 | – | build only | TV PC, unplugged; deploys only when named; SSH only |
 | skyforge | 50 | – | ✓ | aarch64; needs binfmt on the deploying machine; printer idle pre-check |
-| nelkir | 51 | – | build only | TV CEC Pi, unplugged; deploys only when named; aarch64; needs binfmt on the deploying machine |
 | dragonsreach | 99 | – | ✓ | SSH + internet ping + DNS + IPv6 tunnel + IPv6 internet |
 
 ### Ceph gate (joor / zah / frul)

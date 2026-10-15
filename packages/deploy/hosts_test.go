@@ -131,7 +131,7 @@ func TestBuildOnlyHosts(t *testing.T) {
 	for _, h := range BuildOnlyHosts(AllHosts, nil) {
 		got = append(got, h.Name)
 	}
-	if want := "dovahkiin,guevenne,nelkir"; strings.Join(got, ",") != want {
+	if want := "dovahkiin,guevenne"; strings.Join(got, ",") != want {
 		t.Errorf("no --hosts: got %v, want %s", got, want)
 	}
 	if got := BuildOnlyHosts(AllHosts, []string{"talos"}); got != nil {

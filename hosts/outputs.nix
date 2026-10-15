@@ -91,18 +91,6 @@ in
       ];
     };
 
-    # Nelkir: Raspberry Pi 4 Model B acting as an HDMI-CEC controller for the
-    # TV. Plain nixpkgs rather than nixos-raspberrypi (which skyforge uses):
-    # BCM2711 is fully mainlined, and the stock aarch64 kernel already ships
-    # DRM_VC4_HDMI_CEC, so the vendor stack has nothing to add here.
-    nelkir = nixpkgs.lib.nixosSystem {
-      system = "aarch64-linux";
-      specialArgs = { inherit inputs; };
-      modules = [
-        ./nelkir/configuration.nix
-      ];
-    };
-
     # Lydia server
     lydia = nixpkgs.lib.nixosSystem {
       specialArgs = { inherit inputs; };
