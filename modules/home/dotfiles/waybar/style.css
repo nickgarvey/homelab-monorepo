@@ -80,6 +80,10 @@ window#waybar {
     color: #ffd166;
 }
 
+#custom-kanata.nohomerow {
+    color: #6c6c6c;
+}
+
 #custom-kanata.failed {
     color: #ff6b6b;
 }

@@ -11,7 +11,10 @@ let
   agent-issue-tracker = pkgs.callPackage ../../packages/agent-issue-tracker { };
 
   # Waybar kanata button (modules/home/dotfiles/waybar/config.jsonc, custom/kanata). The
-  # status script prints the button state; the restart script marks the button
+  # status script prints the button state, greyed out ("nohomerow") while Right Ctrl has
+  # switched kanata to the layer without home-row mods. Kanata logs each layer change as a
+  # "(deflayer <name>" journal line; with none since the service started, it is on its
+  # first layer, qwerty-homerow (modules/desktop/kanata-linux.cfg). The restart script marks the button
   # "restarting" (yellow) and pokes waybar via SIGRTMIN+8 (the module's
   # "signal": 8) so the colour changes immediately rather than on the next poll.
   kanataRestartMarker = ''"''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/kanata-restarting"'';
@@ -23,7 +26,12 @@ let
       if [ -e ${kanataRestartMarker} ] || [[ $state =~ ^(activating|deactivating|reloading)$ ]]; then
         class=restarting tooltip="kanata restarting…"
       elif [ "$state" = active ]; then
-        class=active tooltip="kanata running (click to restart)"
+        layer=$(journalctl -u kanata-keyboard.service -I -g '^\(deflayer ' -n 1 -o cat -q || true)
+        if [ "$layer" = "(deflayer qwerty-nohomerow" ]; then
+          class=nohomerow tooltip="home row mods OFF (Right Ctrl toggles; click to restart kanata)"
+        else
+          class=active tooltip="home row mods on (click to restart kanata)"
+        fi
       else
         class=failed tooltip="kanata $state (click to restart)"
       fi
