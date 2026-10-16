@@ -182,6 +182,11 @@ func BuildAll(r Runner, drvs []string, opts BuildOpts) bool {
 	if pw, ok := out.(*prefixWriter); ok {
 		pw.Flush()
 	}
+	if res.Failed() {
+		// The build log went to the terminal only; keep the error itself.
+		runJournal.send(prioErr, "nix build failed:\n"+lastLines(res.Stderr, 40),
+			"DEPLOY_EVENT=build-failed")
+	}
 	return !res.Failed()
 }
 

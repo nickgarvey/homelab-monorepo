@@ -16,6 +16,11 @@ via `switch-to-configuration test`, verify connectivity + system path, persist v
 (network breakage, mis-activation, mid-deploy reboot), the watchdog reboots the
 target to its previous boot generation.
 
+The machine running the deploy is the exception. When a target's `/etc/machine-id`
+matches the local one, no watchdog is armed for it, because its reboot would kill
+the deploy and every other build on that machine. If either ID cannot be read,
+the safe flow stops before activating.
+
 The closure transfer happens **before** the watchdog is armed, so the at-risk
 window contains only fast SSH RPCs, and the path activated is pinned by the
 derivation resolved in the precheck (see Precheck pass).
@@ -73,7 +78,10 @@ nix run .#deploy -- --hosts ro
 ### Reboot decision
 
 `--reboot` is authoritative and applies uniformly to every host, including
-`dragonsreach`. There is no per-host override.
+`dragonsreach`, with one exception: the machine running the deploy (matched by
+`/etc/machine-id`) is never rebooted, whatever the value. If a reboot is owed
+there, it is reported as a warning. A host whose machine ID cannot be read is
+treated the same way.
 
 | value | behavior |
 |---|---|
@@ -328,6 +336,32 @@ exit, and on SIGINT/SIGTERM.
 
 Set `DEPLOY_NO_SSH_MUX=1` to turn all of this off; the argv is then identical to
 the pre-multiplexing tool.
+
+## Run log (journald)
+
+Every run is also written to the journal of the machine running `deploy`, so it
+can be read after the terminal is gone:
+
+```sh
+journalctl -t deploy                     # all runs
+journalctl -t deploy -p err              # failures only
+journalctl DEPLOY_RUN_ID=<id>            # one run
+journalctl -t deploy DEPLOY_HOST=talos   # one host's results
+```
+
+What is journaled, all tagged `SYSLOG_IDENTIFIER=deploy` and `DEPLOY_RUN_ID`:
+
+- every line the tool prints (stdout at info, stderr at err);
+- a start entry with the full command line (`DEPLOY_EVENT=start`, `DEPLOY_ARGV`);
+- one result per host (`DEPLOY_HOST`, `DEPLOY_RESULT`: `deployed`, `built`,
+  `skipped`, `failed`, `build-failed`, `copy-failed`, `deploy-failed`, `cancelled`);
+- an end entry (`DEPLOY_EVENT=end`, `DEPLOY_EXIT`, `DEPLOY_OUTCOME`), including
+  when SIGINT, SIGTERM or SIGHUP ends the run (`interrupted by hangup`).
+
+The nix build log streams to the terminal only. When a build fails, its last 40
+lines are journaled as one entry. The full log of each derivation is in
+`/nix/var/log/nix/drvs` (`nix log <drv>`). Without journald the run carries on
+with terminal output only.
 
 ## Tests / development
 

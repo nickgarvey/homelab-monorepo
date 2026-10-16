@@ -7,6 +7,7 @@
     ../../modules/networking/thunderbolt-mesh.nix
     ../../modules/services/ceph.nix
     ../../modules/services/reboot-watchdog.nix
+    ../../modules/services/shutdown-debug.nix
   ];
 
   networking.hostName = "frul";

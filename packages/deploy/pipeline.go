@@ -54,6 +54,23 @@ type HostResult struct {
 
 func (s HostStatus) failed() bool { return s != StatusDeployed }
 
+// String is the status as journaled in DEPLOY_RESULT.
+func (s HostStatus) String() string {
+	switch s {
+	case StatusDeployed:
+		return "deployed"
+	case StatusBuildFailed:
+		return "build-failed"
+	case StatusCopyFailed:
+		return "copy-failed"
+	case StatusDeployFailed:
+		return "deploy-failed"
+	case StatusCancelled:
+		return "cancelled"
+	}
+	return "unknown"
+}
+
 // RunPipeline moves every host through build → copy → activate, overlapping the
 // stages across hosts while keeping activation strictly one at a time.
 //

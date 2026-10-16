@@ -5,10 +5,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/signal"
 	"sort"
 	"strings"
-	"syscall"
 )
 
 // CLIArgs are the parsed command-line arguments. Lifted out of main() so they
@@ -96,7 +94,16 @@ func parseArgs(argv []string) (CLIArgs, error) {
 	}, nil
 }
 
-func main() { os.Exit(run()) }
+func main() {
+	startRun(os.Args)
+	code := run()
+	outcome := "finished"
+	if code != 0 {
+		outcome = "failed"
+	}
+	endRun(code, outcome)
+	os.Exit(code)
+}
 
 // run is main's body. It returns an exit code rather than calling os.Exit so
 // that the deferred SSH control cleanup actually runs — os.Exit skips defers,
@@ -151,7 +158,10 @@ func run() int {
 		for _, h := range hosts {
 			if !BuiltOK(runner, tops[h.Name].Out) {
 				failed = append(failed, h.Name)
+				runJournal.hostResult(h.Name, "build-failed", "")
+				continue
 			}
+			runJournal.hostResult(h.Name, "built", "")
 		}
 		fmt.Printf("\n%s\nSummary\n%s\n", strings.Repeat("=", 60), strings.Repeat("=", 60))
 		if len(failed) > 0 {
@@ -208,6 +218,8 @@ func run() int {
 		RebootFlag: args.Reboot,
 		Prompter:   stdinPrompter,
 		Warnings:   &warnings,
+		// Unreadable leaves it empty, which blocks every watchdog and reboot.
+		LocalMachineID: readLocalMachineID(),
 	}
 
 	var failed, skipped []string
@@ -216,8 +228,10 @@ func run() int {
 		switch {
 		case p.Skip && p.Failed:
 			failed = append(failed, p.Host.Name)
+			runJournal.hostResult(p.Host.Name, "failed", p.Reason)
 		case p.Skip:
 			skipped = append(skipped, p.Host.Name)
+			runJournal.hostResult(p.Host.Name, "skipped", p.Reason)
 		default:
 			todo = append(todo, p)
 		}
@@ -241,6 +255,7 @@ func run() int {
 		// safe mode is pipelined: build, copy and activate overlap across
 		// hosts, with activation kept to one host at a time.
 		for _, r := range RunPipeline(ctx, quiet, todo, extraDrvs, args.pipelineOpts()) {
+			runJournal.hostResult(r.Host.Name, r.Status.String(), "")
 			if r.Status.failed() {
 				failed = append(failed, r.Host.Name)
 			}
@@ -252,8 +267,10 @@ func run() int {
 			ok := Deploy(ctx, p.Host, args.Mode, p.Plan)
 			ctl.Drop(quiet, p.Host)
 			if ok {
+				runJournal.hostResult(p.Host.Name, "deployed", "")
 				continue
 			}
+			runJournal.hostResult(p.Host.Name, "failed", "")
 			failed = append(failed, p.Host.Name)
 			if p.Host.InGroup("k3s") {
 				fmt.Printf("\n✗ K3s rolling deploy failed at %s, stopping.\n", p.Host.Name)
@@ -274,7 +291,10 @@ func run() int {
 	for _, h := range buildOnly {
 		if !BuiltOK(quiet, paths[h.Name].Out) {
 			buildFailed = append(buildFailed, h.Name)
+			runJournal.hostResult(h.Name, "build-failed", "build only")
+			continue
 		}
+		runJournal.hostResult(h.Name, "built", "build only")
 	}
 
 	printSummary(warnings, skipped, failed, buildFailed)
@@ -285,26 +305,16 @@ func run() int {
 	return 0
 }
 
-// installSSHCleanup closes the ssh control directory on SIGINT/SIGTERM, which
-// no defer would catch. Returns a function that uninstalls the handler.
+// installSSHCleanup closes the ssh control directory if a signal ends the run,
+// which no defer would catch. Returns a function that uninstalls it.
 //
 // Best effort: it races with any in-flight ssh, and ControlPersist is the
 // backstop if it loses.
 func installSSHCleanup(ctl *SSHControl, r Runner) func() {
-	ch := make(chan os.Signal, 1)
-	signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		if _, ok := <-ch; !ok {
-			return
-		}
-		fmt.Println("\nInterrupted — closing ssh connections...")
+	return onInterrupt(func() {
+		fmt.Println("Closing ssh connections...")
 		ctl.Close(r)
-		os.Exit(130)
-	}()
-	return func() {
-		signal.Stop(ch)
-		close(ch)
-	}
+	})
 }
 
 // printPlan reports what the precheck pass decided, in host order. The probes
@@ -378,4 +388,14 @@ func (a CLIArgs) pipelineOpts() PipelineOpts {
 		OnFailure: a.OnFailure,
 		Build:     a.buildOpts(),
 	}
+}
+
+// readLocalMachineID returns this machine's /etc/machine-id, or "" if it cannot
+// be read.
+func readLocalMachineID() string {
+	b, err := os.ReadFile("/etc/machine-id")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
 }

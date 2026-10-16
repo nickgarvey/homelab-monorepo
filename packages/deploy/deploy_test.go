@@ -10,12 +10,20 @@ import (
 // systemPath is a stable fake nix store path used across deploy tests.
 const fakeSystemPath = "/nix/store/abc123-nixos-system-test-25.11"
 
+// fakeLocalMachineID is the deploying machine's ID in tests. Fakes answer
+// `cat /etc/machine-id` with fakeRemoteMachineID unless a test says otherwise.
+const (
+	fakeLocalMachineID  = "deployer0000"
+	fakeRemoteMachineID = "target000000"
+)
+
 func testCtx(r Runner) *DeployContext {
 	return &DeployContext{
-		Runner:     r,
-		Sleeper:    func(time.Duration) {},
-		Now:        func() time.Time { return time.Unix(1700000000, 0) },
-		RebootFlag: RebootFlagNever,
+		Runner:         r,
+		Sleeper:        func(time.Duration) {},
+		Now:            func() time.Time { return time.Unix(1700000000, 0) },
+		RebootFlag:     RebootFlagNever,
+		LocalMachineID: fakeLocalMachineID,
 	}
 }
 
@@ -35,6 +43,7 @@ func buildOKResponses(systemPath string) []FakeResponse {
 		{Match: MatchContains("kernel-modules"), Result: RunResult{Stdout: "6.6.50\n"}},
 		{Match: MatchContains("booted-system/kernel-params"), Result: RunResult{Stdout: "quiet\n"}},
 		{Match: MatchContains("current-system/kernel-params"), Result: RunResult{Stdout: "quiet\n"}},
+		{Match: MatchContains("/etc/machine-id"), Result: RunResult{Stdout: fakeRemoteMachineID + "\n"}},
 		// Default for everything else (arm, activate, persist, disarm)
 		{Match: func([]string) bool { return true }, Result: RunResult{}},
 	}
@@ -61,8 +70,8 @@ func TestSafeDeployHappyPath(t *testing.T) {
 		"switch-to-configuration test",
 		"readlink /run/current-system",
 		"nix-env --profile /nix/var/nix/profiles/system --set " + fakeSystemPath, // step 6
-		"switch-to-configuration boot",                                     // step 6
-		"systemctl stop deploy-watchdog-1700000000",                        // step 7
+		"switch-to-configuration boot",                                           // step 6
+		"systemctl stop deploy-watchdog-1700000000",                              // step 7
 	}
 	assertOrder(t, calls, wantOrder)
 }
@@ -115,6 +124,7 @@ func TestSafeDeploySkipStillRebootsWhenOwed(t *testing.T) {
 		// running kernel != activated kernel -> reboot needed
 		{Match: MatchContains("uname -r"), Result: RunResult{Stdout: "6.6.50\n"}},
 		{Match: MatchContains("kernel-modules"), Result: RunResult{Stdout: "6.6.99\n"}},
+		{Match: MatchContains("/etc/machine-id"), Result: RunResult{Stdout: fakeRemoteMachineID + "\n"}},
 		{Match: func([]string) bool { return true }, Result: RunResult{}},
 	}
 	fake := &FakeRunner{Responses: resps}
@@ -174,7 +184,7 @@ func TestSafeDeployActivationFailNotReachable(t *testing.T) {
 	// that returns ok the first time (initial reachability) and fail thereafter.
 	cnt := 0
 	wrapper := &probeFailRunner{
-		echoCount: &cnt,
+		echoCount:  &cnt,
 		systemPath: fakeSystemPath,
 	}
 	ctx := testCtx(wrapper)
@@ -469,6 +479,9 @@ func (p *probeFailRunner) Run(_ context.Context, argv []string, _ RunOpts) RunRe
 	}
 	if strings.Contains(joined, "switch-to-configuration test") {
 		return RunResult{TimedOut: true}
+	}
+	if strings.Contains(joined, "/etc/machine-id") {
+		return RunResult{Stdout: fakeRemoteMachineID + "\n"}
 	}
 	if strings.Contains(joined, "profiles/system") {
 		// boot default is stale, so the already-deployed skip does not trip

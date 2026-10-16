@@ -41,6 +41,10 @@ type DeployContext struct {
 	Now        func() time.Time  // for watchdog unit name; nil = time.Now
 	RebootFlag RebootFlag
 	Warnings   *[]string
+	// LocalMachineID is /etc/machine-id of the machine running the deploy,
+	// trimmed. Empty means unknown, which isLocalHost treats as "cannot rule
+	// out that the target is this machine".
+	LocalMachineID string
 }
 
 func (c *DeployContext) sleep(d time.Duration) {
@@ -122,7 +126,22 @@ func deploySafe(ctx *DeployContext, host Host, plan Plan) bool {
 	cleanupStaleUnits(ctx, host)
 
 	fmt.Printf("\n  [2/8] Arming watchdog (%s)...\n", watchdogTimeout)
-	unit, ok := armWatchdog(ctx, host, watchdogTimeout)
+	// The watchdog's reboot would land on the machine running this deploy,
+	// killing the deploy and every other build on it. Recovery there is the
+	// operator at the console, so a local target gets no watchdog; a target
+	// we cannot place gets no activation.
+	local, known := isLocalHost(ctx, host)
+	if !known {
+		fmt.Printf("  FATAL: cannot tell whether %s is the machine running this deploy;\n"+
+			"  refusing to arm a reboot watchdog that might fire here\n", host.Name)
+		return false
+	}
+	unit, ok := "", true
+	if local {
+		fmt.Printf("  ⚠ %s is the machine running this deploy — no watchdog\n", host.Name)
+	} else {
+		unit, ok = armWatchdog(ctx, host, watchdogTimeout)
+	}
 	if !ok {
 		// The arm is not retried, so a "failure" here may still have armed the
 		// timer before the connection died. Nothing has been activated yet, so
@@ -136,15 +155,13 @@ func deploySafe(ctx *DeployContext, host Host, plan Plan) bool {
 	fmt.Println("\n  [3/8] Activating (switch-to-configuration test)...")
 	testTimedOut := false
 	if !activate(ctx, host, systemPath, "test", &testTimedOut) {
-		fmt.Printf("  Activation failed. Watchdog will reboot %s in <=%s\n",
-			host.Name, watchdogTimeout)
+		fmt.Printf("  Activation failed. %s\n", watchdogOutcome(host, unit))
 		return false
 	}
 
 	fmt.Println("\n  [4/8] Verifying connectivity...")
 	if !VerifyConnectivity(ctx.Runner, host, ctx.Sleeper) {
-		fmt.Printf("  Connectivity failed. Watchdog will reboot %s in <=%s\n",
-			host.Name, watchdogTimeout)
+		fmt.Printf("  Connectivity failed. %s\n", watchdogOutcome(host, unit))
 		return false
 	}
 
@@ -165,7 +182,7 @@ func deploySafe(ctx *DeployContext, host Host, plan Plan) bool {
 			disarmWatchdog(ctx, host, unit)
 			return false
 		}
-		fmt.Printf("  Watchdog will reboot %s in <=%s\n", host.Name, watchdogTimeout)
+		fmt.Printf("  %s\n", watchdogOutcome(host, unit))
 		return false
 	}
 
@@ -215,6 +232,8 @@ func deployUnsafe(ctx *DeployContext, host Host, nrMode string) bool {
 	// connection — the same reason activate() drops the master.
 	dropSSHMaster(ctx.Runner, host)
 	if res.Failed() {
+		runJournal.send(prioErr, fmt.Sprintf("nixos-rebuild %s failed on %s:\n%s", nrMode, host.Name, lastLines(res.Stderr, 40)),
+			"DEPLOY_EVENT=build-failed", "DEPLOY_HOST="+host.Name)
 		fmt.Printf("  ✗ nixos-rebuild %s failed\n", nrMode)
 		return false
 	}
@@ -286,7 +305,35 @@ func armWatchdog(ctx *DeployContext, host Host, timeout time.Duration) (string, 
 	return unit, true
 }
 
+// watchdogOutcome says what happens next after a failure in deploySafe. An
+// empty unit means none was armed: the host is the machine running the deploy.
+func watchdogOutcome(host Host, unit string) string {
+	if unit == "" {
+		return fmt.Sprintf("No watchdog on %s (it runs this deploy) — recover it at the console.", host.Name)
+	}
+	return fmt.Sprintf("Watchdog will reboot %s in <=%s", host.Name, watchdogTimeout)
+}
+
+// isLocalHost reports whether host is the machine running this deploy, by
+// comparing /etc/machine-id on both sides. Names can't answer this: a target
+// may be reached through an alias or an address. known is false when either ID
+// is unavailable; callers must then act as if the host could be local.
+func isLocalHost(ctx *DeployContext, host Host) (local, known bool) {
+	if ctx.LocalMachineID == "" {
+		return false, false
+	}
+	res := SSHRun(ctx.Runner, host, "cat /etc/machine-id", 15*time.Second)
+	remote := strings.TrimSpace(res.Stdout)
+	if res.Failed() || remote == "" {
+		return false, false
+	}
+	return remote == ctx.LocalMachineID, true
+}
+
 func disarmWatchdog(ctx *DeployContext, host Host, unit string) {
+	if unit == "" {
+		return
+	}
 	// Both ".timer" and the bare unit name — depending on systemd version
 	// either form may be the one that exists. Sequenced rather than passed as
 	// two units to one systemctl: this is the call that stops a live reboot
@@ -407,6 +454,25 @@ func handleReboot(ctx *DeployContext, host Host) bool {
 // detecting anything.
 func applyReboot(ctx *DeployContext, host Host, changed bool) bool {
 	action := RebootDecide(ctx.RebootFlag, changed)
+
+	// No --reboot value reboots the machine running the deploy: that would kill
+	// the deploy itself and any other build on it. Checked before the prompt so
+	// --reboot ask does not offer it either.
+	if action != RebootSkip {
+		if local, known := isLocalHost(ctx, host); local || !known {
+			why := "it is the machine running this deploy"
+			if !known {
+				why = "cannot tell whether it is the machine running this deploy"
+			}
+			msg := fmt.Sprintf("%s not rebooted: %s", host.Name, why)
+			if changed {
+				msg += "; reboot owed"
+			}
+			fmt.Printf("  ⚠ %s\n", msg)
+			ctx.appendWarning(msg)
+			return true
+		}
+	}
 
 	switch action {
 	case RebootSkip:
