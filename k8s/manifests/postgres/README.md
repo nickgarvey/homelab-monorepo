@@ -1,8 +1,9 @@
 # postgres
 
 The shared PostgreSQL for the cluster's services, run by the CloudNativePG
-operator (`vendor/cloudnative-pg`). One `Cluster` named `postgres`, two
-instances (primary + streaming replica) on `ceph-rbd`, never on the same node.
+operator (`vendor/cloudnative-pg`). One `Cluster` named `postgres`, a single
+instance on `ceph-rbd`: Ceph replicates the volume, and there is no streaming
+replica, so no failover can promote a copy that is behind.
 Clients connect to `postgres-rw.postgres.svc:5432` with their own role and
 password. There is no LoadBalancer: nothing outside the cluster needs it, and
 every LoadBalancer Service is published in public DNS.
