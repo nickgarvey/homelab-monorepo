@@ -20,11 +20,12 @@ type Runner interface {
 type RunOpts struct {
 	// Env extends os.Environ() with these entries (KEY=VALUE).
 	Env []string
-	// Stream, if true, tees stdout/stderr to the process's stdout/stderr in
-	// addition to capturing them. Used for nixos-rebuild build so the user
-	// sees live progress on a multi-minute operation.
+	// Stream, if true, tees stdout/stderr to the terminal (termOut/termErr) in
+	// addition to capturing them; streamed output is not journaled. Used for
+	// nixos-rebuild build so the user sees live progress on a multi-minute
+	// operation.
 	Stream bool
-	// Out, when Stream is set, receives the tee instead of os.Stdout. The
+	// Out, when Stream is set, receives the tee instead of termOut. The
 	// pipeline uses it to tag the build log, which streams while other stages
 	// are printing.
 	Out io.Writer
@@ -70,7 +71,7 @@ func (r ExecRunner) Run(ctx context.Context, argv []string, opts RunOpts) RunRes
 	}
 	var stdout, stderr bytes.Buffer
 	if opts.Stream {
-		out, errOut := io.Writer(os.Stdout), io.Writer(os.Stderr)
+		out, errOut := termOut, termErr
 		if opts.Out != nil {
 			out, errOut = opts.Out, opts.Out
 		}

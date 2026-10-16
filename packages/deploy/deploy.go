@@ -232,6 +232,8 @@ func deployUnsafe(ctx *DeployContext, host Host, nrMode string) bool {
 	// connection — the same reason activate() drops the master.
 	dropSSHMaster(ctx.Runner, host)
 	if res.Failed() {
+		runJournal.send(prioErr, fmt.Sprintf("nixos-rebuild %s failed on %s:\n%s", nrMode, host.Name, lastLines(res.Stderr, 40)),
+			"DEPLOY_EVENT=build-failed", "DEPLOY_HOST="+host.Name)
 		fmt.Printf("  ✗ nixos-rebuild %s failed\n", nrMode)
 		return false
 	}
