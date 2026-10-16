@@ -80,6 +80,19 @@ in
     home-manager.users.ngarvey.programs.pi.coding-agent = {
       enable = true;
 
+      # pi runs on Node 22 while the default nodejs lacks the October 2026
+      # Brotli fix (CVE-2026-111497: fixed in 22.23.4 and 24.22.1). The
+      # callPackage override reaches runtime.nix, which puts nodejs on pi's
+      # PATH for npm. Evaluation fails once pkgs.nodejs reaches 24.22.1; then
+      # drop this, as in agents/outputs.nix.
+      package =
+        lib.throwIf (lib.versionAtLeast pkgs.nodejs.version "24.22.1")
+          "nodejs ${pkgs.nodejs.version} has the Brotli fix: remove the Node 22 pi package override in modules/llms/pi.nix"
+          (inputs.pi-nix.packages.${pkgs.stdenv.hostPlatform.system}.coding-agent.override {
+            nodejs = pkgs.nodejs_22;
+            callPackage = f: args: pkgs.callPackage f ({ nodejs = pkgs.nodejs_22; } // args);
+          });
+
       environment.DEEPSEEK_API_KEY.file = config.sops.secrets.deepseek-api-key.path;
       environment.FIREWORKS_API_KEY.file = config.sops.secrets.fireworks-api-key.path;
       environment.OPENAI_API_KEY.file = config.sops.secrets.openai-api-key.path;

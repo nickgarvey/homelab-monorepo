@@ -67,27 +67,6 @@ let
     ];
   };
 
-  # jellyfin-desktop 2.0.0 registers its NativeShell bootstrap on the
-  # WebEngineView, and that registration is lost on the cross-process hop from
-  # the bundled qrc:// server picker to the remote web client. The web client
-  # is then left with no NativeShell and no QWebChannel, so JMP swallows every
-  # key and controller button ("Web Client has not connected, handling input in
-  # host instead") and mpv never gets a render context. Upstream fixed it in
-  # cabddc6 by registering on the profile instead, which postdates the 2.0.0
-  # tag nixpkgs packages -- so build from that commit rather than the tag.
-  #
-  # The assertion below fails the build as soon as nixpkgs moves off 2.0.0, so
-  # this pin has to be revisited instead of quietly outliving its purpose.
-  jellyfin-desktop = pkgs.jellyfin-media-player.overrideAttrs (_: {
-    src = pkgs.fetchgit {
-      url = "https://github.com/jellyfin/jellyfin-desktop.git";
-      # "Inject nativeshell script at the profile level to fix first-load race"
-      rev = "cabddc60908283b78f523a709b8a3a295d2b9fab";
-      hash = "sha256-EbDTw7Nzq6JTF3YmIBNizDiPJ8wbc1leREfgCbME3Js=";
-      fetchSubmodules = true;
-    };
-  });
-
   # This host has no CEC adapter of its own -- an AMD HDMI output exposes no
   # /dev/cec* -- so TV power goes through nelkir, which is wired to the same
   # TV and runs the CEC command socket (modules/services/cec-control.nix).
@@ -164,7 +143,7 @@ let
     # webview.qml - including the unpatched one. Not worth the debugging time.
     export QML_DISABLE_DISK_CACHE=1
     exec ${pkgs.cage}/bin/cage -- \
-      ${jellyfin-desktop}/bin/jellyfin-desktop --tv --fullscreen
+      ${pkgs.jellyfin-media-player}/bin/jellyfin-desktop --tv --fullscreen
   '';
 
   jellyfinApp = [
@@ -305,22 +284,6 @@ in
     settings.Resolve.DNSSEC = "false";
   };
   networking.networkmanager.dns = "systemd-resolved";
-
-  # Expiry for the jellyfin-desktop source pin above: the moment nixpkgs
-  # packages anything other than 2.0.0, re-check whether the NativeShell fix
-  # shipped in the release and drop the pin if it did.
-  assertions = [
-    {
-      assertion = pkgs.jellyfin-media-player.version == "2.0.0";
-      message = ''
-        nixpkgs now packages jellyfin-desktop ${pkgs.jellyfin-media-player.version}
-        rather than 2.0.0, but modules/desktop/common-tv.nix still pins the source to
-        upstream commit cabddc6 for the NativeShell profile-level injection fix.
-        Check whether that fix is in the packaged release; if it is, drop the src
-        override and this assertion.
-      '';
-    }
-  ];
 
   networking.firewall.logRefusedConnections = false;
 }

@@ -1,0 +1,33 @@
+Moves the #!/bin/sh line of the bundled qatlib and qatzip autogen.sh files above
+Intel's license header, so the kernel can exec them (patches/ceph-overlay.nix).
+
+diff -ru a/src/qatlib/autogen.sh b/src/qatlib/autogen.sh
+--- a/src/qatlib/autogen.sh
++++ b/src/qatlib/autogen.sh
+@@ -1,3 +1,4 @@
++#!/bin/sh
+ #################################################################
+ #
+ #   BSD LICENSE
+@@ -33,6 +34,5 @@
+ # 
+ #
+ #################################################################
+-#!/bin/sh
+ 
+ autoreconf -if
+diff -ru a/src/qatzip/autogen.sh b/src/qatzip/autogen.sh
+--- a/src/qatzip/autogen.sh
++++ b/src/qatzip/autogen.sh
+@@ -1,3 +1,4 @@
++#!/bin/sh
+ ################################################################
+ #   BSD LICENSE
+ #
+@@ -31,6 +32,5 @@
+ #   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ #
+ ################################################################
+-#!/bin/sh
+ mkdir -p m4
+ autoreconf -vif

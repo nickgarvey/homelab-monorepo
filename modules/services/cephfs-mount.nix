@@ -25,6 +25,8 @@ let
   lanV6 = name: (lib.findFirst (h: h.hostname == name) null lanHosts).ipv6;
 in
 {
+  imports = [ ./ceph-package.nix ];
+
   options.homelab.cephfs = {
     enable = lib.mkEnableOption "the CephFS local-drive mount";
 

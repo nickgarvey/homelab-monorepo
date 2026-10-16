@@ -54,6 +54,11 @@ in
         enable = true;
         openFirewall = false;
         mongodbPackage = pkgs.mongodb-ce;
+        # libubnt_webrtc_jni.so needs libstdc++ and libgcc_s, which nixpkgs'
+        # unifi omits from buildInputs (NixOS/nixpkgs#575661).
+        unifiPackage = pkgs.unifi.overrideAttrs (old: {
+          buildInputs = old.buildInputs ++ [ pkgs.stdenv.cc.cc.lib ];
+        });
       };
 
       # Container picks up a SLAAC IPv6 from the LAN bridge but has no v6

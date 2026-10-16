@@ -1,15 +1,15 @@
---- a/src/linux/up-device-supply-battery.c	2026-05-11 21:33:58.108221436 -0700
-+++ src/linux/up-device-supply-battery.c	2026-05-11 21:34:10.860339047 -0700
-@@ -81,6 +81,8 @@
- 	gboolean		 charge_threshold_by_charge_type;
+--- a/src/linux/up-device-supply-battery.c
++++ b/src/linux/up-device-supply-battery.c
+@@ -76,6 +76,8 @@
  	gboolean		 shown_invalid_voltage_warning;
  	gboolean		 ignore_system_percentage;
+ 	gboolean		 support_charge_limit;
 +	gdouble			 last_good_percentage;
 +	gboolean		 saw_spurious_zero;
  };
  
  G_DEFINE_TYPE (UpDeviceSupplyBattery, up_device_supply_battery, UP_TYPE_DEVICE_BATTERY)
-@@ -530,6 +532,25 @@
+@@ -545,6 +547,25 @@
  
  	values.temperature = g_udev_device_get_sysfs_attr_as_double_uncached (native, "temp") / 10.0;
  

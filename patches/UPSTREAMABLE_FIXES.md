@@ -250,21 +250,6 @@ behind a quirk flag rather than unconditional.
 
 ---
 
-## OrcaSlicer: plate thumbnails render in the wrong GL context on Wayland (upstream to OrcaSlicer)
-
-**Affected:** `SoftFever/OrcaSlicer`, `src/slic3r/GUI/GLCanvas3D.cpp` (`render_thumbnail`).
-**Local workaround:** `patches/orca-slicer-thumbnail-glcontext.patch`, applied in
-`modules/desktop/orca-slicer.nix`.
-
-`GLCanvas3D::render_thumbnail` never calls `_set_current()`. Under Wayland, GDK
-makes its own paint context current while drawing the WebKit views, so after
-slicing the thumbnail render runs in a context where none of the canvas's
-VAOs/VBOs exist, and libnvidia-eglcore segfaults. The patch makes the shared
-context current first (and skips the render if that fails). The patch header
-has the full trace.
-
----
-
 ## orca-slicer: glew built with EGL can't init from orca's GLX context
 
 **Affected:** `pkgs/by-name/or/orca-slicer/package.nix` (nixpkgs).
@@ -356,3 +341,66 @@ labels are applied last, so `boundary-role`, `boundary-pair`, `component` and
 on, cannot be replaced. Unit tests cover both. Upstream, the same change fits
 as is; a caveat for the PR is that a Service or policy selecting on a template
 label now matches supervisor pods too.
+
+---
+
+## vector: std atomics' `fetch_update` is deprecated, and `#![deny(warnings)]` fails the build
+
+**Affected:** `vectordotdev/vector` v0.59.0 and v0.60.0 (and master as of
+2026-10-23): `lib/vector-common/src/atomic.rs` and
+`lib/vector-buffers/src/variants/disk_v2/ledger.rs`; nixpkgs
+`pkgs/by-name/ve/vector`.
+**Local workaround:** none. nixpkgs' vector 0.60.0 builds with rust 1.99 because its
+`postPatch` rewrites `#![deny(warnings)]` to `#![warn(warnings)]` in every crate, and
+cache.nixos.org has the stock build. The rename below is still the fix upstream.
+
+Rust 1.99 deprecates `fetch_update` on the std atomics ("renamed to
+`try_update` for consistency"; `try_update` is stable since 1.95).
+`AtomicF64::fetch_update` in `vector-common` calls `AtomicU64::fetch_update`,
+and the disk buffer ledger calls `AtomicU16::fetch_update`. Both crates have
+`#![deny(warnings)]`, which turns the deprecation into an error. The fix
+upstream is the rename to `try_update` at those two calls (same arguments and
+return type); vector's own `AtomicF64::fetch_update` method can keep its name.
+nixpkgs sidesteps it by downgrading the lint, so vector still builds.
+
+The main crate's tests (built in nixpkgs' checkPhase) fail the same way on
+other 1.99 lints: the deprecated `std::f64::NAN`/`INFINITY`/`NEG_INFINITY`
+constants in `src/sources/prometheus/parser.rs` (use `f64::NAN` etc.) and
+`semicolon_in_expressions_from_non_local_macros` in `src/sinks/util/retries.rs`.
+Once they compile, `sinks::util::buffer::compression::test::deserialization_json`
+fails: it asserts the exact `TryFromIntError` message, which 1.99 rewords to
+"number too small to fit in target type".
+
+---
+
+## ceph: bundled qatlib/qatzip `autogen.sh` have the shebang below the license header
+
+**Affected:** `pkgs/by-name/ce/ceph` (nixpkgs) at 20.2.4, and upstream Ceph's
+vendored `src/qatlib` and `src/qatzip` (Intel's files) in every stable branch:
+squid, tentacle and umbrella (through v21.2.0).
+**Issue:** NixOS/nixpkgs#576414; Ceph https://tracker.ceph.com/issues/81385.
+**Local workaround:** `patches/ceph-qat-autogen-shebang.patch`, applied by
+`patches/ceph-overlay.nix` (NixOS hosts through
+`modules/services/ceph-package.nix`; also `packages/ceph-backup-worker`).
+
+`cmake/modules/BuildQAT.cmake` runs `./autogen.sh` as the qatlib_ext configure
+command. The file's `#!/bin/sh` is on line 36, so execve returns ENOEXEC and
+the build stops at ~4% with `Command failed (exec format error): './autogen.sh'`.
+nixpkgs' `patchShebangs src/` does not help: it only rewrites a shebang on
+line 1.
+
+The files were always broken; libuv 1.53.0 is what exposed them. cmake runs
+child processes through libuv's `uv_spawn`. Up to 1.52.1 that used fork and
+glibc's `execvp`, which reruns an ENOEXEC file with `/bin/sh`. 1.53.0
+(libuv#3520) uses `posix_spawn` on Linux, and glibc's `posix_spawn` has not
+retried through the shell since 2.15. cmake 4.4.3 and 4.4.4 behave the same on
+either libuv. musl's `execvp` never retried, so on musl this never worked.
+
+Upstream fix: Intel moved the shebang to line 1 (qatlib 95c9fb6da7, QATzip
+1ed018038d/dada702545), and Ceph main picked that up in ceph/ceph#72402 (qatlib
+26.08.0, qatzip v2.0.0). No stable branch has it yet. A backport to umbrella and
+tentacle was requested on the tracker issue, but #72402 is a QATzip major-version
+bump, so a shebang-only patch may suit the stable branches better. Until a
+release with the fix reaches nixpkgs, nixpkgs could carry our patch in
+`src.nix`. The overlay throws once nixpkgs' ceph files mention `autogen`, and
+the patch stops applying if the tarball fixes the files itself.

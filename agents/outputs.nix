@@ -8,7 +8,18 @@
 { self, nixpkgs, ... }:
 let
   system = "x86_64-linux";
-  pkgs = nixpkgs.legacyPackages.${system};
+  # pi runs on Node 22 while the default nodejs lacks the October 2026 Brotli
+  # fix (CVE-2026-111497: fixed in 22.23.4 and 24.22.1). Evaluation fails once
+  # pkgs.nodejs reaches 24.22.1: then drop this extend and use pkgs.nodejs in
+  # piLitellmProfile again. modules/llms/pi.nix carries the same override.
+  pkgs = nixpkgs.legacyPackages.${system}.extend (final: prev: {
+    pi-coding-agent =
+      lib.throwIf (lib.versionAtLeast prev.nodejs.version "24.22.1")
+        "nodejs ${prev.nodejs.version} has the Brotli fix: remove the Node 22 override of pi-coding-agent in agents/outputs.nix"
+        (prev.pi-coding-agent.override {
+          buildNpmPackage = prev.buildNpmPackage.override { nodejs = final.nodejs_22; };
+        });
+  });
   lib = nixpkgs.lib;
 
   # The gateway, supervisor and sandbox runtime are our own builds of OpenShell
@@ -42,10 +53,10 @@ let
 
   # The provider profile's binaries entry must be the exe that opens the
   # connection: the node that pi's wrapper execs, resolved past symlinks.
-  # Fails the build if pi stops running under pkgs.nodejs.
+  # Fails the build if pi stops running under pkgs.nodejs_22.
   piLitellmProfile = pkgs.runCommand "pi-agent-litellm-profile.yaml" { } ''
-    grep -qF '${pkgs.nodejs}/bin/node' ${pkgs.pi-coding-agent}/bin/.pi-wrapped
-    node=$(readlink -f ${pkgs.nodejs}/bin/node)
+    grep -qF '${pkgs.nodejs_22}/bin/node' ${pkgs.pi-coding-agent}/bin/.pi-wrapped
+    node=$(readlink -f ${pkgs.nodejs_22}/bin/node)
     substitute ${./pi/litellm-profile.yaml} $out --replace-fail @node@ "$node"
   '';
 
