@@ -131,9 +131,24 @@ in
     # OSD being marked down. They live in FRR rather than networkd because
     # zebra would treat a kernel route as distance 0 and never install the
     # mesh route. (staticd always runs; it needs no enable.)
+    #
+    # MESH-SRC gives the fallback routes this node's mesh address as their
+    # source. Without it the kernel would source from the LAN address, and a
+    # connection opened over the fallback (e.g. at boot, before thunderbolt_net
+    # loads) would keep that address after the mesh route takes over: requests
+    # go out over Thunderbolt, replies come back over the LAN, and the OSD's
+    # connections stall. With mesh addresses at both ends, either path serves.
     config = lib.concatMapStrings (peer: ''
       ipv6 route ${meshAddress peer}/128 ${lanV6 peer} 250
     '') peers + ''
+      ipv6 prefix-list MESH seq 5 permit ${meshPrefix}/64 ge 128
+      route-map MESH-SRC permit 10
+       match ipv6 address prefix-list MESH
+       set src ${meshAddress hostname}
+      exit
+      route-map MESH-SRC permit 20
+      exit
+      ipv6 protocol static route-map MESH-SRC
       interface mesh0
        ipv6 router openfabric 1
        openfabric passive
