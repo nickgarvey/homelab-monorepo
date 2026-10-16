@@ -208,6 +208,8 @@ func run() int {
 		RebootFlag: args.Reboot,
 		Prompter:   stdinPrompter,
 		Warnings:   &warnings,
+		// Unreadable leaves it empty, which blocks every watchdog and reboot.
+		LocalMachineID: readLocalMachineID(),
 	}
 
 	var failed, skipped []string
@@ -378,4 +380,14 @@ func (a CLIArgs) pipelineOpts() PipelineOpts {
 		OnFailure: a.OnFailure,
 		Build:     a.buildOpts(),
 	}
+}
+
+// readLocalMachineID returns this machine's /etc/machine-id, or "" if it cannot
+// be read.
+func readLocalMachineID() string {
+	b, err := os.ReadFile("/etc/machine-id")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
 }

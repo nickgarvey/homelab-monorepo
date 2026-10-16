@@ -147,6 +147,8 @@ func (f *pipeFake) Run(_ context.Context, argv []string, _ RunOpts) RunResult {
 		return RunResult{Stdout: "6.6.50\n"}
 	case strings.Contains(joined, "kernel-params"):
 		return RunResult{Stdout: "quiet\n"}
+	case strings.Contains(joined, "/etc/machine-id"):
+		return RunResult{Stdout: fakeRemoteMachineID + "\n"}
 	}
 	return RunResult{}
 }
@@ -187,10 +189,11 @@ func pipeHosts(names ...string) []PrecheckResult {
 
 func pipeCtx(f *pipeFake) *DeployContext {
 	return &DeployContext{
-		Runner:     f,
-		Sleeper:    func(time.Duration) {},
-		Now:        func() time.Time { return time.Unix(1700000000, 0) },
-		RebootFlag: RebootFlagNever,
+		Runner:         f,
+		Sleeper:        func(time.Duration) {},
+		Now:            func() time.Time { return time.Unix(1700000000, 0) },
+		RebootFlag:     RebootFlagNever,
+		LocalMachineID: fakeLocalMachineID,
 	}
 }
 

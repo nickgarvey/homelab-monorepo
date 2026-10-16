@@ -16,6 +16,11 @@ via `switch-to-configuration test`, verify connectivity + system path, persist v
 (network breakage, mis-activation, mid-deploy reboot), the watchdog reboots the
 target to its previous boot generation.
 
+The machine running the deploy is the exception. When a target's `/etc/machine-id`
+matches the local one, no watchdog is armed for it, because its reboot would kill
+the deploy and every other build on that machine. If either ID cannot be read,
+the safe flow stops before activating.
+
 The closure transfer happens **before** the watchdog is armed, so the at-risk
 window contains only fast SSH RPCs, and the path activated is pinned by the
 derivation resolved in the precheck (see Precheck pass).
@@ -73,7 +78,10 @@ nix run .#deploy -- --hosts ro
 ### Reboot decision
 
 `--reboot` is authoritative and applies uniformly to every host, including
-`dragonsreach`. There is no per-host override.
+`dragonsreach`, with one exception: the machine running the deploy (matched by
+`/etc/machine-id`) is never rebooted, whatever the value. If a reboot is owed
+there, it is reported as a warning. A host whose machine ID cannot be read is
+treated the same way.
 
 | value | behavior |
 |---|---|
