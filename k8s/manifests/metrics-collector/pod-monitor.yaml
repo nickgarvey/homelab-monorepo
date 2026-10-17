@@ -1,0 +1,15 @@
+# Scrapes the collector's Prometheus exporter (configmap.yaml) on port 9598.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: metrics-collector
+  namespace: metrics-collector
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  selector:
+    matchLabels:
+      app: metrics-collector
+  podMetricsEndpoints:
+    - port: metrics
+      interval: 60s

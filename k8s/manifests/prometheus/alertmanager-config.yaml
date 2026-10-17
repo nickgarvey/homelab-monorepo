@@ -46,6 +46,14 @@ stringData:
           repeat_interval: 24h
           continue: false
 
+        # Loop build age (rules/loop-build.yaml): one email a day until a new
+        # build is uploaded to TestFlight.
+        - receiver: 'email'
+          matchers:
+            - alertname =~ "LoopBuild.*"
+          repeat_interval: 24h
+          continue: false
+
     receivers:
       - name: 'cronitor-heartbeat'
         webhook_configs:

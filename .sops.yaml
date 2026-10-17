@@ -191,6 +191,14 @@ creation_rules:
     key_groups:
     - age:
       - *ngarvey
+  # loop-build: the six secrets the LoopWorkspace fork's GitHub Actions need
+  # (Apple team ID, App Store Connect API key, GH_PAT, MATCH_PASSWORD), kept
+  # here as the copy to restore from; GitHub holds them as repo secrets. No
+  # host needs them.
+  - path_regex: secrets/loop-build.yaml
+    key_groups:
+    - age:
+      - *ngarvey
   - path_regex: secrets/smb-credentials.yaml
     key_groups:
     - age:

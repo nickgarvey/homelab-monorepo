@@ -1,0 +1,80 @@
+# Vector config for the metrics collector: polls HTTP APIs and serves the
+# results as Prometheus metrics. README.md explains how to add a metric.
+#
+# Every log_to_metric transform is named <something>_metric, which the sink's
+# "*_metric" input picks up, so a new metric needs no sink change.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: metrics-collector
+  namespace: metrics-collector
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+data:
+  vector.yaml: |
+    data_dir: /var/lib/vector
+
+    api:
+      enabled: true
+      address: "[::]:8686"
+
+    sources:
+      # When Loop was last uploaded to TestFlight: the newest successful run
+      # of each build workflow on the LoopWorkspace fork. A successful run
+      # means an upload; the auto workflow cancels its run when there is
+      # nothing to build. Public repo, so no token. Alerts:
+      # manifests/prometheus/rules/loop-build.yaml.
+      loop_build_manual:
+        type: http_client
+        endpoint: https://api.github.com/repos/nickgarvey/LoopWorkspace/actions/workflows/build_loop.yml/runs?status=success&per_page=1
+        headers:
+          Accept: ["application/vnd.github+json"]
+        decoding:
+          codec: json
+        scrape_interval_secs: 900
+        scrape_timeout_secs: 30
+      loop_build_auto:
+        type: http_client
+        endpoint: https://api.github.com/repos/nickgarvey/LoopWorkspace/actions/workflows/build_loop_auto.yml/runs?status=success&per_page=1
+        headers:
+          Accept: ["application/vnd.github+json"]
+        decoding:
+          codec: json
+        scrape_interval_secs: 900
+        scrape_timeout_secs: 30
+
+    transforms:
+      loop_build_fields:
+        type: remap
+        inputs: [loop_build_manual, loop_build_auto]
+        # A workflow with no successful run yet emits nothing.
+        drop_on_abort: true
+        source: |
+          if !exists(.workflow_runs[0].updated_at) { abort }
+          run = .workflow_runs[0]
+          path_parts = split(string!(run.path), "/")
+          . = {
+            "workflow": path_parts[-1],
+            "at": to_unix_timestamp(parse_timestamp!(string!(run.updated_at), "%+"))
+          }
+      loop_build_metric:
+        type: log_to_metric
+        inputs: [loop_build_fields]
+        metrics:
+          - type: gauge
+            field: at
+            name: homelab_loop_build_last_success_timestamp_seconds
+            tags:
+              workflow: "{{ workflow }}"
+
+    sinks:
+      prometheus:
+        type: prometheus_exporter
+        inputs: ["*_metric"]
+        address: "[::]:9598"
+        # A metric not seen for this long is dropped, so every source must
+        # poll more often than this.
+        flush_period_secs: 3600
+        # Without this each sample carries the time it was polled, and
+        # Prometheus's 5-minute lookback would lose it between polls.
+        suppress_timestamp: true
