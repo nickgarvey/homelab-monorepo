@@ -27,7 +27,6 @@ import pygame  # noqa: E402
 
 W, H = 800, 480
 FB = "/dev/fb0"
-TTY = "/dev/tty1"
 TOUCH_NAME = "BIQU BTT-HDMI5"
 TOUCH_MAX = 4096
 MOONRAKER = "http://[::1]:7125"
@@ -349,7 +348,7 @@ class Painter:
 
 
 def main():
-    tty = os.open(TTY, os.O_WRONLY | os.O_NOCTTY)
+    tty = sys.stdin.fileno()  # tty1, from TTYPath in screen.nix
 
     def restore(*_):
         fcntl.ioctl(tty, KDSETMODE, KD_TEXT)

@@ -24,12 +24,15 @@ in
     serviceConfig = {
       ExecStart = "${python}/bin/python3 ${./screen.py}";
       DynamicUser = true;
-      # fb0, the touch panel, tty1 (to switch it to graphics mode) and the
-      # journal for the log panes.
-      SupplementaryGroups = [ "video" "input" "tty" "systemd-journal" ];
-      # KDSETMODE on a tty that is not our controlling terminal.
-      AmbientCapabilities = [ "CAP_SYS_TTY_CONFIG" ];
-      CapabilityBoundingSet = [ "CAP_SYS_TTY_CONFIG" ];
+      # fb0, the touch panel, and the journal for the log panes.
+      SupplementaryGroups = [ "video" "input" "systemd-journal" ];
+      # systemd hands tty1 to the service user as its controlling terminal on
+      # stdin, which is what lets screen.py switch it to graphics mode. Nothing
+      # else opens tty1, so its mode at boot is 0600 root.
+      TTYPath = "/dev/tty1";
+      StandardInput = "tty";
+      StandardOutput = "journal";
+      StandardError = "journal";
       Restart = "always";
       RestartSec = 2;
     };
