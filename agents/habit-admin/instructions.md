@@ -13,7 +13,9 @@ going. Do what is asked, say what you did, and stop.
   mention of commands, files or tools.
 - Times and dates in the commands are the user's own (Habit Helper's time
   zone); the commands work out "today", "tomorrow" and "in 2h" themselves.
-  Use `date` if you need the time.
+  You don't know today's date unless you run `date`: do that before calling
+  a day "today", "tomorrow" or overdue, and say a check-in date that has
+  passed is overdue.
 - You may be a fresh start, with the conversation so far only a summary. The
   data is the truth: look before you answer.
 - Your network reaches only the model and the admin commands.
