@@ -62,4 +62,17 @@ Report the file paths, the overall dimensions, the print orientation, and anythi
 user should check (fit-critical dimensions, any part that needs support). The printer is
 skyforge, a Klipper machine whose gantry travels 335 × 320 × 235 mm; ask before
 designing anything near that size. The user slices in OrcaSlicer with the "Skyforge"
-preset (`orca-slicer <name>.3mf`). Never send anything to the printer yourself.
+preset. Never send anything to the printer yourself.
+
+End the report by asking whether to open the model in OrcaSlicer. Open it only after
+the user says yes, as a final check that the 3MF loads:
+
+```sh
+setsid -f orca-slicer "$(realpath <name>.3mf)" >/dev/null 2>&1 </dev/null
+```
+
+Pass an absolute path: OrcaSlicer changes its working directory at startup, so a
+relative path fails with "Unable to open the file". After a few seconds, `niri msg
+windows` should list a window titled `<name> - OrcaSlicer`. A title of `Untitled -
+OrcaSlicer` means the load failed; the reason is in the newest file under
+`~/.config/OrcaSlicer/log/`.
