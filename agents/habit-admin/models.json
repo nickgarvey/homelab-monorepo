@@ -1,0 +1,27 @@
+{
+  "providers": {
+    "litellm": {
+      "baseUrl": "http://litellm.litellm.svc.cluster.local:4000/v1",
+      "api": "openai-completions",
+      "apiKey": "unused",
+      "models": [
+        {
+          "id": "habit-admin",
+          "name": "Habit Admin (litellm)",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 131072,
+          "maxTokens": 16384,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          }
+        }
+      ]
+    }
+  }
+}

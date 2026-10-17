@@ -29,10 +29,12 @@ answers 401. There are three kinds:
   |---|---|---|
   | `pi` | `qwen3.8-flash-next` | `/agent/pi/` |
   | `habit-helper` | `habit-helper` | `/agent/habit-helper/` |
+  | `habit-admin` | `habit-admin` | `/agent/habit-admin/` |
 
-  The values are in two Secrets, `litellm-virtual-keys` here and
-  `agent-token-litellm` in namespace agents
-  (`manifests/agents/litellm-keys-secret.yaml`), and must match.
+  The values are in two places that must match: `litellm-virtual-keys` here
+  and `agent-token-litellm` in namespace agents
+  (`manifests/agents/litellm-keys-secret.yaml`), and for `habit-admin`,
+  `habit-admin-key-secret.yaml` here and `manifests/agents/habit-admin-secret.yaml`.
   `register-keys-job.yaml` registers them with litellm, with their alias and
   models, and is safe to re-run.
 - **Named static keys** for callers outside the cluster (a workstation, a

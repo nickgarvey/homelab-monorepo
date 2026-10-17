@@ -190,21 +190,20 @@ as them.
   transaction ID is `wakeup-` and the `Wakeup` run's ID, so a retry posts
   nothing more. If the bridge is down the reply waits up to an hour for it,
   then is only in the chat log, as is one whose agent has left the room.
-- **The admin chat.** `@habit-admin:matrix.garvey.sh` ("Habit Admin") is in
-  the registration's namespace but is no agent: the bridge answers its
-  direct chat with commands (`packages/agents/internal/habitadmin`), at once,
-  with no model. `help` lists them: `habits [--all]`, `show`, `archive`,
-  `unarchive`, `pause`, `resume`, `delete <habit> --permanent` (which asks
-  for a `yes`), `cadence <habit> every <N>d [next <date>]` and `cadence
-  <habit> auto`, and `wakeup` (show), `wakeup in <5m|2h|1d> [note]`,
-  `wakeup at <time> [note]` and `wakeup cancel` for Habit Helper's wake-up
-  in its direct chat with you. Its replies are notices, so they don't push.
-  Data goes through PostgREST as role `habit_admin`, with a token from
-  agent-token for the bridge's JWT-SVID; an archived habit is hidden from
-  the coach entirely (`k8s/manifests/habit-helper/README.md`, "Roles").
-  Setting a wake-up signals the conversation's `Wakeup` as a turn's request
-  would, without the 10-minute floor; cancelling ends the `Wakeup`, and the
-  next turn starts a new one.
+- **Habit Admin.** `@habit-admin:matrix.garvey.sh` is the `habit-admin`
+  agent (`habit-admin/`): you ask it in plain words to list, archive, pause
+  or delete habits, override their cadence, or show, set or cancel Habit
+  Helper's wake-up in its direct chat with you, and it does so with the
+  `habit-admin` CLI. The CLI sends the admin commands
+  (`packages/agents/internal/habitadmin`) to the bridge's admin API (port
+  8010), which runs them for the one allowed user: data through PostgREST as
+  role `habit_admin`, with a token from agent-token for the bridge's
+  JWT-SVID, so an archived habit is hidden from the coach entirely
+  (`k8s/manifests/habit-helper/README.md`, "Roles"); a wake-up set signals
+  the conversation's `Wakeup` as a turn's request would, without the
+  10-minute floor, and cancelling ends it. A permanent delete answers with
+  a request for `yes`, which the agent runs only on your yes (its
+  instructions; the API cannot tell who typed it).
 - **Adding a type** to Matrix: add its user to the registration's users
   namespace, in both copies (`k8s/manifests/agents/README.md`, "The Matrix
   bridge"), restart Synapse and the bridge.

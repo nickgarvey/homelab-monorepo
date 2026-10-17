@@ -2,7 +2,8 @@
 # which credential (format in packages/agents/internal/token/config.go, and
 # "The token service" in README.md). The credential files are keys of the
 # agent-token-credentials (secret.yaml) and agent-token-litellm
-# (litellm-keys-secret.yaml) Secrets, both mounted at
+# (litellm-keys-secret.yaml) and agent-token-litellm-habit-admin
+# (habit-admin-secret.yaml) Secrets, all mounted at
 # /etc/agent-token/credentials. Read at start: after a change,
 # kubectl -n agents rollout restart deploy/agent-token.
 apiVersion: v1
@@ -54,3 +55,19 @@ data:
           keyFile: /etc/agent-token/habit-data/postgrest-jwt-key
           ttl: 5m
           claims: {role: habit_admin, aud: habit-data}
+      # Habit Admin (agents/habit-admin): its own litellm key, and tokens for
+      # the bridge's admin API, signed with the key in habit-admin-secret.yaml
+      # (mounted at /etc/agent-token/admin-api), which the bridge checks.
+      - name: habit-admin-litellm
+        path: /agent/habit-admin/
+        audience: litellm
+        static:
+          file: /etc/agent-token/credentials/litellm-habit-admin
+          expiresIn: 1h
+      - name: habit-admin-api
+        path: /agent/habit-admin/
+        audience: habit-admin
+        jwt:
+          keyFile: /etc/agent-token/admin-api/jwt-key
+          ttl: 5m
+          claims: {aud: habit-admin}

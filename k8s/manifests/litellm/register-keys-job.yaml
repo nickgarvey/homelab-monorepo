@@ -1,6 +1,7 @@
 # Registers the virtual keys in the litellm-virtual-keys Secret (secret.yaml)
-# with litellm, each with its alias and the only models it may call. agent-token
-# hands the same values out (manifests/agents/litellm-keys-secret.yaml). A key
+# and in habit-admin-key-secret.yaml with litellm, each with its alias and the
+# only models it may call. agent-token hands the same values out
+# (manifests/agents/litellm-keys-secret.yaml, habit-admin-secret.yaml). A key
 # litellm already has gets its model list set again; nothing else changes, so
 # the Job is safe to re-run, and it is how a lost database gets the keys back.
 # It waits for litellm to be ready, so it can go in with a litellm rollout. The
@@ -69,6 +70,7 @@ spec:
 
               register pi '["qwen3.8-flash-next"]'
               register habit-helper '["habit-helper"]'
+              register habit-admin '["habit-admin"]'
           volumeMounts:
             - name: keys
               mountPath: /keys
@@ -80,6 +82,12 @@ spec:
             limits:
               memory: 64Mi
       volumes:
+        # One file per key: litellm-virtual-keys (secret.yaml) and
+        # habit-admin-key-secret.yaml.
         - name: keys
-          secret:
-            secretName: litellm-virtual-keys
+          projected:
+            sources:
+              - secret:
+                  name: litellm-virtual-keys
+              - secret:
+                  name: litellm-virtual-key-habit-admin

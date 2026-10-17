@@ -66,6 +66,9 @@ spec:
             - name: habit-data
               mountPath: /etc/agent-token/habit-data
               readOnly: true
+            - name: admin-api
+              mountPath: /etc/agent-token/admin-api
+              readOnly: true
           # Ready once it holds the trust domain's JWT bundle.
           readinessProbe:
             httpGet:
@@ -95,7 +98,7 @@ spec:
           secret:
             secretName: agent-token-tls
             defaultMode: 0440
-        # Both credential Secrets in one directory (agent-token-configmap.yaml).
+        # The credential Secrets in one directory (agent-token-configmap.yaml).
         - name: credentials
           projected:
             defaultMode: 0440
@@ -104,8 +107,15 @@ spec:
                   name: agent-token-credentials
               - secret:
                   name: agent-token-litellm
+              - secret:
+                  name: agent-token-litellm-habit-admin
         # The habit-data grant's JWT key (agent-token-habit-data-secret.yaml).
         - name: habit-data
           secret:
             secretName: agent-token-habit-data
+            defaultMode: 0440
+        # The habit-admin-api grant's JWT key (habit-admin-secret.yaml).
+        - name: admin-api
+          secret:
+            secretName: agents-admin-api
             defaultMode: 0440

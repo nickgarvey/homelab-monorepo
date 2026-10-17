@@ -14,6 +14,11 @@
   profiles.habit-data = profiles.habitData;
   providers.habit-data.profile = "habit-data";
 
+  # The Matrix bridge's admin API, Habit Helper's admin commands; only
+  # habit-admin sandboxes get a token for it (k8s/manifests/agents).
+  profiles.habit-admin-api = profiles.habitAdminApi;
+  providers.habit-admin-api.profile = "habit-admin-api";
+
   types.pi = {
     image = images.pi;
     policy = ./pi/policy.yaml;
@@ -29,5 +34,14 @@
     providers = [ "litellm" "habit-data" ];
     session.defaultWakeup = "24h";
     session.timezone = "America/Los_Angeles";
+  };
+
+  # Habit Admin (nix-LAjpH.6): the user's plain-words console for Habit
+  # Helper's habits and wake-ups, through the habit-admin CLI. No wake-ups:
+  # it only answers.
+  types.habit-admin = {
+    image = images.habitAdmin;
+    policy = ./habit-admin/policy.yaml;
+    providers = [ "litellm" "habit-admin-api" ];
   };
 }

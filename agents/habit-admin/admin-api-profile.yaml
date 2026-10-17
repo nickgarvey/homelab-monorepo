@@ -1,0 +1,43 @@
+# OpenShell provider profile: the Matrix bridge's admin API (packages/agents,
+# internal/habitadmin, API), which runs admin commands on Habit Helper's data
+# and wake-ups. The supervisor gets a short-lived JWT (aud habit-admin) from
+# agent-token with the sandbox's JWT-SVID and puts it in the Authorization
+# header, replacing whatever the agent sent; the token never reaches the
+# sandbox. agent-token grants it only to
+# spiffe://home.garvey.sh/agent/habit-admin/* (k8s/manifests/agents,
+# agent-token-configmap.yaml), and the bridge checks it. Plain HTTP on the
+# bridge's cluster Service name, like habit-data: the proxy's upstream TLS
+# trusts only public roots.
+#
+# agents/outputs.nix fills in `binaries` with the real path of the
+# habit-admin CLI (packages/agents/cmd/habit-admin; a store path, since the
+# sandbox matches the resolved exe), the only program that talks to the API.
+id: habit-admin-api
+display_name: habit-admin-api
+description: Habit Helper's admin commands, through the Matrix bridge (k8s/manifests/agents)
+category: data
+
+credentials:
+  - name: access_token
+    description: Admin API JWT from agent-token, via a JWT-SVID client assertion
+    required: true
+    auth_style: bearer
+    header_name: Authorization
+    token_grant:
+      token_endpoint: https://agent-token.agents.svc.cluster.local/token
+      jwt_svid_audience: spiffe://home.garvey.sh/ns/agents/sa/agent-token
+      client_assertion_type: urn:ietf:params:oauth:client-assertion-type:jwt-spiffe
+      audience: habit-admin
+
+endpoints:
+  - host: agents-matrix.agents.svc.cluster.local
+    port: 8010
+    protocol: rest
+    enforcement: enforce
+    rules:
+      - allow:
+          method: POST
+          path: /run
+
+binaries:
+  - @habit-admin@

@@ -6,7 +6,8 @@ Habit Helper's data: the `habit_helper` database on the shared postgres
 `habit-helper` agent type, through the `habit-data` provider
 (`agents/habit-helper/habit-data-profile.yaml` at the repo root), to the
 `habit` CLI only (`agents/habit-helper/README.md`), and to the admin chat
-(`@habit-admin` in the Matrix bridge, `manifests/agents/README.md`).
+(the Matrix bridge's admin API, used by the habit-admin agent,
+`manifests/agents/README.md`).
 
 ## Roles
 
@@ -15,7 +16,7 @@ Habit Helper's data: the `habit_helper` database on the shared postgres
 | `habit_helper` | certificate `CN=habit_helper` | Owns the database and its schemas; only the schema init container uses it. |
 | `habit_helper_api` | certificate `CN=habit_helper_api` | PostgREST's login. `NOINHERIT` and granted nothing but `CONNECT` and membership in `habit_agent` and `habit_admin`, so on its own it can read nothing; a request's JWT names the role. |
 | `habit_agent` | none | The coach's sandboxes. `SELECT`, `INSERT`, `UPDATE` on the tables in schema `habit`, on habits that are not archived and their rows only (row-level security), and it cannot archive. No `DELETE`, `TRUNCATE`, DDL or temporary tables. |
-| `habit_admin` | none | The admin chat (`@habit-admin` in the Matrix bridge). `SELECT`, `INSERT`, `UPDATE`, `DELETE` on every row, archived ones included, and `/rpc/delete_habit`, which deletes a habit and its rows in one transaction. |
+| `habit_admin` | none | The Matrix bridge's admin API, for Habit Admin. `SELECT`, `INSERT`, `UPDATE`, `DELETE` on every row, archived ones included, and `/rpc/delete_habit`, which deletes a habit and its rows in one transaction. |
 
 The roles are managed by CloudNativePG (`manifests/postgres/cluster.yaml`),
 which also has their `pg_hba` and `pg_ident` lines; both certificates are

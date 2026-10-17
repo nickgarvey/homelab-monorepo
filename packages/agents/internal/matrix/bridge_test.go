@@ -429,65 +429,6 @@ func TestDeliverWithNoRoomPostsNothing(t *testing.T) {
 	assert.Empty(t, hs.Sent())
 }
 
-const admin = id.UserID("@habit-admin:matrix.garvey.sh")
-
-type fakeCommands struct{ got []string }
-
-func (f *fakeCommands) Run(_ context.Context, user, text string) string {
-	f.got = append(f.got, user+": "+text)
-	return "**done**"
-}
-
-func withAdmin(b *Bridge) *fakeCommands {
-	c := &fakeCommands{}
-	b.Admin, b.AdminName = c, "habit-admin"
-	return c
-}
-
-func TestStartMakesTheAdminsDirectChatToo(t *testing.T) {
-	hs, turns := newFakeHS(), &fakeTurns{}
-	b := newBridge(hs, turns)
-	withAdmin(b)
-	require.NoError(t, b.Start(context.Background()))
-	assert.Equal(t, []string{
-		`register ` + string(agent) + ` "Habit Helper"`,
-		"create " + string(agent) + " invite " + string(nick),
-		`register ` + string(admin) + ` "Habit Admin"`,
-		"create " + string(admin) + " invite " + string(nick),
-	}, hs.Calls())
-}
-
-func TestAdminAnswersCommandsAsNotices(t *testing.T) {
-	hs, turns := newFakeHS(), &fakeTurns{}
-	hs.joined[room] = []id.UserID{nick, admin}
-	b := newBridge(hs, turns)
-	cmds := withAdmin(b)
-	ctx := context.Background()
-	b.Handle(ctx, textEvent(nick, "$c1", " habits --all "))
-	b.Handle(ctx, textEvent(other, "$c2", "delete x --permanent"))
-	b.Wait()
-
-	assert.Equal(t, []string{string(nick) + ": habits --all"}, cmds.got)
-	assert.Empty(t, turns.sends, "the admin is no agent")
-	require.Len(t, hs.Sent(), 1)
-	s := hs.Sent()[0]
-	assert.Equal(t, admin, s.user)
-	assert.Equal(t, "admin-$c1", s.txnID)
-	assert.Equal(t, event.MsgNotice, s.content.MsgType)
-	assert.Equal(t, "<strong>done</strong>", s.content.FormattedBody)
-}
-
-func TestAdminInviteJoinsAndLeavingStopsNoWakeups(t *testing.T) {
-	hs, turns := newFakeHS(), &fakeTurns{}
-	b := newBridge(hs, turns)
-	withAdmin(b)
-	ctx := context.Background()
-	b.Handle(ctx, memberEvent(nick, admin, event.MembershipInvite))
-	assert.Contains(t, hs.Calls(), "join "+string(admin)+" "+string(room))
-	b.Handle(ctx, memberEvent(nick, admin, event.MembershipLeave))
-	assert.Empty(t, turns.stopped)
-}
-
 func TestConversationWith(t *testing.T) {
 	hs, turns := newFakeHS(), &fakeTurns{}
 	hs.joined[room] = []id.UserID{nick, agent}

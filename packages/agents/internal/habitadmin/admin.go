@@ -1,10 +1,10 @@
-// Package habitadmin is the admin chat for Habit Helper: commands, not an
-// agent, that the Matrix bridge runs for @habit-admin's direct chat with an
-// allowed user (agents/README.md, "Matrix"). They list, archive and delete
-// habits, override their cadence, and show, set and cancel Habit Helper's
-// wake-up in its chat with that user. Data goes through PostgREST as role
-// habit_admin, which sees archived habits and may delete; wake-ups through
-// the conversation's Wakeup workflow.
+// Package habitadmin is the admin commands for Habit Helper, which the Matrix
+// bridge serves over HTTP (API) to the habit-admin agent's sandboxes
+// (agents/habit-admin). They list, archive and delete habits, override their
+// cadence, and show, set and cancel Habit Helper's wake-up in its chat with
+// the user. Data goes through PostgREST as role habit_admin, which sees
+// archived habits and may delete; wake-ups through the conversation's Wakeup
+// workflow.
 package habitadmin
 
 import (

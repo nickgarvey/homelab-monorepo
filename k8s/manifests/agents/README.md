@@ -186,6 +186,8 @@ The committed grants:
 | `habit-helper-litellm` | `/agent/habit-helper/` | `litellm` | `litellm-habit-helper` (alias `habit-helper`: `habit-helper`) |
 | `habit-data` | `/agent/habit-helper/` | `habit-data` | JWT with `role: habit_agent` |
 | `habit-admin` | `/ns/agents/sa/agents-matrix` (the bridge's pod) | `habit-data` | JWT with `role: habit_admin` |
+| `habit-admin-litellm` | `/agent/habit-admin/` | `litellm` | `litellm-habit-admin` (alias `habit-admin`: `habit-admin`) |
+| `habit-admin-api` | `/agent/habit-admin/` | `habit-admin` | JWT with `aud: habit-admin`, which the bridge's admin API checks |
 
 litellm decides what each key may call ("Keys" in
 `manifests/litellm/README.md`). They go out with `expiresIn: 1h`, which only
@@ -252,10 +254,16 @@ skopeo copy docker-archive:result docker://oci.garvey.sh/agent-token:$(nix eval 
   That hop is plaintext inside the cluster; the bridge refuses a transaction
   without the `hs_token`. Synapse has the same registration as
   `appservice-agents.yaml` in `manifests/matrix/secret.yaml`.
-- **Habit Helper's PostgREST**, for the admin chat: spiffe-helper also keeps
+- **Habit Helper's PostgREST**, for the admin API: spiffe-helper also keeps
   a JWT-SVID for agent-token (`/run/spiffe/jwt_svid.token`), which the
   `habit-admin` grant (`agent-token-configmap.yaml`) trades for a 5-minute
   PostgREST token with role `habit_admin`.
+- **The admin API**, which the habit-admin agent's sandboxes reach at
+  `http://agents-matrix.agents.svc.cluster.local:8010/run`
+  (`agents/habit-admin/admin-api-profile.yaml`): the bridge refuses a request
+  without a JWT signed with the `jwt-key` of `agents-admin-api`
+  (`habit-admin-secret.yaml`, which agent-token mounts too) and carrying
+  `aud: habit-admin`.
 
 Its state is in Matrix and Temporal only, so it can be restarted at any time;
 a turn running at the time still finishes, but its reply is not posted. A
@@ -329,6 +337,7 @@ kubectl apply -f manifests/agents/agent-token-service-account.yaml
 kubectl apply -f manifests/agents/agent-token-certificate.yaml
 kubectl -n agents wait --for=condition=Ready certificate/agent-token-tls
 kubectl apply -f manifests/agents/agent-token-habit-data-secret.yaml
+kubectl apply -f manifests/agents/habit-admin-secret.yaml
 kubectl apply -f manifests/agents/agent-token-configmap.yaml
 kubectl apply -f manifests/agents/agent-token-deployment.yaml
 kubectl apply -f manifests/agents/agent-token-service.yaml
@@ -348,6 +357,8 @@ kubectl apply -f manifests/matrix/secret.yaml -f manifests/matrix/configmap.yaml
 kubectl -n matrix rollout restart deploy/synapse
 kubectl apply -f manifests/agents/matrix-secret.yaml
 kubectl -n agents get secret agents-matrix        # wait for it
+kubectl apply -f manifests/agents/habit-admin-secret.yaml
+kubectl -n agents get secret agents-admin-api     # wait for it
 kubectl apply -f manifests/agents/matrix-service-account.yaml \
   -f manifests/agents/matrix-spiffe-helper-configmap.yaml \
   -f manifests/agents/matrix-service.yaml -f manifests/agents/matrix-deployment.yaml
