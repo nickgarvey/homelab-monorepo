@@ -5,6 +5,7 @@
     ../../modules/networking/networkd.nix
     ./hardware-configuration.nix
     ./web-gate.nix
+    ./screen.nix
   ];
 
   networking.hostName = "skyforge";

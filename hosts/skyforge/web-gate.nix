@@ -10,6 +10,10 @@
 #   - A request with any other X-Api-Key gets 403 and never reaches Authelia.
 #   - /webcam/stream and /webcam/snapshot are open: a read-only stream on the
 #     LAN is accepted.
+#   - /sw.js is open and serves ./sw-unregister.js, not Mainsail's service
+#     worker. Mainsail's worker serves the cached page without asking nginx, so
+#     after the Authelia session expires the page never reaches the login
+#     redirect and sits at "connecting" while its websocket gets 302s.
 # If k3s or Authelia is down, Mainsail is unreachable from a browser; the API-key
 # path, and so printing from OrcaSlicer, does not depend on it.
 #
@@ -153,6 +157,13 @@ in
           auth_request off;
           proxy_buffering off;
           proxy_read_timeout 1h;
+        '';
+      };
+      "= /sw.js" = {
+        alias = ./sw-unregister.js;
+        extraConfig = ''
+          auth_request off;
+          add_header Cache-Control "no-store";
         '';
       };
       "= /webcam/snapshot" = {
