@@ -5,6 +5,7 @@
     ./hardware-configuration.nix
     ../../modules/desktop/common-workstation.nix
     ../../modules/desktop/niri.nix
+    ../../modules/desktop/openscad.nix
     ../../modules/networking/network-manager.nix
   ];
 
