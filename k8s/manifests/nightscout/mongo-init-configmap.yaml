@@ -1,0 +1,20 @@
+# First-start script for the official mongo image: creates the user Nightscout
+# connects as, with readWrite on the `nightscout` database only. The entrypoint
+# sources *.sh files from /docker-entrypoint-initdb.d only when /data/db is
+# empty, and "${mongo[@]}" talks to the temporary localhost-only mongod it runs
+# without --auth for that step.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mongo-init
+  namespace: nightscout
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+data:
+  10-nightscout-user.sh: |
+    "${mongo[@]}" "$MONGO_INITDB_DATABASE" --eval '
+      db.createUser({
+        user: process.env.NIGHTSCOUT_DB_USER,
+        pwd: process.env.NIGHTSCOUT_DB_PASSWORD,
+        roles: [{ role: "readWrite", db: db.getName() }],
+      })'
