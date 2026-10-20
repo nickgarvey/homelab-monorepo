@@ -1,0 +1,68 @@
+# One Vector instance that polls HTTP APIs and serves the results on :9598
+# for Prometheus (pod-monitor.yaml). Config: configmap.yaml, reloaded on
+# change by --watch-config (the ConfigMap is mounted as a directory, not with
+# subPath, so updates reach the pod).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metrics-collector
+  namespace: metrics-collector
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: metrics-collector
+  template:
+    metadata:
+      labels:
+        app: metrics-collector
+        app.kubernetes.io/managed-by: ngarvey-homelab
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+      containers:
+        - name: vector
+          image: docker.io/timberio/vector:0.59.0-distroless-libc
+          args: ["--config", "/etc/vector/vector.yaml", "--watch-config"]
+          ports:
+            - containerPort: 9598
+              name: metrics
+            - containerPort: 8686
+              name: api
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: api
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: api
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/vector
+              readOnly: true
+            - name: data
+              mountPath: /var/lib/vector
+      volumes:
+        - name: config
+          configMap:
+            name: metrics-collector
+        - name: data
+          emptyDir: {}

@@ -14,7 +14,7 @@ spec:
         # auto-build should keep the age under a month; past 60 days it has
         # stopped working. Alertmanager re-sends this daily
         # (alertmanager-config.yaml) until a new build succeeds.
-        # Metric: modules/services/loop-build-age.nix on dragonsreach.
+        # Metric: manifests/metrics-collector/configmap.yaml.
         - alert: LoopBuildExpiring
           expr: time() - max(homelab_loop_build_last_success_timestamp_seconds) > 60 * 86400
           labels:
@@ -30,4 +30,4 @@ spec:
             severity: warning
           annotations:
             summary: "No metric for the age of the Loop build"
-            description: "loop-build-age on dragonsreach has never succeeded, or vector is not pushing it. Until this recovers LoopBuildExpiring cannot fire. Check `journalctl -u loop-build-age` on dragonsreach."
+            description: "The metrics collector is down or cannot reach the GitHub API. Until this recovers LoopBuildExpiring cannot fire. Check `kubectl -n metrics-collector logs deploy/metrics-collector`."

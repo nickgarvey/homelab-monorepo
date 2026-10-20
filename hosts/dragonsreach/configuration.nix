@@ -11,7 +11,6 @@
     ../../modules/containers/public-dns-proxy.nix
     ../../modules/containers/knot-auth.nix
     ../../modules/services/storj-usage.nix
-    ../../modules/services/loop-build-age.nix
   ];
 
   networking.hostName = "dragonsreach";
