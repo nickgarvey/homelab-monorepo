@@ -55,6 +55,9 @@ in rec {
     # The Matrix Authentication Service, every Matrix login; it terminates TLS
     # on 443 itself (k8s/manifests/matrix).
     matrix-auth   = { v4 = []; v6 = [ "2001:470:482f:2::5011" ]; };
+    # Nightscout (CGM data from Loop); Caddy sidecar terminates TLS on 443
+    # (k8s/manifests/nightscout).
+    nightscout    = { v4 = []; v6 = [ "2001:470:482f:2::5012" ]; };
   };
 
   # CNAMEs (targets are FQDNs with trailing dot).
@@ -67,6 +70,7 @@ in rec {
     "_acme-challenge.celler" = "3a7bfadd-a547-4fb2-83ea-dfb61749790f.acme.garvey.sh.";
     "_acme-challenge.prometheus" = "3b73977a-42e6-4a93-b8bd-ae5f03189a30.acme.garvey.sh.";
     "_acme-challenge.matrix-auth" = "d38f82df-cc80-4a45-b453-b8a5495317f4.acme.garvey.sh.";
+    "_acme-challenge.nightscout" = "bb5d67b0-7e5b-4b7b-a28f-4590461fb54d.acme.garvey.sh.";
   };
 
   # Split-horizon overrides: public (garvey.sh) names answered internally with

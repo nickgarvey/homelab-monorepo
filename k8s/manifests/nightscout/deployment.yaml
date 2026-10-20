@@ -1,0 +1,102 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nightscout
+  namespace: nightscout
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: nightscout
+  template:
+    metadata:
+      labels:
+        app: nightscout
+        app.kubernetes.io/managed-by: ngarvey-homelab
+    spec:
+      containers:
+        # TLS terminator for nightscout.home.garvey.sh. Caddy's static `tls`
+        # directive loads the cert at startup only, so a
+        # `kubectl -n nightscout rollout restart deploy/nightscout` is needed
+        # after each ~60-day cert-manager renewal, same as anki.
+        - name: caddy
+          image: caddy:2-alpine
+          command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile"]
+          ports:
+            - containerPort: 80
+              name: http-redirect
+            - containerPort: 443
+              name: https
+          volumeMounts:
+            - name: caddy-config
+              mountPath: /etc/caddy
+            - name: caddy-data
+              mountPath: /data
+            - name: certs
+              mountPath: /certs
+              readOnly: true
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+        - name: nightscout
+          image: nightscout/cgm-remote-monitor:15.0.8
+          env:
+            # Nightscout listens on $HOSTNAME, which Kubernetes sets to the pod
+            # name (the pod IP). Loopback keeps 1337 reachable only by Caddy.
+            - name: HOSTNAME
+              value: "::1"
+            - name: PORT
+              value: "1337"
+            - name: BASE_URL
+              value: https://nightscout.home.garvey.sh
+            - name: DISPLAY_UNITS
+              value: mg/dl
+            - name: ENABLE
+              value: careportal basal iob cob bwp cage sage boluscalc pump openaps loop override
+            # Nothing is readable without a token or API_SECRET.
+            - name: AUTH_DEFAULT_ROLES
+              value: denied
+          # MONGODB_URI and API_SECRET.
+          envFrom:
+            - secretRef:
+                name: nightscout-env
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              memory: 768Mi
+          # Probed through Caddy: the app listens on loopback only.
+          readinessProbe:
+            httpGet:
+              scheme: HTTPS
+              port: 443
+              path: /
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              scheme: HTTPS
+              port: 443
+              path: /
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            timeoutSeconds: 10
+      volumes:
+        - name: caddy-config
+          configMap:
+            name: nightscout-caddy
+        - name: caddy-data
+          emptyDir: {}
+        - name: certs
+          secret:
+            secretName: nightscout-tls
