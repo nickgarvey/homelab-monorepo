@@ -1,0 +1,33 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: loop-build-alerts
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+    prometheus: prometheus
+spec:
+  groups:
+    - name: loop.build
+      rules:
+        # TestFlight builds expire 90 days after upload. The fork's weekly
+        # auto-build should keep the age under a month; past 60 days it has
+        # stopped working. Alertmanager re-sends this daily
+        # (alertmanager-config.yaml) until a new build succeeds.
+        # Metric: modules/services/loop-build-age.nix on dragonsreach.
+        - alert: LoopBuildExpiring
+          expr: time() - max(homelab_loop_build_last_success_timestamp_seconds) > 60 * 86400
+          labels:
+            severity: warning
+          annotations:
+            summary: "Loop's TestFlight build is {{ $value | humanizeDuration }} old; it expires at 90 days"
+            description: "Run `nix run .#loop-build`, then `nix run .#loop-build -- status`, and read why the fork's Build Loop Auto runs stopped: https://github.com/nickgarvey/LoopWorkspace/actions"
+
+        - alert: LoopBuildMetricsMissing
+          expr: absent(homelab_loop_build_last_success_timestamp_seconds)
+          for: 3h
+          labels:
+            severity: warning
+          annotations:
+            summary: "No metric for the age of the Loop build"
+            description: "loop-build-age on dragonsreach has never succeeded, or vector is not pushing it. Until this recovers LoopBuildExpiring cannot fire. Check `journalctl -u loop-build-age` on dragonsreach."
