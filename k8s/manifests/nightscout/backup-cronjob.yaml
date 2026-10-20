@@ -1,0 +1,94 @@
+# Nightly logical backup of the nightscout database to the Garage bucket
+# nightscout-backup, kept for 30 days. The ceph-backup worker's daily
+# snapshot of the mongo-data volume is crash-consistent; this dump restores
+# with mongorestore alone. Restore steps: README.md.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: nightscout-backup
+  namespace: nightscout
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  schedule: "0 4 * * *"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      # Garage needs both nodes for a write; fail rather than hang if one is down.
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          labels:
+            app: nightscout-backup
+            app.kubernetes.io/managed-by: ngarvey-homelab
+        spec:
+          restartPolicy: Never
+          initContainers:
+            # Same image as the server, so mongodump matches it. The URI is the
+            # nightscout user's, so the dump is that database only.
+            - name: dump
+              image: mongo:6.0.28
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  mongodump --quiet --uri="$MONGODB_URI" --gzip \
+                    --archive=/dump/nightscout.archive.gz
+                  ls -l /dump
+              env:
+                - name: MONGODB_URI
+                  valueFrom:
+                    secretKeyRef:
+                      name: nightscout-env
+                      key: MONGODB_URI
+              volumeMounts:
+                - name: dump
+                  mountPath: /dump
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 512Mi
+          containers:
+            - name: upload
+              image: rclone/rclone:1.75.2
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  name="nightscout-$(date -u +%Y-%m-%dT%H%M%SZ).archive.gz"
+                  rclone copyto /dump/nightscout.archive.gz "garage:nightscout-backup/daily/$name"
+                  rclone delete --min-age 30d garage:nightscout-backup/daily
+                  rclone lsl garage:nightscout-backup/daily
+              env:
+                - name: RCLONE_CONFIG_GARAGE_TYPE
+                  value: s3
+                - name: RCLONE_CONFIG_GARAGE_PROVIDER
+                  value: Other
+                - name: RCLONE_CONFIG_GARAGE_ENDPOINT
+                  value: https://garage.home.garvey.sh
+                - name: RCLONE_CONFIG_GARAGE_REGION
+                  value: garage
+                - name: RCLONE_CONFIG_GARAGE_FORCE_PATH_STYLE
+                  value: "true"
+              envFrom:
+                - secretRef:
+                    name: nightscout-backup-s3
+              volumeMounts:
+                - name: dump
+                  mountPath: /dump
+                  readOnly: true
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+          volumes:
+            - name: dump
+              emptyDir: {}

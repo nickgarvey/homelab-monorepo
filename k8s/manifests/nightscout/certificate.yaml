@@ -1,0 +1,14 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: nightscout-tls
+  namespace: nightscout
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  secretName: nightscout-tls
+  dnsNames:
+    - nightscout.home.garvey.sh
+  issuerRef:
+    name: letsencrypt-acmedns-prod
+    kind: ClusterIssuer

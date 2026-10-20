@@ -1,0 +1,76 @@
+# MongoDB for Nightscout. Pinned to 6.0, the newest major Nightscout's CI tests
+# against (4.4, 5.0, 6.0 in cgm-remote-monitor .github/workflows/main.yml as of
+# 15.0.8). Reached only through the `mongo` Service by pods in the cluster, and
+# every connection must authenticate (the image enables --auth when a root user
+# is set).
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mongo
+  namespace: nightscout
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  replicas: 1
+  serviceName: mongo
+  selector:
+    matchLabels:
+      app: mongo
+  template:
+    metadata:
+      labels:
+        app: mongo
+        app.kubernetes.io/managed-by: ngarvey-homelab
+    spec:
+      # The entrypoint drops to the image's mongodb user, uid/gid 999.
+      securityContext:
+        fsGroup: 999
+      # Time for mongod to flush and exit cleanly on SIGTERM.
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: mongo
+          image: mongo:6.0.28
+          # The cluster is IPv6-only; --bind_ip_all alone listens on IPv4 only.
+          # The cache size is set explicitly so WiredTiger sizes itself to this
+          # dataset, not to a fraction of the memory limit.
+          args: ["--ipv6", "--bind_ip_all", "--wiredTigerCacheSizeGB", "0.25"]
+          ports:
+            - containerPort: 27017
+              name: mongodb
+          env:
+            - name: MONGO_INITDB_DATABASE
+              value: nightscout
+          envFrom:
+            - secretRef:
+                name: mongo-credentials
+          volumeMounts:
+            - name: data
+              mountPath: /data/db
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 384Mi
+            limits:
+              memory: 1Gi
+          # ping needs no authentication.
+          readinessProbe:
+            exec:
+              command: ["mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 27017
+            initialDelaySeconds: 60
+            periodSeconds: 30
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: mongo-data
+        - name: init
+          configMap:
+            name: mongo-init
