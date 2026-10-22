@@ -40,7 +40,7 @@ pkgs.dockerTools.buildLayeredImage {
 
   config = {
     Cmd = [ "${pythonEnv}/bin/python3" "/server.py" ];
-    ExposedPorts = { "3000/tcp" = { }; };
+    ExposedPorts = { "443/tcp" = { }; };
     Env = [
       "PLAYWRIGHT_BROWSERS_PATH=${pkgs.playwright-driver.browsers}"
       "PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true"

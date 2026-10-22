@@ -42,6 +42,10 @@ var defaultWordOfDayCategories = []string{
 
 type Config struct {
 	PlaywrightURL   string         `yaml:"playwright_url"`
+	// For an https playwright_url: the renderer's SPIFFE ID, and the SPIRE
+	// Workload API that supplies this service's client certificate.
+	PlaywrightID    string         `yaml:"playwright_spiffe_id"`
+	WorkloadAPI     string         `yaml:"workload_api"`
 	ListenAddrs     ListenAddrs    `yaml:"listen_addr"`
 	BaseURL         string         `yaml:"base_url"`
 	Locations       []Location     `yaml:"locations"`
@@ -87,6 +91,12 @@ func Parse(data []byte) (*Config, error) {
 	}
 	if cfg.PlaywrightURL == "" {
 		cfg.PlaywrightURL = "http://localhost:3000"
+	}
+	if cfg.PlaywrightID == "" {
+		cfg.PlaywrightID = "spiffe://home.garvey.sh/ns/playwright-renderer/sa/playwright-renderer"
+	}
+	if cfg.WorkloadAPI == "" {
+		cfg.WorkloadAPI = "unix:///spiffe-workload-api/spire-agent.sock"
 	}
 	if cfg.HomeAssistant.GarageEntity == "" {
 		cfg.HomeAssistant.GarageEntity = "cover.garage_door"

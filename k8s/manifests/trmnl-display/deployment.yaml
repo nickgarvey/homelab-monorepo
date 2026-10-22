@@ -16,6 +16,7 @@ spec:
         app: trmnl-display
         app.kubernetes.io/managed-by: ngarvey-homelab
     spec:
+      serviceAccountName: trmnl-display
       containers:
         - name: trmnl-display
           image: oci.garvey.sh/trmnl-display:latest
@@ -39,6 +40,9 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 30
           volumeMounts:
+            - name: spiffe-workload-api
+              mountPath: /spiffe-workload-api
+              readOnly: true
             - name: secret-vol
               mountPath: /config/config.yaml
               subPath: config.yaml
@@ -48,6 +52,10 @@ spec:
               subPath: sa.json
               readOnly: true
       volumes:
+        - name: spiffe-workload-api
+          csi:
+            driver: csi.spiffe.io
+            readOnly: true
         - name: secret-vol
           secret:
             secretName: trmnl-display-secret

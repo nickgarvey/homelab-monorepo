@@ -16,22 +16,36 @@ spec:
         app: playwright-renderer
         app.kubernetes.io/managed-by: ngarvey-homelab
     spec:
+      serviceAccountName: playwright-renderer
       containers:
         - name: playwright-renderer
           image: oci.garvey.sh/playwright-renderer:latest
+          env:
+            # The only client: trmnl-display's SPIRE identity.
+            - name: ALLOWED_CLIENTS
+              value: spiffe://home.garvey.sh/ns/trmnl-display/sa/trmnl-display
           ports:
-            - containerPort: 3000
-              name: http
+            - containerPort: 443
+              name: https
+          # TCP probes: every HTTP request needs a client certificate, which
+          # the kubelet does not have.
           livenessProbe:
-            httpGet:
-              path: /health
-              port: 3000
+            tcpSocket:
+              port: 443
             initialDelaySeconds: 30
             periodSeconds: 30
             failureThreshold: 3
           readinessProbe:
-            httpGet:
-              path: /health
-              port: 3000
+            tcpSocket:
+              port: 443
             initialDelaySeconds: 10
             periodSeconds: 10
+          volumeMounts:
+            # Mounted whole (no subPath), so renewed certificates reach the files.
+            - name: tls
+              mountPath: /tls
+              readOnly: true
+      volumes:
+        - name: tls
+          secret:
+            secretName: playwright-renderer-tls

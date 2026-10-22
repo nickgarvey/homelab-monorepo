@@ -1,3 +1,5 @@
+# ClusterIP only: the renderer authenticates every client by mutual TLS
+# (trmnl-display's X.509-SVID), and nothing outside the cluster calls it.
 apiVersion: v1
 kind: Service
 metadata:
@@ -9,7 +11,7 @@ spec:
   selector:
     app: playwright-renderer
   ports:
-    - protocol: TCP
-      port: 80
-      targetPort: 3000
-  type: LoadBalancer
+    - name: https
+      protocol: TCP
+      port: 443
+      targetPort: 443

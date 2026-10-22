@@ -1,0 +1,36 @@
+# The renderer's TLS server certificate, from the SPIFFE CA (approved only by
+# the spiffe-playwright-renderer policy in manifests/cert-manager/spiffe-policies.yaml).
+# The URI SAN is what trmnl-display authorizes (go-spiffe checks the server's
+# SPIFFE ID, not its DNS name). The renderer verifies client certificates
+# against the Secret's ca.crt, the spiffe-ca root, and reads the files on every
+# connection, so renewals need no restart.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: playwright-renderer-tls
+  namespace: playwright-renderer
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  secretName: playwright-renderer-tls
+  dnsNames:
+    - playwright-renderer
+    - playwright-renderer.playwright-renderer
+    - playwright-renderer.playwright-renderer.svc
+    - playwright-renderer.playwright-renderer.svc.cluster.local
+  uris:
+    - spiffe://home.garvey.sh/ns/playwright-renderer/sa/playwright-renderer
+  usages:
+    - server auth
+    - digital signature
+    - key encipherment
+  duration: 24h
+  renewBefore: 8h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: spiffe-ca

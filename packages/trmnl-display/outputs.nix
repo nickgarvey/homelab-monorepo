@@ -7,7 +7,7 @@ let
     pname = "trmnl-display";
     version = "0.1.0";
     src = ./.;
-    vendorHash = "sha256-cgQ++eoQkyf6iT4/IANFm28C0EezkDT7cDGCBrmfHnc=";
+    vendorHash = "sha256-wz0bNwWEtkfvCK8X8JfxoeSD1fMbbeXcYJzxohOPPDo=";
   };
 in
 pkgs.dockerTools.buildLayeredImage {

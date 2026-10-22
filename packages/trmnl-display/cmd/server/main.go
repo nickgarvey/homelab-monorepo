@@ -2,14 +2,18 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"math/rand"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/spiffe/go-spiffe/v2/workloadapi"
 
 	"github.com/ngarvey/trmnl-display/internal/config"
 	"github.com/ngarvey/trmnl-display/internal/display"
@@ -398,10 +402,25 @@ func main() {
 
 	haClient := homeassistant.NewClient()
 
+	var rendererTLS *tls.Config
+	if strings.HasPrefix(cfg.PlaywrightURL, "https://") {
+		// Waits for the first SVID, then follows SPIRE's rotations.
+		source, err := workloadapi.NewX509Source(context.Background(),
+			workloadapi.WithClientOptions(workloadapi.WithAddr(cfg.WorkloadAPI)))
+		if err != nil {
+			log.Fatalf("workload API: %v", err)
+		}
+		defer source.Close()
+		rendererTLS, err = renderer.MTLSConfig(source, cfg.PlaywrightID)
+		if err != nil {
+			log.Fatalf("renderer TLS: %v", err)
+		}
+	}
+
 	s := &srv{
 		cfg:      cfg,
 		cache:    &dataCache{},
-		renderer: renderer.New(cfg.PlaywrightURL),
+		renderer: renderer.New(cfg.PlaywrightURL, rendererTLS),
 		haClient: haClient,
 	}
 

@@ -2,11 +2,16 @@ package renderer
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/spiffe/go-spiffe/v2/spiffeid"
+	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
+	"github.com/spiffe/go-spiffe/v2/workloadapi"
 )
 
 // Client sends HTML to a playwright-renderer service and receives a PNG.
@@ -16,13 +21,24 @@ type Client struct {
 }
 
 // New creates a renderer Client targeting the given playwright-renderer base URL.
-func New(baseURL string) *Client {
-	return &Client{
-		baseURL: baseURL,
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+// tlsConfig is used for https URLs; nil means the default transport.
+func New(baseURL string, tlsConfig *tls.Config) *Client {
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+	if tlsConfig != nil {
+		httpClient.Transport = &http.Transport{TLSClientConfig: tlsConfig}
 	}
+	return &Client{baseURL: baseURL, httpClient: httpClient}
+}
+
+// MTLSConfig authenticates to the renderer with this workload's X.509-SVID
+// and accepts only a server certificate carrying serverID. source follows
+// SPIRE's rotations, so the config stays valid for the life of the process.
+func MTLSConfig(source *workloadapi.X509Source, serverID string) (*tls.Config, error) {
+	id, err := spiffeid.FromString(serverID)
+	if err != nil {
+		return nil, fmt.Errorf("renderer SPIFFE ID: %w", err)
+	}
+	return tlsconfig.MTLSClientConfig(source, source, tlsconfig.AuthorizeID(id)), nil
 }
 
 type renderRequest struct {

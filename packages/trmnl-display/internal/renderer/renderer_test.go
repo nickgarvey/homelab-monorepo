@@ -37,7 +37,7 @@ func TestRender_success(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := New(srv.URL)
+	client := New(srv.URL, nil)
 	client.httpClient = srv.Client()
 
 	png, err := client.Render("<html></html>", 800, 480)
@@ -65,7 +65,7 @@ func TestRender_non200(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := New(srv.URL)
+	client := New(srv.URL, nil)
 	client.httpClient = srv.Client()
 
 	_, err := client.Render("<html></html>", 800, 480)
@@ -81,7 +81,7 @@ func TestRender_tooSmall(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := New(srv.URL)
+	client := New(srv.URL, nil)
 	client.httpClient = srv.Client()
 
 	_, err := client.Render("<html></html>", 800, 480)
@@ -91,7 +91,7 @@ func TestRender_tooSmall(t *testing.T) {
 }
 
 func TestRender_connectionRefused(t *testing.T) {
-	client := New("http://127.0.0.1:1") // nothing listening here
+	client := New("http://127.0.0.1:1", nil) // nothing listening here
 	_, err := client.Render("<html></html>", 800, 480)
 	if err == nil {
 		t.Error("expected error for connection refused")
