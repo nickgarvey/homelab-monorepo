@@ -107,9 +107,9 @@ Summary:
 |---|---|---|---|---|
 | fus / ro / dah | 10–12 | ✓ | ✓ | control plane; SSH + IPv6 gateway ping |
 | joor / zah / frul | 13–15 | ✓ | ✓ | k3s agents + Ceph nodes (Ceph gate, below); SSH + IPv6 gateway ping |
-| wabbajack | 20 | – | ✓ | SSH + gateway ping + IPv6 gateway ping |
+| wabbajack | 20 | – | ✓ | build helper (held, below); SSH + gateway ping + IPv6 gateway ping |
 | talos | 21 | – | ✓ | SSH + gateway ping |
-| lydia | 30 | – | ✓ | SSH + gateway ping |
+| lydia | 30 | – | ✓ | build helper (held, below); SSH + gateway ping |
 | dovahkiin | 40 | – | build only | deploys only when named explicitly |
 | guevenne | 41 | – | build only | TV PC, unplugged; deploys only when named; SSH only |
 | skyforge | 50 | – | ✓ | aarch64; needs binfmt on the deploying machine; printer idle pre-check |
@@ -221,6 +221,14 @@ Everything that depended on that still holds for free: the k3s rolling gate
 until the previous one is Ready), the Ceph gate (likewise, until every PG is
 active+clean again) and the `--reboot ask` prompt.
 
+**Build helpers activate after the build.** wabbajack and lydia (`Builder` in
+`hosts.go`) take remote builds from talos (`modules/core/nix-builder.nix`), and
+activating one can restart its nix-daemon, which kills the builds it is running
+for the other hosts. A helper that becomes ready while the fleet build is still
+going is held (`[activate] <host> is a build helper: holding…`) and activates as
+soon as the build finishes. Other hosts activate around it as usual, and a held
+helper is still cancelled if an earlier failure stops the run.
+
 Ordering is otherwise first-ready-first-served rather than fixed by `Order`;
 `Order` survives only as the tiebreak between hosts that become ready in the same
 poll tick, which keeps runs reproducible. In particular **the router is no longer
@@ -243,6 +251,54 @@ connecting user in its `trusted-users`, which `modules/core/nixos-common.nix`
 sets fleet-wide. Both halves are needed — `nix store info --store ssh-ng://<host>`
 reporting `"trusted":true` only means the daemon *would permit* an unsigned add,
 not that `nix copy` will request one.
+
+## Remote builders
+
+talos hands builds to two helpers, so one host's long compile does not hold up
+the rest. wabbajack is preferred: 32 threads, a 96G cap and 2 jobs, with
+speedFactor 4 so big-parallel builds such as Ceph and kernels land there first,
+including aarch64 through binfmt. lydia comes next: 16 threads, a 48G cap and
+2 jobs. talos keeps its own build slots, so `nix build`, and this tool's one
+fleet build, spread derivations across all three machines. Only talos uses
+helpers; dovahkiin and the other hosts always build locally.
+
+- **Helper side:** `modules/core/nix-builder.nix`. `nix.sshServe` creates
+  `nix-ssh`, which is forced to `nix-daemon --stdio` with no TTY or forwarding.
+  Builds run in the helper's nix-daemon cgroup with a per-host `MemoryMax`, low
+  CPU and IO weight, and Nice 10, so they yield to the host's own services.
+  sshd's keepalive ends a build ~30s after talos disappears.
+- **talos side:** `nix.buildMachines` in `hosts/talos/configuration.nix`. The
+  daemon logs in with talos's SSH host key, and each helper's host key is pinned
+  (`publicHostKey`), so there is no separate secret. Helpers fetch inputs from
+  the caches themselves (`builders-use-substitutes`). Root's SSH config gives
+  them `ConnectTimeout 5` and a ~30s keepalive cutoff.
+- **Helpers are optional.** An unreachable helper costs ~5–12s, then the
+  derivation builds elsewhere, locally if need be. Losing a helper mid-build
+  fails only the derivations it was running; re-running finishes them.
+  Activation of a helper waits for the build (above).
+- **Results** are copied back to talos, and `celler-watch-store` there pushes
+  them to celler like any local build.
+- **Trust:** talos accepts a helper's outputs unsigned and deploys them
+  everywhere, so a compromised helper could ship a tampered build to every
+  host. `nix-ssh` is a trusted user on the helper, which Nix treats as root
+  there.
+
+Checking and repairing:
+
+```sh
+cat /etc/nix/machines                       # on talos: the helpers it uses
+k=$(awk '$1 ~ /lydia/ {print $NF}' /etc/nix/machines)
+sudo nix store info --store "ssh-ng://nix-ssh@lydia?ssh-key=/etc/ssh/ssh_host_ed25519_key&base64-ssh-public-host-key=$k"
+# "Trusted: 1" means auth works. A plain `nix store info --store ssh-ng://…`
+# fails host-key checking, because it does not read the machines file.
+```
+
+A build log line `building '…' on 'ssh-ng://nix-ssh@wabbajack'` shows where a
+derivation ran. If none ever show up, the helpers are being skipped: a helper
+is down, or a key changed. A reinstalled talos has a new host key: update the
+key in `modules/core/nix-builder.nix`. A reinstalled helper: update its
+`publicHostKey` (base64 of its `/etc/ssh/ssh_host_ed25519_key.pub`) in talos's
+config. Nothing fails meanwhile; builds just stay on talos.
 
 ## Safe deploy flow
 

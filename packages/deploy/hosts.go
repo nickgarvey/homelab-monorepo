@@ -33,6 +33,11 @@ type Host struct {
 	// built on such a run, and deployed only when named in --hosts.
 	Default    bool
 	ConnChecks []ConnCheck
+	// Builder hosts take remote builds from the deploying machine
+	// (modules/core/nix-builder.nix). Their activation can restart their
+	// nix-daemon and kill those builds, so the pipeline holds it until the
+	// fleet build has finished.
+	Builder bool
 }
 
 func (h Host) FQDN() string {
@@ -97,6 +102,7 @@ var AllHosts = []Host{
 		Name: "wabbajack", FlakeName: "wabbajack",
 		Order: 20, Groups: []string{"infra"}, Default: true,
 		ConnChecks: []ConnCheck{CheckSSH, CheckPingGateway, CheckPing6Gateway},
+		Builder:    true,
 	},
 	{
 		Name: "talos", FlakeName: "talos",
@@ -107,6 +113,7 @@ var AllHosts = []Host{
 		Name: "lydia", FlakeName: "lydia",
 		Order: 30, Groups: []string{"infra"}, Default: true,
 		ConnChecks: []ConnCheck{CheckSSH, CheckPingGateway},
+		Builder:    true,
 	},
 	{
 		Name: "dovahkiin", FlakeName: "dovahkiin",

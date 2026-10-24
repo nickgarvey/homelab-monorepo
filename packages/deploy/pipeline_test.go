@@ -23,6 +23,11 @@ type pipeFake struct {
 	// buildMakes is applied when `nix build` runs, so a test can decide which
 	// hosts the build actually produced.
 	buildMakes map[string]bool
+	// buildDelay keeps `nix build` running after its outputs appear, so a
+	// test can see which hosts activate while the fleet build is in flight.
+	buildDelay      time.Duration
+	buildRunning    bool
+	activatedDuring []string
 
 	calls        []string
 	activeNow    int
@@ -69,6 +74,12 @@ func (f *pipeFake) Run(_ context.Context, argv []string, _ RunOpts) RunResult {
 		for h := range f.buildMakes {
 			f.built[h] = true
 		}
+		f.buildRunning = true
+		d := f.buildDelay
+		f.mu.Unlock()
+		time.Sleep(d)
+		f.mu.Lock()
+		f.buildRunning = false
 		f.mu.Unlock()
 		return RunResult{}
 
@@ -111,6 +122,9 @@ func (f *pipeFake) Run(_ context.Context, argv []string, _ RunOpts) RunResult {
 			f.activePeak = f.activeNow
 		}
 		f.activeOrder = append(f.activeOrder, name)
+		if f.buildRunning {
+			f.activatedDuring = append(f.activatedDuring, name)
+		}
 		if f.copiesNow > 0 {
 			f.copyOverlaps++
 		}
@@ -260,6 +274,69 @@ func TestPipelineOverlapsCopyWithActivation(t *testing.T) {
 
 	if f.copyOverlaps == 0 {
 		t.Error("expected a copy to be in flight during an activation")
+	}
+}
+
+// shortBuildPoll makes pollBuilds notice a built toplevel within a few ms, so
+// a host can reach activation while a short fake build is still running.
+func shortBuildPoll(t *testing.T) {
+	old := buildPollInterval
+	buildPollInterval = 5 * time.Millisecond
+	t.Cleanup(func() { buildPollInterval = old })
+}
+
+// A build helper's activation can restart its nix-daemon and kill the builds it
+// runs for other hosts, so it waits for the fleet build; other hosts do not.
+// Every toplevel appears as soon as the build starts, and the build then keeps
+// running, so lydia is ready long before it may activate.
+func TestPipelineHoldsBuilderActivationUntilBuildFinishes(t *testing.T) {
+	shortBuildPoll(t)
+	f := newPipeFake()
+	todo := pipeHosts("lydia", "talos")
+	for _, p := range todo {
+		f.buildMakes[p.Host.Name] = true
+	}
+	f.buildDelay = 300 * time.Millisecond
+
+	res := runPipe(f, todo, PipelineOpts{CopyJobs: 4})
+
+	for _, r := range res {
+		if r.Status != StatusDeployed {
+			t.Errorf("%s: status %v", r.Host.Name, r.Status)
+		}
+	}
+	for _, name := range f.activatedDuring {
+		if name == "lydia" {
+			t.Errorf("lydia (a builder) activated while the build was running")
+		}
+	}
+	if len(f.activatedDuring) != 1 || f.activatedDuring[0] != "talos" {
+		t.Errorf("want only talos activated during the build, got %v", f.activatedDuring)
+	}
+	if len(f.activeOrder) != 2 || f.activeOrder[1] != "lydia" {
+		t.Errorf("want lydia activated after talos, got %v", f.activeOrder)
+	}
+}
+
+// A held builder is still subject to --on-failure: once a failure stops the
+// run, it is cancelled rather than activated when the build finishes.
+func TestPipelineHeldBuilderCancelledAfterStop(t *testing.T) {
+	shortBuildPoll(t)
+	f := newPipeFake()
+	todo := pipeHosts("lydia", "talos")
+	for _, p := range todo {
+		f.buildMakes[p.Host.Name] = true
+	}
+	f.buildDelay = 300 * time.Millisecond
+	f.activateFails["talos"] = true
+
+	res := runPipe(f, todo, PipelineOpts{CopyJobs: 4, OnFailure: OnFailureStop})
+
+	if got := statusOf(res, "talos"); got != StatusDeployFailed {
+		t.Errorf("talos: want deploy-failed, got %v", got)
+	}
+	if got := statusOf(res, "lydia"); got != StatusCancelled {
+		t.Errorf("lydia: want cancelled, got %v", got)
 	}
 }
 

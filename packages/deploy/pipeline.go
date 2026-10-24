@@ -9,8 +9,8 @@ import (
 
 // buildPollInterval is how often the poller asks the store whether a host's
 // toplevel has appeared. Cheap and local, so the interval is short enough that
-// a finished build is dispatched promptly.
-const buildPollInterval = 2 * time.Second
+// a finished build is dispatched promptly. A var so tests can shorten it.
+var buildPollInterval = 2 * time.Second
 
 // OnFailure decides what happens to the hosts still queued when one fails.
 type OnFailure string
@@ -163,7 +163,7 @@ func RunPipeline(ctx *DeployContext, quiet Runner, todo []PrecheckResult, extraD
 	}
 	go func() { wg.Wait(); close(actCh) }()
 
-	drainActivations(ctx, actCh, opts, setStatus)
+	drainActivations(ctx, actCh, buildDone, opts, setStatus)
 	return results
 }
 
@@ -216,28 +216,34 @@ func pollBuilds(
 	}
 }
 
-// activate drains the ready queue with a single worker, so exactly one host is
-// ever inside a watchdog window. Everything that depended on serialised
+// drainActivations empties the ready queue with a single worker, so exactly one
+// host is ever inside a watchdog window. Everything that depended on serialised
 // activation therefore still holds: the k3s rolling gate (WaitForK8sReady runs
 // inside deploySafe, so the next node cannot start until the previous one is
 // Ready) and the reboot prompts, which read stdin.
+//
+// A Builder host that becomes ready while the fleet build is still running is
+// held until buildDone closes: its activation can restart its nix-daemon, which
+// would kill the builds it is running for the other hosts. Held hosts activate,
+// in the order they arrived, as soon as the build finishes.
 func drainActivations(
 	ctx *DeployContext,
 	actCh <-chan PrecheckResult,
+	buildDone <-chan struct{},
 	opts PipelineOpts,
 	setStatus func(string, HostStatus),
 ) {
 	stopped := false
-	for p := range actCh {
+	activate := func(p PrecheckResult) {
 		if stopped {
 			setStatus(p.Host.Name, StatusCancelled)
-			continue
+			return
 		}
 		ok := Deploy(ctx, p.Host, ModeSafe, p.Plan)
 		// Close this host's master now that nothing else will talk to it.
 		dropSSHMaster(ctx.Runner, p.Host)
 		if ok {
-			continue
+			return
 		}
 		setStatus(p.Host.Name, StatusDeployFailed)
 		// A k3s failure always stops the rest: the rolling deploy takes one
@@ -246,11 +252,38 @@ func drainActivations(
 		if p.Host.InGroup("k3s") {
 			say("\n✗ K3s rolling deploy failed at %s, stopping.\n", p.Host.Name)
 			stopped = true
-			continue
+			return
 		}
 		if opts.OnFailure == OnFailureStop {
 			say("\n✗ %s failed; stopping (--on-failure=continue to keep going).\n", p.Host.Name)
 			stopped = true
+		}
+	}
+
+	// A nil channel is never ready in a select, so actCh becomes nil once
+	// drained and building once the build is done. held is only non-empty
+	// while building is non-nil, so the loop cannot block on two nil channels.
+	building := buildDone
+	var held []PrecheckResult
+	for actCh != nil || len(held) > 0 {
+		select {
+		case p, ok := <-actCh:
+			if !ok {
+				actCh = nil
+				continue
+			}
+			if p.Host.Builder && building != nil {
+				say("[activate] %s is a build helper: holding its activation until the build finishes\n", p.Host.Name)
+				held = append(held, p)
+				continue
+			}
+			activate(p)
+		case <-building:
+			building = nil
+			for _, p := range held {
+				activate(p)
+			}
+			held = nil
 		}
 	}
 	// In-flight builds and copies are left to finish. They only populate nix

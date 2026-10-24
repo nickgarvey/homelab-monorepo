@@ -5,10 +5,18 @@
     ./hardware-configuration.nix
     ../../modules/core/nixos-common.nix
     ../../modules/core/server-base.nix
+    ../../modules/core/nix-builder.nix
     ../../modules/containers/garage.nix
   ];
 
   networking.hostName = "wabbajack";
+
+  # Build helper for talos (modules/core/nix-builder.nix), its main one: talos
+  # prefers it (speedFactor) for big-parallel builds such as Ceph and kernels.
+  # Ceph at -j32 peaked at 64 GB here, so 2 jobs x 16 cores fit under 96G with
+  # room for garage. llama.cpp is off so the memory is free (below).
+  homelab.nixBuilder.memoryMax = "96G";
+  homelab.nixBuilder.cores = 16;
   # Required so the garage container (on vmbr0) can route to its peer's
   # delegated /64 — crosses interfaces, needs IPv6 forwarding.
   homelab.network.ipv6Forward = true;
@@ -68,8 +76,11 @@
 
   # Qwen3.8-Flash-Next (125B MoE, 6B active). llama-server pulls the split GGUF
   # from HuggingFace into /var/cache/llama-cpp on first start.
+  # Off: wabbajack's memory goes to Nix builds. Setting enable back to true
+  # also brings back litellm's qwen3.8-flash-next
+  # (k8s/manifests/litellm/configmap.yaml), the pi agent type's only model.
   services.llama-cpp = {
-    enable = true;
+    enable = false;
     package = pkgs.llama-cpp-vulkan;
     openFirewall = true;
     settings = {
@@ -92,7 +103,7 @@
       min-p = 0.0;
     };
   };
-  systemd.services.llama-cpp = {
+  systemd.services.llama-cpp = lib.mkIf config.services.llama-cpp.enable {
     # The first start downloads the model.
     wants = [ "network-online.target" ];
     after = [ "network-online.target" ];

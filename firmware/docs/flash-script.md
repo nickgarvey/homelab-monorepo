@@ -22,7 +22,7 @@ Build and flash are decoupled:
 2. **Flash** — `esptool.py write_flash` reads offsets from `flasher_args.json` and writes binaries directly from the Nix store (no `idf.py` at flash time, no writable build dir needed)
 3. **Monitor** — `esp_idf_monitor` attaches to serial with the `.elf` for address decoding
 
-Nix builds are dispatched to the remote builder (`desktop-nixos`) and cached. Rebuilds only happen when firmware source files change — `scripts/`, `tests/`, and `docs/` are excluded from the source hash via `cleanSrc` in `outputs.nix`.
+Nix builds are cached in celler; on talos they may run on its build helpers (`packages/deploy/README.md`, "Remote builders"). Rebuilds only happen when firmware source files change — `scripts/`, `tests/`, and `docs/` are excluded from the source hash via `cleanSrc` in `outputs.nix`.
 
 ---
 

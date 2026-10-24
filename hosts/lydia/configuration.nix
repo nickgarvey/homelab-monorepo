@@ -5,6 +5,7 @@
     ./hardware-configuration.nix
     ../../modules/core/nixos-common.nix
     ../../modules/core/server-base.nix
+    ../../modules/core/nix-builder.nix
     ../../modules/containers/frigate.nix
     ../../modules/containers/garage.nix
     ../../modules/microvm/smb.nix
@@ -18,6 +19,13 @@
   homelab.network.ipv6Forward = true;
 
   networking.hostName = "lydia";
+
+  # Build helper for talos (modules/core/nix-builder.nix). frigate, garage and
+  # the smb microvm keep well over half of the 125 GB.
+  homelab.nixBuilder.memoryMax = "48G";
+  # talos sends at most 2 builds at once (maxJobs there): 2 x 8 fills the 16
+  # threads, and two Ceph-sized builds stay under memoryMax.
+  homelab.nixBuilder.cores = 8;
 
   sops.age.keyFile = "/root/.config/sops/age/keys.txt";
 

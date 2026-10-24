@@ -1,6 +1,6 @@
 # Nix Build System
 
-Firmware is built via Nix derivations defined in `outputs.nix`. Builds run on a remote builder and are cached.
+Firmware is built via Nix derivations defined in `outputs.nix`, and the results are cached in celler. On talos, builds may run on its build helpers (wabbajack, lydia; see "Remote builders" in `packages/deploy/README.md`). Elsewhere they build locally.
 
 ---
 
@@ -21,7 +21,7 @@ The `cleanSrc` function in `outputs.nix` controls which files are included in th
 - `scripts/`, `tests/`, `docs/` — development tooling, not firmware source
 - `build/`, `managed_components/`, `.git`, `sdkconfig`, `result` — build artifacts
 
-**Important:** New source files must be `git add`-ed before `nix build` will see them. Nix copies the working tree to the store, but untracked files in a dirty tree may not be included when building on a remote builder.
+**Important:** New source files must be `git add`-ed before `nix build` will see them. A flake only copies files git knows about into the store, wherever the build then runs.
 
 ---
 

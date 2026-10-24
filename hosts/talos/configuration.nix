@@ -61,6 +61,59 @@
     }
   '';
 
+  # talos builds every host's closure, some from source (ceph, vector). With
+  # no swap, a build that outgrows RAM thrashes the whole machine into a hang
+  # rather than being OOM-killed. MemoryMax confines the OOM kill to the
+  # builds and leaves the desktop ~15 GB. With 24 cores per build, ceph and
+  # vector compiling side by side peak right at the cap without an OOM kill.
+  # max-jobs stays at 32, so many small derivations still run in parallel.
+  systemd.services.nix-daemon.serviceConfig.MemoryMax = "75%";
+  nix.settings.cores = 24;
+
+  # Build helpers (modules/core/nix-builder.nix, nix-oc1lr). They add capacity
+  # but are never required: talos keeps its own build slots and every
+  # system-feature, so a helper being down only makes builds slower. The
+  # daemon logs in with talos's SSH host key. Helpers fetch from the caches
+  # themselves (builders-use-substitutes) instead of receiving inputs from talos.
+  nix.distributedBuilds = true;
+  nix.settings.builders-use-substitutes = true;
+  nix.buildMachines = [
+    {
+      # The main helper: 32 threads, 125 GB. The highest speedFactor makes it
+      # the first choice for Ceph and kernels; binfmt lets it build aarch64.
+      hostName = "wabbajack";
+      systems = [ "x86_64-linux" "aarch64-linux" ];
+      protocol = "ssh-ng";
+      sshUser = "nix-ssh";
+      sshKey = "/etc/ssh/ssh_host_ed25519_key";
+      # base64 of wabbajack's /etc/ssh/ssh_host_ed25519_key.pub
+      publicHostKey = "c3NoLWVkMjU1MTkgQUFBQUMzTnphQzFsWkRJMU5URTVBQUFBSUkwYVExekVEdVFVN2ZWVVVGVDFJSGxWNWZLamtHRmJHaERNS3Y5cnpMVmEgcm9vdEBmcmFtZXdvcms=";
+      maxJobs = 2;
+      speedFactor = 4;
+      supportedFeatures = [ "big-parallel" "nixos-test" "benchmark" "kvm" ];
+    }
+    {
+      hostName = "lydia";
+      systems = [ "x86_64-linux" ];
+      protocol = "ssh-ng";
+      sshUser = "nix-ssh";
+      sshKey = "/etc/ssh/ssh_host_ed25519_key";
+      # base64 of lydia's /etc/ssh/ssh_host_ed25519_key.pub
+      publicHostKey = "c3NoLWVkMjU1MTkgQUFBQUMzTnphQzFsWkRJMU5URTVBQUFBSUI0ckNZSVRTQ1NTdG52aFJqVitoZFpJcWl3dWpxU0JSTmJhaXphd2M4NEggcm9vdEBtaWNyb2F0eA==";
+      maxJobs = 2;
+      speedFactor = 1;
+      supportedFeatures = [ "big-parallel" "nixos-test" "benchmark" "kvm" ];
+    }
+  ];
+  # An unreachable helper costs ~5s before Nix moves on; one that dies
+  # mid-build is noticed in ~30s rather than at TCP's timeout.
+  programs.ssh.extraConfig = ''
+    Host lydia wabbajack
+      ConnectTimeout 5
+      ServerAliveInterval 15
+      ServerAliveCountMax 2
+  '';
+
   users.users.ngarvey.packages = with pkgs; [
     rsync
   ];

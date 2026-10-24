@@ -5,8 +5,8 @@ Supports USB (direct USB-Serial/JTAG), esp-prog (FT2232 UART), and
 esp-prog-2 (ESP-Prog-2 JTAG+UART) flash methods.
 
 Build behaviour:
-  Runs `nix build .#<device>` which dispatches to the remote builder (desktop-nixos)
-  on first build and uses the binary cache thereafter.  The firmware is flashed
+  Runs `nix build .#<device>`, which builds on first use (on talos, possibly on
+  its build helpers) and uses the binary cache thereafter.  The firmware is flashed
   directly from the Nix store output using esptool.py (no idf.py at flash time).
 
 Usage (from firmware/, inside nix develop .#esp32):

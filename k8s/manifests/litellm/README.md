@@ -5,7 +5,7 @@ An OpenAI-compatible proxy in front of the models the cluster uses
 
 | Model | Behind it |
 |---|---|
-| `qwen3.8-flash-next` | llama.cpp on wabbajack |
+| `qwen3.8-flash-next` | llama.cpp on wabbajack, currently off (its memory goes to Nix builds; `hosts/wabbajack/configuration.nix`) |
 | `habit-helper` | DeepSeek V4 Flash (`deepseek/deepseek-v4-flash`), with the key in `litellm-deepseek` |
 
 In-cluster clients use `http://litellm.litellm.svc.cluster.local:4000`. The
