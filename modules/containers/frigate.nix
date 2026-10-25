@@ -4,6 +4,9 @@
 
 let
   cfg = config.nspawn.frigate;
+  # The name the UI is served under: the `frigate` record in
+  # modules/networking/dns.nix, and what the certificate attests.
+  domain = "frigate.home.garvey.sh";
 in
 {
   imports = [ ./common.nix ];
@@ -66,6 +69,47 @@ in
       FRIGATE_RTSP_PASSWORD=${config.sops.placeholder.frigate-rtsp-password}
     '';
 
+    # Certificate for the UI, issued on the host by DNS-01 against our own Knot
+    # (the garage.nix pattern) and bind-mounted into the container's nginx.
+    # The TSIG key is scoped to `_acme-challenge.frigate` and TXT records only
+    # (modules/containers/knot-auth.nix).
+    sops.secrets.frigate-acme-tsig = {
+      sopsFile = ../../secrets/frigate-acme.yaml;
+      key = "acme_tsig_secret";
+    };
+    sops.templates."frigate-acme.env".content = ''
+      RFC2136_NAMESERVER=10.28.0.6:53
+      RFC2136_TSIG_KEY=acme-frigate
+      RFC2136_TSIG_ALGORITHM=hmac-sha256.
+      RFC2136_TSIG_SECRET=${config.sops.placeholder.frigate-acme-tsig}
+    '';
+
+    security.acme = {
+      acceptTerms = true;
+      defaults.email = "garvey.nick@gmail.com";
+      certs.${domain} = {
+        dnsProvider = "rfc2136";
+        dnsResolver = "10.28.0.6:53";
+        environmentFile = config.sops.templates."frigate-acme.env".path;
+        # Off for the reason given in modules/containers/garage.nix: lego's
+        # check queries the public NS, which from the LAN lands on blocky's
+        # negative cache, and Knot commits the update before lego moves on.
+        dnsPropagationCheck = false;
+        # nginx reads the certificate at startup and frigate-tls-import re-runs
+        # on every nginx start, so a restart picks up a renewal. `|| true` so
+        # a stopped container cannot fail a renewal that already succeeded.
+        postRun = ''
+          ${pkgs.systemd}/bin/systemctl -M frigate restart nginx.service || true
+        '';
+      };
+    };
+
+    # nspawn needs the bind-mount source to exist at container start, which
+    # can precede the first issuance.
+    systemd.tmpfiles.rules = [
+      "d /var/lib/acme/${domain} 0750 acme acme -"
+    ];
+
     nspawn.network.frigate = {
       attachment = "bridge";
       hostBridge = cfg.hostBridge;
@@ -88,6 +132,10 @@ in
         };
         "/run/frigate-rtsp.env" = {
           hostPath = config.sops.templates."frigate-rtsp.env".path;
+          isReadOnly = true;
+        };
+        "/run/frigate-tls" = {
+          hostPath = "/var/lib/acme/${domain}";
           isReadOnly = true;
         };
       };
@@ -158,6 +206,34 @@ in
           };
         };
 
+        # nginx runs as the `nginx` user and cannot read the bind-mounted cert
+        # (0640 acme:acme on the host; host gids mean nothing in here). Root
+        # installs a private copy before every nginx start, which is also how
+        # a renewed cert gets picked up.
+        systemd.services.frigate-tls-import = {
+          description = "Install the host-issued TLS certificate for nginx";
+          before = [ "nginx.service" ];
+          requiredBy = [ "nginx.service" ];
+          serviceConfig.Type = "oneshot";
+          path = [ pkgs.coreutils ];
+          script = ''
+            install -d -o nginx -g nginx -m 0700 /run/frigate-nginx-tls
+            install -o nginx -g nginx -m 0400 \
+              /run/frigate-tls/fullchain.pem /run/frigate-nginx-tls/fullchain.pem
+            install -o nginx -g nginx -m 0400 \
+              /run/frigate-tls/key.pem /run/frigate-nginx-tls/key.pem
+          '';
+        };
+
+        # The frigate module's vhost: HTTPS on 443, and 80 only redirects.
+        services.nginx.recommendedTlsSettings = true;
+        services.nginx.virtualHosts.frigate = {
+          serverName = domain;
+          forceSSL = true;
+          sslCertificate = "/run/frigate-nginx-tls/fullchain.pem";
+          sslCertificateKey = "/run/frigate-nginx-tls/key.pem";
+        };
+
         services.frigate = {
           enable = true;
           hostname = "frigate";
@@ -165,7 +241,16 @@ in
           # placeholders that Frigate substitutes at runtime from the env file.
           checkConfig = false;
           settings = {
-            auth.enabled = true;
+            auth = {
+              enabled = true;
+              # The session cookie is only ever sent over HTTPS.
+              cookie_secure = true;
+              # Keyed on the client address nginx appends to X-Forwarded-For.
+              # trusted_proxies stays empty: Frigate takes the last entry that
+              # is not a trusted proxy, which is nginx's, so a client cannot
+              # spoof it.
+              failed_login_rate_limit = "1/second;5/minute;20/hour";
+            };
             mqtt.enabled = false;
             detectors.coral = {
               type = "edgetpu";
@@ -216,12 +301,12 @@ in
         };
 
         # Defense in depth over the go2rtc loopback binds: only the
-        # authenticated nginx front (80) and WebRTC media (8555, DTLS-SRTP)
-        # are reachable, from the LAN and from tailnet devices (which arrive via
-        # dragonsreach's subnet route).
+        # authenticated nginx front (443, and 80 for the redirect) and WebRTC
+        # media (8555, DTLS-SRTP) are reachable, from the LAN and from tailnet
+        # devices (which arrive via dragonsreach's subnet route).
         networking.firewall = {
           enable = true;
-          allowedTCPPorts = [ 80 8555 ];
+          allowedTCPPorts = [ 80 443 8555 ];
           allowedUDPPorts = [ 8555 ];
         };
       };

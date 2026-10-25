@@ -66,6 +66,15 @@ creation_rules:
       - *joor
       - *zah
       - *frul
+  # frigate-acme: TSIG secret for the acme-frigate key (ACME DNS-01 for
+  # frigate.home.garvey.sh). dragonsreach holds it for Knot; lydia runs lego
+  # for the Frigate container (modules/containers/frigate.nix).
+  - path_regex: secrets/frigate-acme.yaml
+    key_groups:
+    - age:
+      - *ngarvey
+      - *dragonsreach
+      - *lydia
   # OpenBao on fus, ro and dah (modules/services/openbao.nix, docs/openbao.md).
   #   openbao: the static seal key every node unseals with at boot.
   #   openbao-acme: TSIG secret for the acme-openbao key (listener certificates);

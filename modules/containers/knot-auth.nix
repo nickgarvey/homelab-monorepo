@@ -35,6 +35,8 @@ let
   #                         the shared name rgw.home.garvey.sh (Ceph RGW,
   #                         modules/services/ceph.nix). They are IPv6-only and
   #                         reach Knot through NAT64.
+  #   acme-frigate       -> lego on lydia, for the Frigate UI served by the
+  #                         container's nginx (modules/containers/frigate.nix).
   #   acme-openbao       -> lego on fus, ro and dah, one listener cert per node
   #                         covering openbao and that node's openbao-<node>
   #                         (modules/services/openbao.nix). IPv6-only, via NAT64.
@@ -79,6 +81,13 @@ let
       owners = [ "_acme-challenge.skyforge.${domain}." ];
       sopsName = "skyforge-acme-tsig";
       sopsFile = ../../secrets/skyforge-acme.yaml;
+      sopsKey = "acme_tsig_secret";
+    }
+    {
+      name = "acme-frigate";
+      owners = [ "_acme-challenge.frigate.${domain}." ];
+      sopsName = "frigate-acme-tsig";
+      sopsFile = ../../secrets/frigate-acme.yaml;
       sopsKey = "acme_tsig_secret";
     }
     {
