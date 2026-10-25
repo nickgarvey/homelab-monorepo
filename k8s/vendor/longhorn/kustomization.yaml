@@ -1,0 +1,24 @@
+# The longhorn render (scripts/render-chart.sh, never edited) without the
+# support-bundle cluster-admin binding.
+# Apply with: kubectl apply -k vendor/longhorn
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - longhorn.yaml
+patches:
+  # The chart binds the longhorn-support-bundle ServiceAccount to
+  # cluster-admin, with no value to turn it off. Longhorn runs the image named
+  # by the support-bundle-manager-image setting as that SA for every
+  # SupportBundle, so anything that can create a SupportBundle or edit that
+  # setting gets cluster-admin. Without the binding, support bundles fail or
+  # come out partial; to make one for a Longhorn bug report, apply the binding
+  # by hand and delete it afterwards:
+  #   kubectl create clusterrolebinding longhorn-support-bundle \
+  #     --clusterrole=cluster-admin \
+  #     --serviceaccount=longhorn-system:longhorn-support-bundle
+  - patch: |-
+      $patch: delete
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRoleBinding
+      metadata:
+        name: longhorn-support-bundle
