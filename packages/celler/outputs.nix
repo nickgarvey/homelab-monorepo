@@ -7,8 +7,8 @@ let
 
   # object_store sends AssumeRoleWithWebIdentity's parameters in the query
   # string; RGW answers that with 405 and accepts them only as a form body (see
-  # patches/UPSTREAMABLE_FIXES.md). The patch applies to whatever object_store
-  # Celler locks, so a version bump that breaks it fails the build.
+  # the patch header). The patch applies to whatever object_store Celler locks,
+  # so a version bump that breaks it fails the build.
   stsPatch = ../../patches/object_store-sts-form-body.patch;
   craneLib = (celler.inputs.crane.mkLib pkgs).overrideScope (final: prev: {
     vendorCargoDeps = args: prev.vendorCargoDeps (args // {

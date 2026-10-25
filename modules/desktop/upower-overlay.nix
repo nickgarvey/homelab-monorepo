@@ -1,4 +1,4 @@
-# Patches upower to ignore spurious single-cycle zero battery readings (see patches/UPSTREAMABLE_FIXES.md).
+# Patches upower to ignore spurious single-cycle zero battery readings.
 
 { ... }:
 

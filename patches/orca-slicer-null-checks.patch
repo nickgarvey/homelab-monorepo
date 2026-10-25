@@ -1,14 +1,27 @@
-Avoid NULL-deref crashes when loading a 3mf without filament_colour, and
-when wxMediaCtrl's GStreamer backend fails to construct (e.g. playbin not
-found in the registry).
+Upstream:      OrcaSlicer (github.com/SoftFever/OrcaSlicer): src/slic3r/GUI/Plater.cpp,
+               src/slic3r/GUI/wxMediaCtrl2.cpp
+Upstreamable:  yes
+How:           A PR against main with both null checks. No issue or PR filed yet.
+               It could also show the user why (missing printer profile, missing
+               GStreamer plugin) instead of failing silently.
+Written:       2026-05-24, against OrcaSlicer 2.3.2
+Last checked:  2026-10-25: both unguarded dereferences are still in 2.4.2
+Remove when:   the OrcaSlicer release that nixpkgs packages guards both
+Applied by:    modules/desktop/orca-slicer.nix
 
-Both bugs originate in OrcaSlicer 2.3.2. As of 2.4.0 upstream added the
-outer m_imp null-check (`if (!m_use_gtk_sink && m_imp)`), but the inner
-playbin pointer is still dereferenced unconditionally, so we keep the
-`if (playbin)` guard here. The Plater.cpp filament_colour lookup is still
-unguarded upstream.
+Two NULL dereferences that crash OrcaSlicer.
 
-See UPSTREAMABLE_FIXES.md in nix-configs for full context.
+Plater.cpp: project_filament_count = config_loaded.option<ConfigOptionStrings>(
+"filament_colour")->size(). When a loaded 3mf's config has no filament_colour
+as ConfigOptionStrings, option<>() returns nullptr and ->size() segfaults.
+Reproduced by opening a Creality Print 3mf for an Ender-3 V3 SE without that
+printer profile installed.
+
+wxMediaCtrl2.cpp: the constructor reads m_imp->m_playbin and passes it to
+g_object_set. 2.4.0 added the m_imp check; playbin is still dereferenced
+unchecked, and it is NULL when GStreamer's registry has no playbin element
+(see the GST_PLUGIN_SCANNER override in modules/desktop/orca-slicer.nix).
+The patch guards both and does nothing else.
 
 --- a/src/slic3r/GUI/Plater.cpp
 +++ b/src/slic3r/GUI/Plater.cpp

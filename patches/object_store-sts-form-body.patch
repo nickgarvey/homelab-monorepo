@@ -1,3 +1,24 @@
+Upstream:      object_store (github.com/apache/arrow-rs-object-store):
+               src/aws/credential.rs, web_identity()
+Upstreamable:  yes
+How:           An issue and PR on apache/arrow-rs-object-store: send
+               AssumeRoleWithWebIdentity's parameters as a form body, as the AWS
+               SDKs and aws-cli do. AWS STS accepts both forms, so the change is
+               compatible. (Ceph RGW could also accept query parameters; that
+               would be a separate tracker.ceph.com issue.)
+Written:       2026-10-07, against object_store 0.14.2
+Last checked:  2026-10-25: main still uses .query(); 0.14.2 is the latest release
+Remove when:   the object_store version Celler locks sends a form body
+Applied by:    packages/celler/outputs.nix (the vendored crate; the build fails
+               if the patch stops applying)
+
+object_store POSTs Action=AssumeRoleWithWebIdentity&...&WebIdentityToken=...
+as URL query parameters with an empty body. Ceph RGW routes STS calls only
+when the parameters are in an application/x-www-form-urlencoded body, and
+answers the query-string form with 405 before authenticating. The query string
+also puts the JWT in RGW's access log. The patch sends the same parameters as
+a form body, enabling the crate's existing form() builder for aws-base too.
+
 --- a/src/aws/credential.rs
 +++ b/src/aws/credential.rs
 @@ -753,7 +753,7 @@

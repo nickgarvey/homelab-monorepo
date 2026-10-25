@@ -1,11 +1,31 @@
-Kubernetes driver: copy the sandbox template's labels onto the supervisor Pod.
+Upstream:      OpenShell (github.com/NVIDIA/OpenShell):
+               crates/openshell-driver-kubernetes/src/sandbox_runtime.rs, driver.rs
+Upstreamable:  yes
+How:           A PR against main, rebased off #3702 (this patch applies on top of
+               it). Mention in the PR that a Service or policy selecting on a
+               template label now matches supervisor pods too. Tracked in
+               nix-q7Q31.
+Written:       2026-10-12, against OpenShell v0.1.3 plus #3702
+Last checked:  2026-10-25: v0.1.5's supervisor pod still gets only control_labels
+Remove when:   a release copies template labels onto the supervisor pod
+Applied by:    packages/openshell/outputs.nix, after openshell-ipv6-policy-dns.patch;
+               agents/outputs.nix fails the build after 2026-12-01 while it is
+               carried
+
+Kubernetes driver: copy the sandbox template's labels onto the supervisor pod.
 With the sandbox runtime, v0.1.3 puts template labels only on the workload
-Pod. The supervisor Pod, which holds the provider SPIFFE identity, carries a
-fixed set of openshell.ai labels, so a SPIRE ClusterSPIFFEID cannot build an
-ID from labels the caller chose. Template labels in the openshell.ai namespace
-are dropped, and none can replace a label the driver sets (boundary-role,
-component, ...). Tracked in patches/UPSTREAMABLE_FIXES.md; applied by
-packages/openshell/outputs.nix after openshell-ipv6-policy-dns.patch.
+pod. The supervisor pod (os-supervisor-<sandbox-id>) makes every upstream
+connection and alone holds the SPIFFE Workload API socket, but carries only
+fixed openshell.ai labels. So a SPIRE ClusterSPIFFEID cannot build an ID from
+labels the caller chose (here agents.garvey.sh/type), and no other label
+selector can tell supervisors apart.
+
+The patch reads the labels from the Sandbox resource's pod template, so the
+create and restart paths agree. Template labels under openshell.ai or a
+subdomain of it are dropped, and the control labels are applied last, so
+boundary-role, boundary-pair, component and sandbox-id, which the driver's
+identity checks and NetworkPolicies select on, cannot be replaced. Unit tests
+cover both.
 
 diff --git a/crates/openshell-driver-kubernetes/src/driver.rs b/crates/openshell-driver-kubernetes/src/driver.rs
 index 551d408..1609c2a 100644
