@@ -161,7 +161,7 @@ the old CA's certificates stop being issued.
 
 ### Build helpers
 
-talos's nix-daemon logs in to lydia and wabbajack as `nix-ssh` with
+talos's nix-daemon logs in to wabbajack as `nix-ssh` with
 `/var/lib/nix-builder-ssh/id_ed25519` and an 8-hour certificate from the `nix-ssh`
 role, renewed hourly by `openbao-builder-cert.service` (talos-builder AppRole,
 `secrets/openbao-talos-builder.yaml`). The helpers have no authorized key for
