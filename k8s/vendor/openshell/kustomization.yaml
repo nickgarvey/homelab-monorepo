@@ -66,7 +66,7 @@ patches:
   # off unless asked. Authelia logins still work alongside it. The agents worker
   # logs in this way (manifests/agents/openshell-certificate.yaml). Client
   # certificates are verified against the chart's client-CA path, the ca.crt of
-  # openshell-server-tls: the spiffe-ca root (below).
+  # openshell-server-tls: the root (pki/root.crt) (below).
   - target:
       kind: Deployment
       name: openshell
@@ -84,12 +84,12 @@ patches:
                   - name: OPENSHELL_ENABLE_MTLS_AUTH
                     value: "true"
   # The gateway's server certificate and the chart's client certificate (the
-  # CLI's and the supervisors' transport certificate) come from the spiffe-ca
+  # CLI's and the supervisors' transport certificate) come from the cluster-ca
   # ClusterIssuer, not the chart's own CA, whose 90-day lifetime is shorter
-  # than theirs. Their Secrets' ca.crt is then the spiffe-ca root, which every
+  # than theirs. Their Secrets' ca.crt is then the root (pki/root.crt), which every
   # client of the gateway (the CLI, supervisors, peers, the agents worker)
-  # trusts. The policies are spiffe-openshell-gateway and
-  # spiffe-openshell-client in manifests/cert-manager/spiffe-policies.yaml.
+  # trusts. The policies are cluster-openshell-gateway and
+  # cluster-openshell-client in manifests/cert-manager/cluster-policies.yaml.
   # The server certificate keeps only the names it is reached by, and no CN
   # (CN=openshell is the gateway's postgres login): the chart's
   # localhost and container-host names would be trusted by everything under
@@ -100,12 +100,10 @@ patches:
     patch: |-
       - op: replace
         path: /spec/issuerRef
-        value: {group: cert-manager.io, kind: ClusterIssuer, name: spiffe-ca}
+        value: {group: cert-manager.io, kind: ClusterIssuer, name: cluster-ca}
       - op: replace
         path: /spec/dnsNames
         value:
-          - openshell
-          - openshell.openshell
           - openshell.openshell.svc
           - openshell.openshell.svc.cluster.local
           - gateway.openshell.k8s.home.garvey.sh
@@ -119,8 +117,8 @@ patches:
     patch: |-
       - op: replace
         path: /spec/issuerRef
-        value: {group: cert-manager.io, kind: ClusterIssuer, name: spiffe-ca}
-  # With both certificates above on spiffe-ca, nothing uses the chart's own CA
+        value: {group: cert-manager.io, kind: ClusterIssuer, name: cluster-ca}
+  # With both certificates above on cluster-ca, nothing uses the chart's own CA
   # (its self-signed Issuer, the openshell-ca Certificate and the CA Issuer),
   # so it is not applied. A chart bump that points anything else at
   # openshell-ca-issuer fails to issue; re-check on a bump.

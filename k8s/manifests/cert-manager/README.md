@@ -13,22 +13,28 @@ kubectl apply -f manifests/cert-manager/
 
 ## Issuers & secrets (this dir)
 
-- `cluster-issuer-acmedns-staging.yaml` / `-prod.yaml` — acme-dns DNS-01 issuers. These are
-  the only issuers; every Certificate uses `letsencrypt-acmedns-prod`.
-- The acme-dns account secret lives at `manifests/acme-dns/secret.yaml` (also namespaced to
-  `cert-manager`). Onboarding a new name: `manifests/acme-dns/ONBOARDING.md`.
+- `cluster-issuer-rfc2136-staging.yaml` / `-prod.yaml` — Let's Encrypt issuers that write
+  DNS-01 challenges straight into Knot (RFC2136) with the `acme-cert-manager` TSIG key in
+  `secret.yaml`. Every Let's Encrypt Certificate uses `letsencrypt-rfc2136-prod`. Knot lets
+  the key write TXT only at the names in `certManagerAcme` (`modules/networking/dns.nix`);
+  the `cert-manager-acme-names` flake check keeps that list equal to the Certificates.
+- Adding a name: `ONBOARDING.md`.
 
 ## SPIFFE trust domain
 
-`spiffe-ca-issuer.yaml` is the ClusterIssuer `spiffe-ca`, the one CA for the trust domain
-`spiffe://home.garvey.sh`. Its key is in `secret.yaml` (SOPS); the certificate carries a
-name constraint, so it can only certify URIs under `home.garvey.sh`, and path length 1, so
-it can sign exactly one level of CA below it: SPIRE's (`manifests/spire/`). Services trust
-this single root and decide which identities they accept (postgres: `manifests/postgres/`).
-Copies of the root certificate that are not read from a Secret, to replace with it if the
-CA is ever replaced: `manifests/postgres/client-ca.yaml`,
-`manifests/litellm/postgres-ca.yaml` and the repo root's
-`packages/openshell/spiffe-ca.crt` (baked into the OpenShell supervisor image).
+`cluster-ca-issuer.yaml` is the ClusterIssuer `cluster-ca`, the one CA for the trust domain
+`spiffe://home.garvey.sh`. Its key is in OpenBao's `pki-cluster` mount, outside the
+cluster (`docs/openbao.md`, "Cluster CA"); the issuer logs in with the `openbao-issuer`
+ServiceAccount (`openbao-issuer.yaml`) and signs through `sign-verbatim`, which keeps each
+request's subject and SANs. Its certificate (`pki/cluster-ca.crt`) is signed by the root, `pki/root.crt`, with name
+constraints (SPIFFE IDs in `home.garvey.sh`, `*.svc`, `*.cluster.local`,
+`*.k8s.home.garvey.sh`) and path length 1, so it can sign exactly one level of CA below it:
+SPIRE's (`manifests/spire/`), which SPIRE requests from OpenBao directly. Each Secret's
+`ca.crt` is the root and `tls.crt` carries the cluster CA's certificate after the leaf;
+services trust the root and decide which identities they accept (postgres:
+`manifests/postgres/`). Copies of the root not read from a Secret are
+`manifests/postgres/client-ca.yaml` and `manifests/litellm/postgres-ca.yaml`; the
+`pki-root-copies` flake check keeps them equal to `pki/root.crt`.
 
 Identities come from one of two registries, both chaining to this root:
 
@@ -40,8 +46,7 @@ Identities come from one of two registries, both chaining to this root:
 
 Requests to it are approved by approver-policy, not cert-manager: `values.yaml` lists the
 signers cert-manager still approves itself (every other issuer), and
-`spiffe-policies.yaml` holds one `CertificateRequestPolicy` per identity, plus one for
-SPIRE's intermediate CA. A request that no policy matches stays unapproved. Add an
+`cluster-policies.yaml` holds one `CertificateRequestPolicy` per identity. A request that no policy matches stays unapproved. Add an
 identity by adding a policy (and its name to the ClusterRole there).
 
 Apply order: `vendor/cert-manager/cert-manager.yaml`, then

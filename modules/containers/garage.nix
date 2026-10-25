@@ -350,8 +350,7 @@ in
           # DNAT does not apply — it matches on the WAN interface — so the
           # query lands on blocky instead of dnsdist, and blocky's 1m negative
           # cache (modules/router/blocky-dns.nix) outlives lego's 60s
-          # propagation timeout. Same dead end knot-resolver.nix documents for
-          # acme.garvey.sh.
+          # propagation timeout.
           #
           # Nothing is lost by skipping it: Knot is the only authoritative
           # server, and its DDNS update is committed before lego moves on, so

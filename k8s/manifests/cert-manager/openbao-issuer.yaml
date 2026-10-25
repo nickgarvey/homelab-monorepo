@@ -1,0 +1,40 @@
+# The identity the cluster-ca ClusterIssuer logs in to OpenBao with
+# (cluster-ca-issuer.yaml): cert-manager requests a token for this service
+# account with the audience "openbao", which OpenBao's k8s JWT mount accepts for
+# the cert-manager role (pki/openbao/main.tf). It runs nothing.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: openbao-issuer
+  namespace: cert-manager
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: openbao-issuer-token
+  namespace: cert-manager
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+rules:
+  - apiGroups: [""]
+    resources: ["serviceaccounts/token"]
+    resourceNames: ["openbao-issuer"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: openbao-issuer-token
+  namespace: cert-manager
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: openbao-issuer-token
+subjects:
+  - kind: ServiceAccount
+    name: cert-manager
+    namespace: cert-manager

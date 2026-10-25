@@ -1,6 +1,6 @@
-# The frontend's TLS server certificate, from the SPIFFE CA (approved only by
-# the spiffe-temporal-frontend policy in manifests/cert-manager/spiffe-policies.yaml).
-# Clients verify it against the spiffe-ca root, which the Secret's ca.crt also
+# The frontend's TLS server certificate, from the cluster CA (approved only by
+# the cluster-temporal-frontend policy in manifests/cert-manager/cluster-policies.yaml).
+# Clients verify it against the root (pki/root.crt), which the Secret's ca.crt also
 # carries; the frontend uses that same ca.crt to verify client certificates.
 # Temporal re-reads the files every minute (global.tls.refreshInterval), so
 # renewals need no restart.
@@ -14,8 +14,6 @@ metadata:
 spec:
   secretName: temporal-frontend-tls
   dnsNames:
-    - temporal-frontend
-    - temporal-frontend.temporal
     - temporal-frontend.temporal.svc
     - temporal-frontend.temporal.svc.cluster.local
   usages:
@@ -31,4 +29,4 @@ spec:
   issuerRef:
     group: cert-manager.io
     kind: ClusterIssuer
-    name: spiffe-ca
+    name: cluster-ca

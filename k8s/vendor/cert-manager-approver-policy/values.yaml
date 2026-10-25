@@ -1,14 +1,14 @@
 # Values for the cert-manager-approver-policy chart (version in chart.env),
 # rendered by scripts/render-chart.sh; see vendor/README.md.
 #
-# The policies it enforces are in manifests/cert-manager/spiffe-policies.yaml.
+# The policies it enforces are in manifests/cert-manager/cluster-policies.yaml.
 
 app:
-  # Only the SPIFFE CA. cert-manager's own approver (vendor/cert-manager/values.yaml)
+  # Only the cluster CA. cert-manager's own approver (vendor/cert-manager/values.yaml)
   # keeps approving every other issuer, so the ACME and self-signed issuers need
   # no policy.
   approveSignerNames:
-    - clusterissuers.cert-manager.io/spiffe-ca
+    - clusterissuers.cert-manager.io/cluster-ca
 
 # The cluster services run on fus/ro/dah.
 nodeSelector:

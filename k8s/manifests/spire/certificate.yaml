@@ -13,5 +13,5 @@ spec:
   dnsNames:
     - spiffe-oidc.home.garvey.sh
   issuerRef:
-    name: letsencrypt-acmedns-prod
+    name: letsencrypt-rfc2136-prod
     kind: ClusterIssuer

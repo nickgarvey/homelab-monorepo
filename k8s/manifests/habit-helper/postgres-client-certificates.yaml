@@ -1,7 +1,7 @@
 # PostgREST's two logins to the shared postgres: the CN is the postgres role,
-# the URI SAN the pod's SPIFFE ID. Issued by the SPIFFE CA only because
-# manifests/cert-manager/spiffe-policies.yaml (spiffe-habit-helper-api,
-# spiffe-habit-helper-owner) allows exactly these names here.
+# the URI SAN the pod's SPIFFE ID. Issued by the cluster CA only because
+# manifests/cert-manager/cluster-policies.yaml (cluster-habit-helper-api,
+# cluster-habit-helper-owner) allows exactly these names here.
 #
 # habit_helper_api is what PostgREST logs in as; it can do nothing itself and
 # switches to habit_agent for each request. habit_helper owns the database
@@ -34,7 +34,7 @@ spec:
   issuerRef:
     group: cert-manager.io
     kind: ClusterIssuer
-    name: spiffe-ca
+    name: cluster-ca
 ---
 apiVersion: cert-manager.io/v1
 kind: Certificate
@@ -62,4 +62,4 @@ spec:
   issuerRef:
     group: cert-manager.io
     kind: ClusterIssuer
-    name: spiffe-ca
+    name: cluster-ca

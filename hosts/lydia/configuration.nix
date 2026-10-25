@@ -12,6 +12,7 @@
     ../../modules/virtualisation/incus.nix
     ../../modules/services/fancontrol.nix
     ../../modules/services/netboot-server.nix
+    ../../modules/services/pki-dns-cert.nix
   ];
 
   # Required so the garage container (on vmbr0) can route to its peer's

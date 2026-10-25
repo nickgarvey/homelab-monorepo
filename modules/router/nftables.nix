@@ -198,7 +198,7 @@ in
 
             # WAN IPv4 :53 -> public-dns-proxy container, the single public entry
             # point for every zone we serve authoritatively. dnsdist there splits
-            # by qname to Knot / k8s_gateway / acme-dns, and bridges IPv4 to the
+            # by qname to Knot / k8s_gateway, and bridges IPv4 to the
             # IPv6-only cluster backends. Scoped to port 53 on the WAN interface;
             # the forward chain's "ct status dnat accept" rule permits the
             # forwarded packets, and conntrack un-DNATs replies to the public IP.

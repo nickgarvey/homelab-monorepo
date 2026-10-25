@@ -43,7 +43,7 @@ data:
         dbname: synapse
         user: synapse
         # Certificate login (manifests/postgres, pg_hba); the server is
-        # checked against the SPIFFE CA in the same Secret.
+        # checked against the cluster CA in the same Secret.
         sslmode: verify-full
         sslrootcert: /etc/synapse/postgres/ca.crt
         sslcert: /etc/synapse/postgres/tls.crt

@@ -1,0 +1,11 @@
+# Extensions for the cluster CA's certificate from the root (sign-intermediate.sh):
+# the key cluster-ca-2026 in OpenBao's pki-cluster mount (docs/openbao.md, "Cluster CA").
+# Below it sit SPIRE's CA and cluster leaves. The constraints keep a stolen
+# cluster or SPIRE key from naming anything but cluster workloads: SPIFFE IDs in
+# home.garvey.sh, Service names, and the k8s_gateway zone. No IP addresses; the
+# email subtree matches nothing.
+basicConstraints = critical, CA:TRUE, pathlen:1
+keyUsage = critical, keyCertSign, cRLSign, digitalSignature
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always
+nameConstraints = critical, permitted;URI:home.garvey.sh, permitted;DNS:svc, permitted;DNS:cluster.local, permitted;DNS:k8s.home.garvey.sh, permitted;email:nothing.invalid, excluded;IP:0.0.0.0/0.0.0.0, excluded;IP:::/::

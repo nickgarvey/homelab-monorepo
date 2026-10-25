@@ -44,13 +44,33 @@ spec:
         # week. Covers a renewal that never reached the listener, too: this is
         # the certificate actually served on 8200.
         - alert: OpenBaoListenerCertExpiring
-          expr: openbao_listener_cert_expiry_timestamp_seconds > 0 and (openbao_listener_cert_expiry_timestamp_seconds - time()) < 21 * 86400
+          expr: (openbao_listener_cert_expiry_timestamp_seconds - time()) < 21 * 86400 and openbao_listener_cert_expiry_timestamp_seconds > 0
           for: 1h
           labels:
             severity: warning
           annotations:
             summary: "OpenBao listener certificate on {{ $labels.hostname }} expires in {{ $value | humanizeDuration }}"
             description: "The Let's Encrypt certificate served on {{ $labels.hostname }}:8200 should have renewed by now. Check `systemctl status acme-openbao.home.garvey.sh` there; renewal uses DNS-01 against Knot (docs/tls.md)."
+
+        # Hosts' 7-day certificates from the hosts CA (modules/services/pki-dns-cert.nix)
+        # renew with 3 days left; under 2 means a renewal has failed for a day.
+        - alert: PkiDnsCertExpiring
+          expr: (pki_dns_cert_expiry_timestamp_seconds - time()) < 2 * 86400 and pki_dns_cert_expiry_timestamp_seconds > 0
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: "Hosts CA certificate on {{ $labels.hostname }} expires in {{ $value | humanizeDuration }}"
+            description: "{{ $labels.hostname }}.home.garvey.sh from OpenBao's pki-dns should have renewed by now. Check `systemctl status acme-order-renew-{{ $labels.hostname }}.home.garvey.sh` there; renewal is ACME against OpenBao with DNS-01 in Knot (docs/openbao.md, \"Hosts CA\")."
+
+        - alert: PkiDnsCertMissing
+          expr: pki_dns_cert_expiry_timestamp_seconds == 0
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: "No hosts CA certificate on {{ $labels.hostname }}"
+            description: "modules/services/pki-dns-cert.nix finds no readable certificate for {{ $labels.hostname }}.home.garvey.sh. Check the acme-order-renew unit there."
 
         # Only the active node uploads, so the newest upload across nodes counts.
         - alert: OpenBaoSnapshotStale

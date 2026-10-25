@@ -30,17 +30,15 @@ key, in `configmap.yaml`.
    app"). cellerd logs in with a SPIFFE client certificate
    (`postgres-client-certificate.yaml`), so the role has no password:
    ```sh
-   kubectl apply -f manifests/cert-manager/spiffe-policies.yaml
+   kubectl apply -f manifests/cert-manager/cluster-policies.yaml
    kubectl apply -f manifests/postgres/cluster.yaml -f manifests/postgres/databases.yaml
    kubectl -n postgres get database celler      # APPLIED=true
    kubectl -n postgres exec postgres-1 -c postgres -- psql -U postgres -c \
      'REVOKE CONNECT ON DATABASE celler FROM PUBLIC; GRANT CONNECT ON DATABASE celler TO celler;'
    ```
-3. Certificate: register an acme-dns account for `celler.home.garvey.sh` and
-   add the `_acme-challenge.celler` CNAME to `modules/networking/dns.nix`
-   (`manifests/acme-dns/ONBOARDING.md`, steps 1–3 and 2b). Then deploy
-   dragonsreach. `certificate.yaml` starts on the staging issuer; switch it to
-   `letsencrypt-acmedns-prod` once staging is Ready.
+3. Certificate: `celler` is in `certManagerAcme` (`modules/networking/dns.nix`;
+   see `manifests/cert-manager/ONBOARDING.md`), and `certificate.yaml` uses
+   `letsencrypt-rfc2136-prod`.
    ```sh
    kubectl apply -f manifests/celler/namespace.yaml -f manifests/celler/certificate.yaml
    ```

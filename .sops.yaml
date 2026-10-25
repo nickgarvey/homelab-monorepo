@@ -91,6 +91,21 @@ creation_rules:
       - *fus
       - *ro
       - *dah
+  # Knot's copy of cert-manager's TSIG key (modules/containers/knot-auth.nix);
+  # cert-manager's copy is k8s/manifests/cert-manager/secret.yaml.
+  - path_regex: secrets/cert-manager-acme\.yaml$
+    key_groups:
+    - age:
+      - *ngarvey
+      - *dragonsreach
+  # Hosts' TSIG keys for their pki-dns certificate (modules/services/pki-dns-cert.nix),
+  # readable by Knot's host and the host itself.
+  - path_regex: secrets/pki-dns-lydia\.yaml$
+    key_groups:
+    - age:
+      - *ngarvey
+      - *dragonsreach
+      - *lydia
   - path_regex: secrets/openbao-snapshot\.yaml$
     key_groups:
     - age:

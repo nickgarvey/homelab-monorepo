@@ -1,8 +1,7 @@
-# Public certificate of the SPIFFE CA (private key: cert-manager/secret.yaml).
-# Postgres validates client certificates against it. Keep it equal to the
-# tls.crt of the spiffe-ca Secret if the CA is ever replaced, as
-# packages/openshell/spiffe-ca.crt at the repo root and
-# manifests/litellm/postgres-ca.yaml.
+# The root, pki/root.crt at the repo root (the pki-root-copies flake check keeps
+# this copy equal to it). Postgres validates client certificates against it,
+# and the operator the server and replication certificates; each peer sends
+# the cluster CA's certificate (pki/cluster-ca.crt) with its leaf.
 apiVersion: v1
 kind: Secret
 metadata:
@@ -15,14 +14,13 @@ type: Opaque
 stringData:
   ca.crt: |
     -----BEGIN CERTIFICATE-----
-    MIIBrzCCAVWgAwIBAgIUbQ3FP/TsIoborXzlIKtswwUTh/cwCgYIKoZIzj0EAwIw
-    IzEhMB8GA1UEAwwYaG9tZS5nYXJ2ZXkuc2ggU1BJRkZFIENBMB4XDTI2MTAwODAz
-    MDUwOVoXDTM2MTAwNTAzMDUwOVowIzEhMB8GA1UEAwwYaG9tZS5nYXJ2ZXkuc2gg
-    U1BJRkZFIENBMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAECUyyoLSRUEXUHCTx
-    Di3WkTsPa5/PIt8r76UX/h8fIMA+RTVJW+12Oqt4oUYD+8xRmmKTZWxiuAoDjgqB
-    P7QsNaNnMGUwEgYDVR0TAQH/BAgwBgEB/wIBATAOBgNVHQ8BAf8EBAMCAQYwHQYD
-    VR0OBBYEFFjZqG602WXGxuzNOYAn3ytHrMS5MCAGA1UdHgEB/wQWMBSgEjAQhg5o
-    b21lLmdhcnZleS5zaDAKBggqhkjOPQQDAgNIADBFAiEAhTym6QrE8ZWN8zHuaUdd
-    g6rfKpF3fVoq/NfPPn1DfLMCIFV522BEJY2R5XI/G/pW4AJOMASrJI73CupCwu8e
-    R6K2
+    MIIBkjCCATmgAwIBAgIUT/uVWBBRR0kGS6EhBrFQH8E6FG0wCgYIKoZIzj0EAwIw
+    JjEkMCIGA1UEAwwbR2FydmV5IEhvbWVsYWIgUm9vdCBDQSAyMDI2MB4XDTI2MTAy
+    NTA1NDUxOFoXDTQ2MTAyNTA1NDUxOFowJjEkMCIGA1UEAwwbR2FydmV5IEhvbWVs
+    YWIgUm9vdCBDQSAyMDI2MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEc4P1/Hx0
+    hXFa6gZohA/3njfzLACIHl6s/g8pA7Nb3GlRPaJfTrT72DIffcSRpzqCcCgYsOgT
+    rZ3uOjt6lgfLIqNFMEMwEgYDVR0TAQH/BAgwBgEB/wIBAjAOBgNVHQ8BAf8EBAMC
+    AQYwHQYDVR0OBBYEFMOzvK2YpprIDKGrh2UJq4NDEMJmMAoGCCqGSM49BAMCA0cA
+    MEQCID9j4BTI/pv/kKpiRVXiQUdgNTHSDvc7aqYutn0XgibqAiBfz8nyywjCWytO
+    LOjLtHXqO6zaKnliMQLL8SHARnnV0w==
     -----END CERTIFICATE-----

@@ -1,7 +1,7 @@
-# matrix-auth.home.garvey.sh's public certificate, through acme-dns (DNS-01;
-# the account is in manifests/acme-dns/secret.yaml, the delegation CNAME in
-# modules/networking/dns.nix). MAS serves it itself on 443. It reads the files
-# only at start, so restart it after a renewal (README.md).
+# matrix-auth.home.garvey.sh's public certificate from Let's Encrypt, DNS-01
+# through Knot (manifests/cert-manager/ONBOARDING.md). MAS serves it itself on
+# 443. It reads the files only at start, so restart it after a renewal
+# (README.md).
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -14,5 +14,5 @@ spec:
   dnsNames:
     - matrix-auth.home.garvey.sh
   issuerRef:
-    name: letsencrypt-acmedns-prod
+    name: letsencrypt-rfc2136-prod
     kind: ClusterIssuer

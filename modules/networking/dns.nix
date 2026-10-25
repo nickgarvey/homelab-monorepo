@@ -69,16 +69,24 @@ in rec {
   };
 
   # CNAMEs (targets are FQDNs with trailing dot).
-  cnames = {
-    "_acme-challenge.anki" = "0a95fd7d-b7d2-4827-96df-65575900f9ac.acme.garvey.sh.";
-    "_acme-challenge.obsidian-livesync" = "7d13302c-3155-4fc2-99e8-c3c053b4236b.acme.garvey.sh.";
-    "_acme-challenge.grafana" = "32622e22-227e-41f0-becf-674c8192c9f1.acme.garvey.sh.";
-    "_acme-challenge.auth" = "bfeb451a-9409-4da5-a44e-f1b80354a075.acme.garvey.sh.";
-    "_acme-challenge.spiffe-oidc" = "cb6844ff-24e9-46c4-a148-550d1bc2d414.acme.garvey.sh.";
-    "_acme-challenge.celler" = "3a7bfadd-a547-4fb2-83ea-dfb61749790f.acme.garvey.sh.";
-    "_acme-challenge.prometheus" = "3b73977a-42e6-4a93-b8bd-ae5f03189a30.acme.garvey.sh.";
-    "_acme-challenge.matrix-auth" = "d38f82df-cc80-4a45-b453-b8a5495317f4.acme.garvey.sh.";
-    "_acme-challenge.nightscout" = "bb5d67b0-7e5b-4b7b-a28f-4590461fb54d.acme.garvey.sh.";
+  cnames = { };
+
+  # Names cert-manager gets Let's Encrypt certificates for, validated by DNS-01
+  # in this zone (letsencrypt-rfc2136-prod, k8s/manifests/cert-manager). Its
+  # TSIG key (acme-cert-manager in modules/containers/knot-auth.nix) may write
+  # TXT only at the challenge names derived from these lists, and the
+  # cert-manager-acme-names flake check fails if they differ from the Certificates.
+  #   home:     <name>.home.garvey.sh; the challenge is
+  #             _acme-challenge.<name>.home.garvey.sh, here.
+  #   garveySh: <name>.garvey.sh; Cloudflare CNAMEs
+  #             _acme-challenge.<name>.garvey.sh to <name>.challenge.home.garvey.sh,
+  #             where cert-manager writes the TXT (cnameStrategy: Follow).
+  certManagerAcme = {
+    home = [
+      "anki" "auth" "celler" "grafana" "matrix-auth" "nightscout"
+      "obsidian-livesync" "prometheus" "spiffe-oidc"
+    ];
+    garveySh = [ "jellyfin" "matrix" "oci" "temporal" ];
   };
 
   # Split-horizon overrides: public (garvey.sh) names answered internally with

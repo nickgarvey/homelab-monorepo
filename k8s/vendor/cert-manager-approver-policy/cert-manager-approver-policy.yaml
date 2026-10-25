@@ -1393,7 +1393,7 @@ rules:
   resources: ["signers"]
   verbs: ["approve"]
   resourceNames:
-   - "clusterissuers.cert-manager.io/spiffe-ca"
+   - "clusterissuers.cert-manager.io/cluster-ca"
 
 - apiGroups: ["rbac.authorization.k8s.io"]
   resources: ["roles", "clusterroles", "rolebindings", "clusterrolebindings"]

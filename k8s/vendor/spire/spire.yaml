@@ -246,12 +246,17 @@ data:
         ],
         "UpstreamAuthority": [
           {
-            "cert-manager": {
+            "vault": {
               "plugin_data": {
-                "issuer_group": "cert-manager.io",
-                "issuer_kind": "ClusterIssuer",
-                "issuer_name": "spiffe-ca",
-                "namespace": "spire"
+                "ca_cert_path": "/run/spire/vault-upstream/ca.crt",
+                "insecure_skip_verify": false,
+                "k8s_auth": {
+                  "k8s_auth_mount_point": "k8s",
+                  "k8s_auth_role_name": "spire-server",
+                  "token_path": "/var/run/secrets/tokens/spire-server"
+                },
+                "pki_mount_point": "pki-cluster",
+                "vault_addr": "https://openbao.home.garvey.sh:8200"
               }
             }
           }
@@ -515,27 +520,6 @@ rules:
       - create
 
 ---
-# Source: spire/charts/spire-server/templates/roles.yaml
-# Role to be able to manage cert requests with Cert-Manager
-kind: Role
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: spire-server-cm
-  namespace: spire
-rules:
-  - apiGroups: ["cert-manager.io"]
-    resources:
-      - certificaterequests
-      - issuers
-    verbs:
-      - list
-      - get
-      - create
-      - delete
-      - patch
-      - update
-
----
 # Source: spire/charts/spire-server/templates/controller-manager-roles.yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -551,23 +535,6 @@ subjects:
 - kind: ServiceAccount
   name: spire-server
   namespace: spire
-
----
-# Source: spire/charts/spire-server/templates/roles.yaml
-kind: RoleBinding
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: spire-server-cm
-  namespace: spire
-
-subjects:
-- kind: ServiceAccount
-  name: spire-server
-  namespace: spire
-roleRef:
-  kind: Role
-  name: spire-server-cm
-  apiGroup: rbac.authorization.k8s.io
 
 ---
 # Source: spire/charts/spire-server/templates/roles.yaml
@@ -1043,7 +1010,7 @@ spec:
     metadata:
       annotations:
         kubectl.kubernetes.io/default-container: spire-server
-        checksum/config: d2990034080c841e364055aa5a112876e2c99b1b4fdece1e319c4cd9361252ad
+        checksum/config: c28f7cd60358d09220b19f8a43215dc563215b75dade857ab2d7b6a0e9e393c3
         checksum/config2: 01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b
         checksum/config3: 789ed87793a5155426a02d1dad903f217167df123c5654bd55481738d06edd6b
         checksum/configTornjak: 01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b
@@ -1122,6 +1089,10 @@ spec:
             - name: spire-data
               mountPath: /run/spire/data
               readOnly: false
+            - name: spire-psat
+              mountPath: /var/run/secrets/tokens
+            - name: vault-ca
+              mountPath: /run/spire/vault-upstream
             - name: server-tmp
               mountPath: /tmp
               readOnly: false
@@ -1194,6 +1165,16 @@ spec:
         - name: controller-manager-config
           configMap:
             name: spire-controller-manager
+        - name: vault-ca
+          configMap:
+            name: openbao-ca
+        - name: spire-psat
+          projected:
+            sources:
+            - serviceAccountToken:
+                path: spire-server
+                expirationSeconds: 3600
+                audience: openbao
   volumeClaimTemplates:
     - metadata:
         name: spire-data

@@ -1,0 +1,27 @@
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-rfc2136-prod
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: garvey.nick@gmail.com
+    privateKeySecretRef:
+      name: letsencrypt-rfc2136-prod-key
+    solvers:
+      # DNS-01 written straight into Knot, the home.garvey.sh authority, with
+      # the acme-cert-manager TSIG key (secret.yaml). Knot is reached through
+      # NAT64 (it has only a LAN IPv4 address). garvey.sh names have a
+      # Cloudflare CNAME from their _acme-challenge name into home.garvey.sh,
+      # which Follow writes through (modules/networking/dns.nix, certManagerAcme).
+      - dns01:
+          cnameStrategy: Follow
+          rfc2136:
+            nameserver: "[64:ff9b::a1c:6]:53"
+            tsigKeyName: acme-cert-manager
+            tsigAlgorithm: HMACSHA256
+            tsigSecretSecretRef:
+              name: rfc2136-tsig
+              key: tsig-secret

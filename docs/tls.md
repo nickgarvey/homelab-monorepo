@@ -1,54 +1,52 @@
 # How TLS works in this homelab
 
-Every certificate a client on this network verifies is publicly trusted. There is no
-private CA any more (see [Retired: the Garvey Home CA](#retired-the-garvey-home-ca)); the
-only self-signed material left is Kubernetes' internal PKI, which never leaves the cluster.
+Certificates come in three kinds, and each has one job:
+
+| Kind | Verified by | Issued by |
+|---|---|---|
+| Public | anyone: browsers, phones, devices, other hosts | Let's Encrypt, DNS-01 written into our Knot zone |
+| Private, service to service | only services we configure to trust `pki/root.crt` | OpenBao's intermediates under our one root ([below](#private-certificates-service-to-service)) |
+| Kubernetes internal (apiserver, kubelet, etcd, Cilium) | k3s components | k3s itself; nothing here touches it, and it never appears on the LAN |
+
+A browser never sees a private certificate: anything a person opens uses a public one.
 
 Configuration is split across two trees, so paths below are prefixed when ambiguous:
 the NixOS tree (`modules/`, `hosts/`) owns the router, DNS, and host-level pieces; `k8s/`
-owns cert-manager, acme-dns, and the services themselves.
+owns cert-manager and the services themselves.
 
 ---
 
-## The two ways a cert gets issued
+## Public certificates: the two ways one gets issued
 
 | Path | Names | Issued by | Config |
 |---|---|---|---|
-| cert-manager + acme-dns | `*.garvey.sh` | Let's Encrypt, DNS-01 | `k8s/manifests/cert-manager/cluster-issuer-acmedns-{prod,staging}.yaml` |
+| cert-manager | `<name>.home.garvey.sh` and `<name>.garvey.sh` for cluster services | Let's Encrypt, DNS-01 via RFC2136 | `k8s/manifests/cert-manager/cluster-issuer-rfc2136-{prod,staging}.yaml`; names in `certManagerAcme`, `modules/networking/dns.nix` |
 | On-box ACME | `homeassistant.home.garvey.sh`, `garage.home.garvey.sh`, `storj-gateway.home.garvey.sh`, `rgw.home.garvey.sh`, `openbao.home.garvey.sh` (+ `openbao-<node>`) | Let's Encrypt, DNS-01 via RFC2136 | HAOS itself / `security.acme` on lydia + wabbajack / `security.acme` on dragonsreach / `security.acme` on joor + zah + frul (Ceph RGW) / `security.acme` on fus + ro + dah (OpenBao, `docs/openbao.md`); TSIG ACLs in `modules/containers/knot-auth.nix` |
 
-Kubernetes' own internal PKI (apiserver, kubelet, etcd, Cilium) is separate from all of
-this — k3s manages it, nothing here touches it, and it never appears on the LAN.
+Both write the challenge TXT straight into Knot with a TSIG key that may write only TXT at
+its own challenge names.
 
-### 1. cert-manager via acme-dns — the default for public names
+### 1. cert-manager — the default for cluster services
 
-This is how `oci.garvey.sh`, `jellyfin.garvey.sh`, and `temporal.garvey.sh` get their certs.
-Since the Cloudflare issuer was retired (2026-08-10) it is the **only** in-cluster path —
-every `Certificate` uses `letsencrypt-acmedns-prod`.
+cert-manager's `letsencrypt-rfc2136-prod` issuer holds the `acme-cert-manager` TSIG key
+(`k8s/manifests/cert-manager/secret.yaml`) and reaches Knot through NAT64. Knot allows it
+TXT at `_acme-challenge.<name>.home.garvey.sh` for each `home` name in `certManagerAcme`,
+and at `<name>.challenge.home.garvey.sh` for each `garveySh` name. A `garvey.sh` name has
+a one-time Cloudflare CNAME from `_acme-challenge.<name>.garvey.sh` to that second form,
+which cert-manager follows (`cnameStrategy: Follow`); no Cloudflare credential exists in
+the cluster, and renewals edit nothing at Cloudflare. The `cert-manager-acme-names` flake
+check keeps the list equal to the Certificates.
 
-acme-dns (`acme.garvey.sh`) holds **one account per hostname**. Each account can only
-write the TXT record under its own random subdomain, so a leaked account cannot touch any
-other name. A `_acme-challenge.<host>` CNAME in Cloudflare points at that random
-subdomain, which is what makes Let's Encrypt's DNS-01 lookup land somewhere the account is
-allowed to write.
+**The cert is decoupled from where the service points.** DNS-01 proves control of the
+name in DNS, not via `<host>`'s address. You can issue a cert before the service exists,
+and changing a service's IP never affects issuance.
 
-The point of the indirection: **no Cloudflare credential exists in the cluster at all**, and
-no zone edits happen at renewal time. The one-time CNAME is the only Cloudflare change, made
-by hand with an operator-supplied token.
+cert-manager checks propagation through cluster CoreDNS, then blocky, kresd and Knot
+(`k8s/vendor/cert-manager/values.yaml` explains why not the published NS). Its zone
+discovery queries the challenge name before the TXT exists, and that NXDOMAIN is cached
+for at most Knot's 300-second negative TTL, so a check can wait up to five minutes.
 
-Two consequences worth internalising:
-
-- **The cert is decoupled from where the service points.** DNS-01 proves control via
-  `acme.garvey.sh`, not via `<host>`'s address. You can issue a cert before the service
-  exists, and changing a service's IP never affects issuance.
-- **Registration is currently open** (`disable_registration = false`). That is deliberate,
-  to avoid a toggle dance during onboarding, but it is known security debt — the API is
-  ClusterIP-only and `allowfrom` restricts `/update` to the cluster pod CIDR, which is what
-  makes it tolerable.
-
-Full step-by-step onboarding, including the gotchas that can orphan an account, is in
-`k8s/manifests/acme-dns/ONBOARDING.md`. Don't improvise it — acme-dns has no
-lookup-by-name, so a lost registration response is unrecoverable.
+Onboarding a name: `k8s/manifests/cert-manager/ONBOARDING.md`.
 
 ### 2. On-box ACME against our own Knot
 
@@ -66,8 +64,8 @@ update-type       = [ "TXT" ]
 ```
 
 So compromising a box that holds one cannot repoint any real record in the zone — it can
-only write TXT at that one challenge name. That scoping is what makes on-box issuance an
-acceptable substitute for routing these through acme-dns. It is also why the `acme-garage`
+only write TXT at that one challenge name. That scoping is what makes it acceptable to take
+dynamic updates into the real zone at all. It is also why the `acme-garage`
 key can be shared by *every* garage node: the ACL is scoped to the one name they all write,
 not to a host, so adding a node is a new recipient on `secrets/garage-acme.yaml` and
 nothing else.
@@ -125,9 +123,8 @@ the LAN, where it is already up.
 propagation check ignores `dnsResolver`: it looks up the zone's NS (`ns1` → our WAN
 address) and queries *that*. From the LAN the `:53` DNAT does not apply — it matches on the
 WAN interface — so the query lands on blocky rather than dnsdist, and blocky's 1m negative
-cache (`modules/router/blocky-dns.nix`) outlives lego's 60s propagation timeout. This is
-the same hairpin dead end `modules/router/knot-resolver.nix` documents for
-`acme.garvey.sh`, and it fails *intermittently*: one node can win the race against the
+cache (`modules/router/blocky-dns.nix`) outlives lego's 60s propagation timeout. It fails
+*intermittently*: one node can win the race against the
 cache entry while the other times out with
 
 ```
@@ -139,6 +136,36 @@ Nothing is lost by disabling it. Knot is the only authoritative server and its D
 is committed before lego proceeds, so there is no propagation to await; Let's Encrypt
 validates from the public internet, where the DNAT does apply. Any future on-box ACME
 client on this network needs the same setting.
+
+---
+
+## Private certificates: service to service
+
+One root, `pki/root.crt` ("Garvey Homelab Root CA 2026"; its key is sops-encrypted in
+`pki/root-key.yaml`, `pki/README.md`), signs intermediates that live in OpenBao on fus, ro
+and dah (`docs/openbao.md`), so issuance keeps working when k3s is down. Each intermediate
+carries name constraints, so a stolen intermediate key can only name what its tier owns:
+
+| Intermediate | Names it may certify | Who gets certificates |
+|---|---|---|
+| `pki-cluster` (`pki/cluster-ca.crt`) | SPIFFE IDs in `home.garvey.sh`, `*.svc`, `*.cluster.local`, `*.k8s.home.garvey.sh` | cluster workloads: cert-manager's `cluster-ca` ClusterIssuer and SPIRE's 24-hour CA (`k8s/manifests/cert-manager/`, `k8s/manifests/spire/`) |
+| `pki-dns` (`pki/dns-ca.crt`) | `*.home.garvey.sh` except `k8s.home.garvey.sh` | hosts, through ACME, 7 days (`modules/services/pki-dns-cert.nix`; docs/openbao.md, "Hosts CA") |
+
+**The root goes only where private certificates are verified.** It is not in any host's
+system trust store; a service that checks private certificates gets it as a file (a Secret's
+`ca.crt`, a pinned copy, SPIRE's bundle). Because every private certificate chains to the same
+root, a workload in the cluster and a service on a host can authenticate each other.
+
+**Server certificate and client CA are independent.** A service can keep its Let's Encrypt
+server certificate, which every client already trusts, and still require a private client
+certificate by trusting the root only as its client CA, then authorize by the client's SAN.
+Peers send their intermediate with the leaf, so trusting the root alone is enough.
+
+**There is no revocation; lifetimes are short instead.** Cluster leaves last a day (a few
+long-lived server certificates a year), SPIRE SVIDs four hours, SPIRE's own CA a day, and
+hosts' certificates seven days. A compromised workload stops being able to renew once its
+access is removed; a compromised intermediate is bounded by its name constraints and is
+replaced by signing a new one from the root, which stays offline.
 
 ---
 
@@ -182,9 +209,9 @@ still verify against the public name**. Add any future public-named service here
 This is the failure mode most worth understanding, because it is silent.
 
 Every DNS-01 renewal requires Let's Encrypt to reach our authoritative DNS from the public
-internet — `ns1.home.garvey.sh` for the Knot zone, and the `acme.garvey.sh` delegation.
-Both publish our **DHCP-assigned WAN address**, hardcoded in Cloudflare glue and in
-`modules/networking/zone.nix`, with **no DDNS automation**.
+internet — `ns1.home.garvey.sh` for the Knot zone, which `garvey.sh` challenges also reach
+through their CNAMEs. It publishes our **DHCP-assigned WAN address**, hardcoded in
+Cloudflare glue and in `modules/networking/zone.nix`, with **no DDNS automation**.
 
 When that address drifts, renewals begin failing immediately, and nothing else notices for
 weeks — until certificates approach expiry. So there are two layers of alerting:
@@ -199,8 +226,8 @@ weeks — until certificates approach expiry. So there are two layers of alertin
   failed), and under 7 days as critical. `CertManagerMetricsMissing` covers the case where
   cert-manager itself is down, which would otherwise look identical to "no problems".
 
-If drift happens, fix it in three places: Cloudflare glue for `home.garvey.sh`, Cloudflare
-glue for `acme.garvey.sh`, and `ns1` in `modules/networking/zone.nix`.
+If drift happens, fix it in two places: Cloudflare glue for `home.garvey.sh`, and `ns1` in
+`modules/networking/zone.nix`.
 
 ### Home Assistant needs its own probe
 
@@ -262,14 +289,16 @@ TSIG identity to `acmeKeys` in `modules/containers/knot-auth.nix`, a sops file h
 key encrypted to both dragonsreach and the host, and `security.acme` with
 `dnsProvider = "rfc2136"` — see `modules/containers/garage.nix` for a worked example.
 
-1. Register an acme-dns account and add the `_acme-challenge` CNAME in Cloudflare —
-   follow `k8s/manifests/acme-dns/ONBOARDING.md` exactly.
-2. Add a `Certificate` with `issuerRef: letsencrypt-acmedns-prod`. Validate against
-   `letsencrypt-acmedns-staging` first if the name is at all unusual; Let's Encrypt's prod
+1. Add the name to `certManagerAcme` in `modules/networking/dns.nix` (for a `garvey.sh`
+   name, also the Cloudflare CNAME) and deploy dragonsreach — details in
+   `k8s/manifests/cert-manager/ONBOARDING.md`.
+2. Add a `Certificate` with `issuerRef: letsencrypt-rfc2136-prod`. Validate against
+   `letsencrypt-rfc2136-staging` first if the name is at all unusual; Let's Encrypt's prod
    rate limits are unforgiving.
 3. Mount the resulting Secret in the pod and terminate TLS on **443**.
-4. Add the name to `garveyShOverrides` in `modules/networking/dns.nix` so LAN clients get
-   the internal address without breaking verification.
+4. Add the address record (`records` for `home.garvey.sh`, `garveyShOverrides` for
+   `garvey.sh`) in `modules/networking/dns.nix` so LAN clients get the internal address
+   without breaking verification.
 5. Confirm `certmanager_certificate_ready_status` goes to 1 — the alerts above will
    otherwise tell you about it an hour later.
 

@@ -9,13 +9,14 @@ CRDs in `vendor/spire-crds/`; the values and the reason for each are in
 
 ## One CA, two registries
 
-SPIRE's CA is not a second root. Its server requests an intermediate CA from
-the `spiffe-ca` ClusterIssuer (UpstreamAuthority `cert_manager`), so every SVID
+SPIRE's CA is not a second root. Its server requests a 24-hour intermediate CA
+from OpenBao's `pki-cluster` mount, the key behind the `cluster-ca` ClusterIssuer
+(UpstreamAuthority `vault`, `docs/openbao.md`, "Cluster CA"), so every SVID
 chains to the same root as the certificates cert-manager issues, and the root's
-name constraint (URIs under `home.garvey.sh`) still applies. The request is
-approved only by the `spiffe-spire-ca` policy in
-`manifests/cert-manager/spiffe-policies.yaml`, which only the `spire-server`
-ServiceAccount may use.
+name constraint (URIs under `home.garvey.sh`) still applies. It logs in with its
+own ServiceAccount token (audience `openbao`), and OpenBao's `spire-server`
+policy allows only the exact request SPIRE makes. OpenBao is verified against
+Let's Encrypt's roots in `openbao-ca.yaml`.
 
 Identities are granted in one of two places (see `manifests/cert-manager/README.md`):
 
@@ -45,7 +46,7 @@ the entry's first DNS name, so a service that maps a certificate to an account
 by CN alone would let a SPIRE entry with that DNS name in. Postgres matches the
 whole subject DN instead (`manifests/postgres/cluster.yaml`), which an SVID
 never equals. Before giving a ClusterSPIFFEID or ClusterStaticEntry DNS names,
-check every service that trusts `spiffe-ca` for a CN-only match.
+check every service that trusts `cluster-ca` for a CN-only match.
 
 ## Layout
 
@@ -65,10 +66,9 @@ The `iss` of every JWT-SVID. The OIDC discovery provider (a Deployment on
 fus/ro/dah) serves `/.well-known/openid-configuration` and the JWKS there, so
 services outside the cluster can validate JWT-SVIDs; Ceph RGW's STS is the first.
 It terminates TLS itself on the LoadBalancer `2001:470:482f:2::5007:443`, with a
-Let's Encrypt certificate (`certificate.yaml`, acme-dns account
-`spiffe-oidc.home.garvey.sh`; the AAAA and the `_acme-challenge` CNAME are in
-`modules/networking/dns.nix`). It re-reads the certificate files every minute, so
-renewals need no restart.
+Let's Encrypt certificate (`certificate.yaml`, DNS-01 through Knot; the AAAA and
+the `certManagerAcme` entry are in `modules/networking/dns.nix`). It re-reads the
+certificate files every minute, so renewals need no restart.
 
 RGW trusts this host through ordinary certificate validation: it fetches the
 discovery document and JWKS over HTTPS with the system CAs (`rgw_verify_ssl`,
@@ -104,15 +104,14 @@ of RGW's AccessDenied responses as "argument of type 'NoneType' is not iterable"
 
 ## Apply (from `k8s/`)
 
-cert-manager, approver-policy and `manifests/cert-manager/` must already be in
-place (the `spiffe-spire-ca` policy in particular), and Longhorn. The OIDC
-provider cannot start until its certificate Secret exists, which needs the
-acme-dns account (`manifests/acme-dns/secret.yaml`) and the router deployed with
-the CNAME.
+OpenBao's `pki-cluster` mount and `k8s` auth (`pki/openbao/`), cert-manager,
+approver-policy and `manifests/cert-manager/` must already be in place, and
+Longhorn. The OIDC provider cannot start until its certificate Secret exists,
+which needs the router deployed with `spiffe-oidc` in `certManagerAcme`.
 
 ```sh
-kubectl apply -f manifests/cert-manager/spiffe-policies.yaml
 kubectl apply -f vendor/spire-crds/spire-crds.yaml
+kubectl apply -f manifests/spire/openbao-ca.yaml       # after the namespace exists
 kubectl apply -f manifests/spire/certificate.yaml   # after the namespace exists
 kubectl -n spire wait --for=condition=Ready certificate/spiffe-oidc-tls --timeout=5m
 kubectl apply -f vendor/spire/spire.yaml

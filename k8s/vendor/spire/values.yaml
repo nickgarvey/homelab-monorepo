@@ -2,8 +2,8 @@
 # scripts/render-chart.sh; see vendor/README.md.
 #
 # SPIRE for the SPIFFE trust domain spiffe://home.garvey.sh. Its CA is an
-# intermediate under the cert-manager ClusterIssuer spiffe-ca; the policy that
-# lets it request one is in manifests/cert-manager/spiffe-policies.yaml. See
+# intermediate under the cert-manager ClusterIssuer cluster-ca; the policy that
+# lets it request one is in manifests/cert-manager/cluster-policies.yaml. See
 # manifests/spire/README.md.
 
 global:
@@ -14,14 +14,28 @@ global:
     jwtIssuer: https://spiffe-oidc.home.garvey.sh
 
 spire-server:
-  # SPIRE's CA is signed by spiffe-ca, so SVIDs chain to the one root of the
-  # trust domain. The chart's CA key type (rsa-2048) also signs JWT-SVIDs; keep
-  # it RSA: Ceph RGW validates bare JWKS keys only for RSA.
+  # SPIRE's CA is signed by the cluster CA (the key behind cert-manager's
+  # cluster-ca), so SVIDs chain to the one root of the trust domain. It logs in
+  # to OpenBao with its service account token (audience openbao) and may only
+  # request its 24h CA (ca_ttl; the spire-server policy in pki/openbao/main.tf
+  # pins the parameters). OpenBao is verified against Let's Encrypt's roots
+  # (manifests/spire/openbao-ca.yaml). The chart's CA key type (rsa-2048) also
+  # signs JWT-SVIDs; keep it RSA: Ceph RGW validates bare JWKS keys only for RSA.
   upstreamAuthority:
-    certManager:
+    vault:
       enabled: true
-      issuerName: spiffe-ca
-      issuerKind: ClusterIssuer
+      vaultAddr: https://openbao.home.garvey.sh:8200
+      pkiMountPoint: pki-cluster
+      caCert:
+        type: Configmap
+        name: openbao-ca
+      k8sAuth:
+        enabled: true
+        k8sAuthMountPoint: k8s
+        k8sAuthRoleName: spire-server
+        token:
+          audience: openbao
+          expiry: 3600
   caSubject:
     country: US
     organization: SPIFFE

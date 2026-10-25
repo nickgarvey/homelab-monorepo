@@ -8,8 +8,7 @@ Clients connect to `postgres-rw.postgres.svc:5432` with their own role and
 password. There is no LoadBalancer: nothing outside the cluster needs it, and
 every LoadBalancer Service is published in public DNS.
 
-Do not put bootstrap-critical services on it (acme-dns stays on SQLite): they
-issue the certificates and secrets this cluster needs to come up.
+Do not put bootstrap-critical services on it: they issue the certificates and secrets this cluster needs to come up.
 
 ## Apply order (from `k8s/`)
 
@@ -85,7 +84,7 @@ Roles log in with a client certificate ("Client certificates" below), except
 says why). The operator's default pg_hba rejects everything else. No
 NetworkPolicy is applied yet.
 
-## Client certificates (SPIFFE CA)
+## Client certificates (cluster CA)
 
 The cluster validates client certificates against the trust domain's CA
 (`certificates.clientCASecret`, `client-ca.yaml`), and its `streaming_replica`
@@ -97,7 +96,7 @@ once `cluster.yaml` has a `hostssl <dbs> <role> all cert clientname=DN map=spiff
 subject DN, not the URI, until `clientname=URI` ships in a release. The DN, not just the
 CN: the CA signs for the whole trust domain, and a certificate with the role's CN but
 any other subject must not log in. Issuing the certificate is gated by
-`manifests/cert-manager/spiffe-policies.yaml`, whose policies allow only the CN.
+`manifests/cert-manager/cluster-policies.yaml`, whose policies allow only the CN.
 
 The server certificate (`server-certificate.yaml`) is issued by the same CA, so a client
 verifies the server with the CA it already has and nothing needs copying out of this

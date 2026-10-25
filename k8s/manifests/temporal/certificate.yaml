@@ -11,5 +11,5 @@ spec:
     - temporal.garvey.sh
   issuerRef:
     # Staging validated cleanly on 2026-08-10; promoted to prod.
-    name: letsencrypt-acmedns-prod
+    name: letsencrypt-rfc2136-prod
     kind: ClusterIssuer

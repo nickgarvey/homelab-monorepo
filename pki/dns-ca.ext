@@ -1,0 +1,10 @@
+# Extensions for the hosts CA's certificate from the root (sign-intermediate.sh):
+# OpenBao's pki-dns mount, which issues by ACME (docs/openbao.md, "Hosts CA").
+# It may name hosts and services in home.garvey.sh except the cluster's
+# k8s.home.garvey.sh subzone, and nothing else: no IP addresses, and the email
+# and URI subtrees match nothing. pathlen 0: it signs leaves only.
+basicConstraints = critical, CA:TRUE, pathlen:0
+keyUsage = critical, keyCertSign, cRLSign, digitalSignature
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always
+nameConstraints = critical, permitted;DNS:home.garvey.sh, excluded;DNS:k8s.home.garvey.sh, permitted;email:nothing.invalid, permitted;URI:nothing.invalid, excluded;IP:0.0.0.0/0.0.0.0, excluded;IP:::/::

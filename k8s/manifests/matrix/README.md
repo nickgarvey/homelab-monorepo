@@ -12,7 +12,7 @@ and it can never change without starting over.
 - **No federation.** Synapse serves only the client API (no federation
   listener), allows no remote servers and asks no key servers.
 - **TLS on 443 by a Caddy in Synapse's pod** (`caddy-configmap.yaml`), with a
-  Let's Encrypt certificate through acme-dns (`certificate.yaml`), so clients
+  Let's Encrypt certificate (`certificate.yaml`, DNS-01 through Knot), so clients
   trust it with no setup. Synapse listens on loopback only.
 - **State:** everything but media is in the `synapse` database on the shared
   postgres (`manifests/postgres`), which Synapse logs in to with a SPIFFE
@@ -80,7 +80,7 @@ record.
 1. Postgres roles and databases. Synapse and MAS log in with client
    certificates, so the roles have no password:
    ```sh
-   kubectl apply -f manifests/cert-manager/spiffe-policies.yaml
+   kubectl apply -f manifests/cert-manager/cluster-policies.yaml
    kubectl apply -f manifests/postgres/cluster.yaml -f manifests/postgres/databases.yaml
    kubectl -n postgres get database synapse mas      # APPLIED=true
    for db in synapse mas; do
@@ -90,13 +90,11 @@ record.
    kubectl -n postgres exec postgres-1 -c postgres -- psql -U postgres -tAc \
      "select datcollate, datctype from pg_database where datname = 'synapse'"   # C|C
    ```
-2. Certificates (`manifests/acme-dns/ONBOARDING.md`, steps 1–3): an acme-dns
-   account for each name, merged into `manifests/acme-dns/secret.yaml`.
-   `matrix.garvey.sh` is in the Cloudflare zone (2a: the
-   `_acme-challenge.matrix` CNAME is in Cloudflare);
-   `matrix-auth.home.garvey.sh` is in ours (2b: the CNAME is in `dns.nix`,
-   so deploy the router first). Each certificate starts on the staging issuer;
-   switch it to `letsencrypt-acmedns-prod` once staging is Ready.
+2. Certificates (`manifests/cert-manager/ONBOARDING.md`): both names are in
+   `certManagerAcme` (`modules/networking/dns.nix`). `matrix.garvey.sh` is in
+   the Cloudflare zone, whose `_acme-challenge.matrix` CNAME points at
+   `matrix.challenge.home.garvey.sh`; `matrix-auth.home.garvey.sh` is in ours.
+   Both use `letsencrypt-rfc2136-prod`.
    ```sh
    kubectl apply -f manifests/matrix/namespace.yaml \
      -f manifests/matrix/certificate.yaml -f manifests/matrix/mas-certificate.yaml

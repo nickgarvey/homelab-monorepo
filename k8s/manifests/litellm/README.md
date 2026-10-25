@@ -6,6 +6,7 @@ An OpenAI-compatible proxy in front of the models the cluster uses
 | Model | Behind it |
 |---|---|
 | `qwen3.8-flash-next` | llama.cpp on wabbajack, currently off (its memory goes to Nix builds; `hosts/wabbajack/configuration.nix`) |
+| `pi` | DeepSeek V4 Flash (`deepseek/deepseek-v4-flash`), with the key in `litellm-deepseek`; the pi agent's default |
 | `habit-helper` | DeepSeek V4 Flash (`deepseek/deepseek-v4-flash`), with the key in `litellm-deepseek` |
 
 In-cluster clients use `http://litellm.litellm.svc.cluster.local:4000`. The
@@ -27,7 +28,7 @@ answers 401. There are three kinds:
 
   | Alias | Models | agent-token grants |
   |---|---|---|
-  | `pi` | `qwen3.8-flash-next` | `/agent/pi/` |
+  | `pi` | `pi`, `qwen3.8-flash-next` | `/agent/pi/` |
   | `habit-helper` | `habit-helper` | `/agent/habit-helper/` |
   | `habit-admin` | `habit-admin` | `/agent/habit-admin/` |
 
@@ -44,7 +45,7 @@ Virtual keys are stored in the `litellm` database on the shared postgres
 (`manifests/postgres/`), as hashes. litellm logs in as role `litellm` with a
 password (`postgres-password` in the `litellm` Secret, the same as
 `postgres-litellm` in `manifests/postgres/litellm-secret.yaml`) over TLS,
-checking the server's certificate against the SPIFFE CA (`postgres-ca.yaml`).
+checking the server's certificate against the cluster CA (`postgres-ca.yaml`).
 Not a client certificate, as other roles use: litellm's Prisma engine reads
 a client certificate (PKCS#12 only) once and keeps it, so a short-lived one
 would stop working when it expired.

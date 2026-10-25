@@ -1,6 +1,6 @@
 # The agents worker's login to the shared postgres: the CN is the postgres role,
-# the URI SAN its SPIFFE ID. Issued by the SPIFFE CA only because
-# manifests/cert-manager/spiffe-policies.yaml (spiffe-agents-postgres) allows
+# the URI SAN its SPIFFE ID. Issued by the cluster CA only because
+# manifests/cert-manager/cluster-policies.yaml (cluster-agents-postgres) allows
 # exactly this name here.
 apiVersion: cert-manager.io/v1
 kind: Certificate
@@ -29,4 +29,4 @@ spec:
   issuerRef:
     group: cert-manager.io
     kind: ClusterIssuer
-    name: spiffe-ca
+    name: cluster-ca

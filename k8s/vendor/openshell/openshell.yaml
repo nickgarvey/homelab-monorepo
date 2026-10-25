@@ -105,7 +105,7 @@ data:
     sandbox_runtime_image = "oci.garvey.sh/openshell/sandbox@sha256:561c63acbc7f247c452d83e90d92623403d66a7eed031e23b809ac3d4177b885"
     sandbox_runtime_image_pull_policy = "if_not_present"
     service_account_name = "openshell-sandbox"
-    supervisor_image = "oci.garvey.sh/openshell/supervisor@sha256:0faa84144521c65c67b6bd3b32855beef68ca8376d0f67ad38a832a02f92b681"
+    supervisor_image = "oci.garvey.sh/openshell/supervisor@sha256:9fce113d934370b12010429d2ffff9c09497a2378df7ef13a30a85ab9107c003"
     supervisor_image_pull_policy = "if_not_present"
     workspace_mode = "shared"
     [openshell.drivers.kubernetes.managed_ssh_ingress]
@@ -445,7 +445,7 @@ spec:
         # gateway only reads /etc/openshell/gateway.toml at startup, so without
         # this annotation a `helm upgrade` that only mutates the ConfigMap would
         # leave pods running with stale config.
-        checksum/gateway-config: 5f50977059c88bfcd1c80051198f53ff9d7dd996501ce3104875053c6e81d125
+        checksum/gateway-config: 2227c706b4384bd1c7b7fec45ae2db33a1fd6b5f99820bf1c09c98360c1aab4e
       labels:
         helm.sh/chart: helm-chart-0.1.3
         app.kubernetes.io/name: openshell

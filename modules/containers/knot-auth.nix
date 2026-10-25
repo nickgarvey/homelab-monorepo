@@ -13,6 +13,10 @@
 
 let
   domain = "home.garvey.sh";
+  dns = import ../networking/dns.nix { inherit lib; };
+  # Hosts that get a certificate from OpenBao's hosts CA
+  # (modules/services/pki-dns-cert.nix).
+  pkiDnsHosts = [ "lydia" ];
 
   # TSIG identities allowed to write ACME DNS-01 challenges into the zone. Each
   # entry becomes a key, an ACL scoped to its listed owner names and to TXT
@@ -34,6 +38,13 @@ let
   #   acme-openbao       -> lego on fus, ro and dah, one listener cert per node
   #                         covering openbao and that node's openbao-<node>
   #                         (modules/services/openbao.nix). IPv6-only, via NAT64.
+  #   acme-cert-manager  -> cert-manager in k3s, for the Let's Encrypt names in
+  #                         certManagerAcme (modules/networking/dns.nix); the
+  #                         same secret is k8s/manifests/cert-manager/secret.yaml.
+  #                         Pods reach Knot through NAT64.
+  #   acme-pki-dns-<host> -> lego on each host in pkiDnsHosts, for its own
+  #                         <host>.home.garvey.sh from OpenBao's hosts CA
+  #                         (modules/services/pki-dns-cert.nix).
   acmeKeys = [
     {
       name = "acme-homeassistant";
@@ -78,7 +89,25 @@ let
       sopsFile = ../../secrets/openbao-acme.yaml;
       sopsKey = "acme_tsig_secret";
     }
-  ];
+    {
+      name = "acme-cert-manager";
+      owners =
+        map (n: "_acme-challenge.${n}.${domain}.") dns.certManagerAcme.home
+        ++ map (n: "${n}.challenge.${domain}.") dns.certManagerAcme.garveySh;
+      sopsName = "cert-manager-acme-tsig";
+      sopsFile = ../../secrets/cert-manager-acme.yaml;
+      sopsKey = "acme_tsig_secret";
+    }
+  ]
+  # Hosts with modules/services/pki-dns-cert.nix: one key per host, for its own
+  # <host>.home.garvey.sh from OpenBao's hosts CA.
+  ++ map (h: {
+    name = "acme-pki-dns-${h}";
+    owners = [ "_acme-challenge.${h}.${domain}." ];
+    sopsName = "pki-dns-${h}-acme-tsig";
+    sopsFile = ../../secrets/pki-dns-${h}.yaml;
+    sopsKey = "acme_tsig_secret";
+  }) pkiDnsHosts;
 
   # Zone serial must increase on every content change. The flake's lastModified
   # is monotonic across commits; max() with nixpkgs guards against a dirty tree
@@ -155,9 +184,8 @@ in
           # else. A key is scoped to its own challenge names and to TXT records,
           # so a compromise of the host holding it cannot repoint any real record
           # in this zone -- it can only write TXT at those challenge names. That
-          # scoping is what makes on-box issuance an acceptable substitute for
-          # acme-dns, which otherwise exists to keep DDNS off the real zone. It
-          # is also why one key can be shared by every garage node: the ACL is
+          # scoping is what makes it acceptable to accept DDNS into the real
+          # zone at all. It is also why one key can be shared by every garage node: the ACL is
           # scoped to the name they all write, not to a host.
           acl = lib.listToAttrs (map (k: {
             inherit (k) name;

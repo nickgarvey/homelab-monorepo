@@ -12,21 +12,10 @@ Authelia and get roles from their Authelia groups (see "Access").
 
 ## Certificate (do this first — it is IP-independent)
 
-Follow `../acme-dns/ONBOARDING.md` by hand for `temporal.garvey.sh`. The manual
-runbook is the only path — the `AcmeDnsCert` controller was never deployed and
-its manifests were removed (see "Status: not deployed" in that doc).
-
-1. `POST /register` against a port-forwarded `acme-dns-api` with
-   `{"allowfrom":["2001:470:482f:100::/56"]}`. Save the response with
-   `curl -o` — an orphaned account is unrecoverable.
-2. Cloudflare CNAME `_acme-challenge.temporal.garvey.sh` → `<fulldomain>.`,
-   DNS-only.
-3. Merge the account under key `temporal.garvey.sh` into
-   `../acme-dns/secret.yaml`, commit, and apply it.
-4. `certificate.yaml` uses `letsencrypt-acmedns-prod`. When onboarding a new
-   name, point it at `letsencrypt-acmedns-staging` first; once that reports
-   Ready, flip to prod and delete the `temporal-tls` Secret so cert-manager
-   re-issues.
+`temporal.garvey.sh` is in `certManagerAcme` (`modules/networking/dns.nix`), and its
+Cloudflare CNAME `_acme-challenge.temporal.garvey.sh` points at
+`temporal.challenge.home.garvey.sh`, where cert-manager writes the DNS-01 TXT
+(`../cert-manager/ONBOARDING.md`). `certificate.yaml` uses `letsencrypt-rfc2136-prod`.
 
 ## Apply order
 
@@ -51,8 +40,8 @@ kubectl apply -f manifests/temporal/service-monitor.yaml
 ```
 
 The shared postgres (and its role and databases) must exist before the server, and
-both certificate Secrets before its pod starts (`spiffe-temporal` and
-`spiffe-temporal-frontend` in `manifests/cert-manager/spiffe-policies.yaml` approve them),
+both certificate Secrets before its pod starts (`cluster-temporal` and
+`cluster-temporal-frontend` in `manifests/cert-manager/cluster-policies.yaml` approve them),
 and `temporal-tls` must exist before the UI pod starts or Caddy crashloops on
 the missing `/certs`.
 
@@ -65,7 +54,7 @@ deploy tool after changing it.
 Temporal uses the `temporal` and `temporal_visibility` databases on the shared
 postgres, as the `temporal` role. There is no password: the pod presents the client
 certificate in `postgres-client-certificate.yaml` (CN `temporal`, URI SAN
-`spiffe://home.garvey.sh/ns/temporal/sa/temporal`, from the SPIFFE CA, 24h), and
+`spiffe://home.garvey.sh/ns/temporal/sa/temporal`, from the cluster CA, 24h), and
 `manifests/postgres/cluster.yaml` accepts only that for the role. The server certificate
 is verified against the same CA. The role's password in `temporal-db` (`secret.yaml`) is
 unused.
@@ -83,7 +72,7 @@ The pod must be able to read the key as uid 1000: the Secret volume is mode 0440
 
 ## Access
 
-The frontend requires a client certificate that chains to the `spiffe-ca` root
+The frontend requires a client certificate that chains to the `cluster-ca` root
 (`ca.crt` of `temporal-frontend-tls`), and serves `temporal-frontend-tls`, valid for
 `temporal-frontend.temporal.svc`. The server (`packages/temporal-server`, started with
 `--authz-table`) takes the caller's identity from the certificate's single URI SAN and

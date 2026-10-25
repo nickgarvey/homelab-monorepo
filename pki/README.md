@@ -64,6 +64,15 @@ authorityKeyIdentifier = keyid:always
 nameConstraints = critical, permitted;DNS:home.garvey.sh, excluded;DNS:k8s.home.garvey.sh, excluded;IP:0.0.0.0/0.0.0.0, excluded;IP:::/::, excluded;email:.
 ```
 
+Intermediates signed so far, both in OpenBao (`docs/openbao.md`): `cluster-ca.crt`
+(`cluster-ca.ext`, the cluster CA) and `dns-ca.crt` (`dns-ca.ext`, the hosts CA).
+
+A cross-signature (a new certificate for an existing CA's key) must repeat that CA's
+subject byte for byte, string types included: Go links a certificate to its issuer by
+comparing raw name bytes, while OpenSSL compares normalized names, so `openssl verify`
+cannot catch a mismatch. Set `SUBJECT` to sign with an explicit subject (OpenSSL writes
+UTF8String), and compare with `openssl x509 -noout -subject -nameopt RFC2253,show_type`.
+
 OpenSSL writes IP constraints as `address/mask`, with the mask in address form
 (`::/::` for all of IPv6). Libraries differ in how they enforce constraints: test a
 new intermediate against each verifier that will use it before relying on it.

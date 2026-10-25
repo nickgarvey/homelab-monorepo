@@ -1,12 +1,11 @@
 # Alerting signal: does public DNS still publish this router's actual WAN IP?
 #
-# Every self-hosted zone is delegated to ns1 -> our WAN address, and acme-dns
-# (which answers Let's Encrypt's DNS-01 challenges) is delegated the same way.
-# That address is DHCP-assigned and hardcoded in three places with no DDNS
-# automation: Cloudflare glue for home.garvey.sh, Cloudflare glue for
-# acme.garvey.sh, and modules/networking/zone.nix. If the lease ever changes,
-# Let's Encrypt can no longer reach our authoritative DNS and every renewal
-# fails -- silently, for ~30 days, until certificates start expiring and
+# Every self-hosted zone is delegated to ns1 -> our WAN address, which also
+# answers Let's Encrypt's DNS-01 challenges (Knot). That address is
+# DHCP-assigned and hardcoded in two places with no DDNS automation: Cloudflare
+# glue for home.garvey.sh, and modules/networking/zone.nix. If the lease ever
+# changes, Let's Encrypt can no longer reach our authoritative DNS and every
+# renewal fails -- silently, for ~30 days, until certificates start expiring and
 # TLS-verifying clients (the ESP32 devices pinned to Home Assistant) break.
 #
 # This emits the comparison as a metric so that failure becomes a page within
@@ -18,7 +17,7 @@ let
   cfg = config.routerConfig;
 
   # The records that publish this router's WAN IPv4 to the public internet.
-  publishedRecords = [ "ns1.home.garvey.sh" "acme.garvey.sh" ];
+  publishedRecords = [ "ns1.home.garvey.sh" ];
 
   wanDnsCheck = pkgs.writeShellScript "wan-dns-check" ''
     set -u

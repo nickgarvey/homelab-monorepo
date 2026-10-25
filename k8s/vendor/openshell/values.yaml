@@ -79,7 +79,7 @@ gatewayConfig:
 # answers every AAAA query with NODATA, so in this IPv6-only cluster no sandbox
 # could resolve any name (nix-lNoiG). The template-labels patch copies the
 # sandbox template's labels onto the supervisor pod, for its SPIFFE ID
-# (nix-q7Q31). The supervisor image's CA bundle also holds the spiffe-ca root,
+# (nix-q7Q31). The supervisor image's CA bundle also holds the root (pki/root.crt),
 # for token_grant endpoints such as agent-token (manifests/agents/), so it
 # stays our build even without patches. Drop each patch (and its deadline
 # check in agents/outputs.nix) once a release includes it. A rebuild changes
@@ -93,7 +93,7 @@ gateway:
     digest: sha256:a46429242f4041d2b6d886e3b255f9d78d15181bafa0ce025859f7d8e414cbaa
 supervisor:
   image:
-    digest: sha256:0faa84144521c65c67b6bd3b32855beef68ca8376d0f67ad38a832a02f92b681
+    digest: sha256:9fce113d934370b12010429d2ffff9c09497a2378df7ef13a30a85ab9107c003
 sandboxRuntime:
   image:
     digest: sha256:561c63acbc7f247c452d83e90d92623403d66a7eed031e23b809ac3d4177b885

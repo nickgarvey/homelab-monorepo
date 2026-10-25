@@ -43,7 +43,7 @@ names what it deleted. To run it now, from the break-glass path:
 temporal schedule trigger --schedule-id sandbox-reaper --address 127.0.0.1:7236 --namespace agents
 ```
 
-The gateway's certificate is issued by the spiffe-ca ClusterIssuer, so the
+The gateway's certificate is issued by the cluster-ca ClusterIssuer, so the
 worker trusts it with the `ca.crt` of its own gateway certificate's Secret,
 the same root.
 
@@ -69,11 +69,11 @@ temporal workflow execute-update-with-start --address 127.0.0.1:7236 \
 ## Identity at the OpenShell gateway
 
 The worker logs in to the gateway with `openshell-certificate.yaml`: a 24h
-client certificate from the SPIFFE CA with subject
+client certificate from the cluster CA with subject
 `CN=agents-worker, OU=openshell`, which the gateway reads as user
 `agents-worker` with its user role (see "Certificate users" in
-`manifests/openshell/README.md`). The `spiffe-agents-worker` policy in
-`manifests/cert-manager/spiffe-policies.yaml` allows that subject only to
+`manifests/openshell/README.md`). The `cluster-agents-worker` policy in
+`manifests/cert-manager/cluster-policies.yaml` allows that subject only to
 Certificates in this namespace. The OpenShell Go SDK reads the files once, when
 a client is made, so the worker makes a new client when they change. The
 certificate has no URI SAN, which the gateway would refuse. The gateway's own
@@ -100,7 +100,7 @@ All three know the worker by its ServiceAccount, `agents-worker`:
 - **Postgres**: the `agents` role and database, logged in with
   `postgres-client-certificate.yaml` (CN `agents`, 24h), the only login
   `manifests/postgres/cluster.yaml` accepts for the role. The
-  `spiffe-agents-postgres` policy allows it only here.
+  `cluster-agents-postgres` policy allows it only here.
 - **RGW**: the role `agents-worker` in `modules/services/rgw-roles.nix`, for
   buckets starting with `agent-sessions`, reached with a JWT-SVID through STS
   ("S3 on Ceph RGW" in `manifests/spire/README.md`). Its ARN is
@@ -196,9 +196,9 @@ sets how long a supervisor caches one: it keeps a granted token for
 for the profile's `cache_ttl` instead if it sets one (`0s`: every request).
 
 **HTTPS.** The certificate (`agent-token-certificate.yaml`) is from the
-spiffe-ca ClusterIssuer, for the Service's names only; the
-`spiffe-agent-token` policy in `manifests/cert-manager/spiffe-policies.yaml`
-allows exactly those, and only here. Our supervisor image trusts the spiffe-ca
+cluster-ca ClusterIssuer, for the Service's names only; the
+`cluster-agent-token` policy in `manifests/cert-manager/cluster-policies.yaml`
+allows exactly those, and only here. Our supervisor image trusts the cluster-ca
 root (`packages/openshell`), which is how a profile's `https://` token endpoint
 verifies. It is a cert-manager certificate rather than the pod's X.509-SVID
 because the supervisor's TLS library (rustls-webpki) refuses certificates
@@ -292,7 +292,7 @@ above the list item, so the pipe it is.)
 
 ## Apply (from `k8s/`)
 
-`manifests/cert-manager/spiffe-policies.yaml` first, and the gateway with
+`manifests/cert-manager/cluster-policies.yaml` first, and the gateway with
 `mtls_auth` (`manifests/openshell/README.md`).
 
 ```sh
@@ -304,7 +304,7 @@ openshell workspace create --name agents
 openshell workspace member add --workspace agents --subject agents-worker --role user
 ```
 
-The platform, with `manifests/cert-manager/spiffe-policies.yaml` applied:
+The platform, with `manifests/cert-manager/cluster-policies.yaml` applied:
 
 ```sh
 kubectl apply -f manifests/agents/postgres-client-certificate.yaml
@@ -325,9 +325,9 @@ kubectl apply -f manifests/agents/spiffe-helper-configmap.yaml
 kubectl apply -f manifests/agents/deployment.yaml
 ```
 
-The token service, with `manifests/cert-manager/spiffe-policies.yaml` applied
+The token service, with `manifests/cert-manager/cluster-policies.yaml` applied
 and its image pushed. Sandboxes reach it only once their supervisor runs our
-image with the spiffe-ca root ("Upgrading" in `manifests/openshell/README.md`
+image with the root (pki/root.crt) ("Upgrading" in `manifests/openshell/README.md`
 for pushing and pinning it):
 
 ```sh

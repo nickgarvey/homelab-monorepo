@@ -94,5 +94,6 @@
       (import ./packages/outputs.nix inputs)
       (import ./firmware/outputs.nix inputs)
       (import ./agents/outputs.nix inputs)
+      (import ./pki/outputs.nix inputs)
     ];
 }

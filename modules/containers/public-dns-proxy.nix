@@ -1,11 +1,10 @@
 # Public :53 front door for every zone we serve authoritatively, and the bridge
 # from the stable public IPv4 to IPv6-only backends.
 #
-# There is one public IPv4 and one port 53, but three authoritative backends —
-# and none can proxy for the others (Knot and acme-dns are authoritative-only and
-# cannot forward). So dnsdist splits inbound queries by qname:
+# There is one public IPv4 and one port 53, but two authoritative backends —
+# and neither can proxy for the other (Knot is authoritative-only and cannot
+# forward). So dnsdist splits inbound queries by qname:
 #
-#   acme.garvey.sh.     -> acme-dns     [2001:470:482f:2::5300]  (Let's Encrypt)
 #   k8s.home.garvey.sh. -> k8s_gateway  [2001:470:482f:2::53]
 #   home.garvey.sh.     -> Knot         10.28.0.6
 #
@@ -42,17 +41,17 @@
         listenAddress = "10.28.0.5";
         listenPort = 53;
         extraConfig = ''
-          -- This is a PUBLIC authoritative endpoint (Let's Encrypt resolves the
-          -- acme.garvey.sh delegation here from arbitrary internet IPs). dnsdist's
-          -- default ACL only allows RFC1918/local ranges, so it would silently
-          -- drop UDP / RESET TCP from public resolvers. Open it to all — the
-          -- backend (acme-dns) is authoritative-only and never recurses, so this
-          -- can't be abused as an open resolver.
+          -- This is a PUBLIC authoritative endpoint (Let's Encrypt resolves
+          -- home.garvey.sh DNS-01 challenges here from arbitrary internet
+          -- IPs). dnsdist's default ACL only allows RFC1918/local ranges, so
+          -- it would silently drop UDP / RESET TCP from public resolvers. Open
+          -- it to all — every backend is authoritative-only and never
+          -- recurses, so this can't be abused as an open resolver.
           setACL({"0.0.0.0/0", "::/0"})
 
           -- Every backend is authoritative-only, so the default health check
           -- (recursive "A a.root-servers.net") would be REFUSED and mark it down.
-          -- Check each one's own apex instead, as SOA: all three answer SOA
+          -- Check each one's own apex instead, as SOA: both answer SOA
           -- there, whereas an A query at the apex returns NODATA.
           -- source= pins the outgoing address for the IPv6 backends. Without it
           -- the kernel picks one at socket-creation time, and if dnsdist starts
@@ -65,9 +64,6 @@
           -- they pick the GUA, succeed, and report the backend UP the whole time
           -- while every forwarded query is black-holed. Pinning the source makes
           -- a too-early start fail LOUDLY (bind error + Restart) instead.
-          newServer({address="[2001:470:482f:2::5300]:53", pool="acmedns",
-                     source="2001:470:482f::5300",
-                     checkName="acme.garvey.sh.", checkType="SOA"})
           newServer({address="[2001:470:482f:2::53]:53", pool="k8sgw",
                      source="2001:470:482f::5300",
                      checkName="k8s.home.garvey.sh.", checkType="SOA"})
@@ -78,7 +74,6 @@
           -- specific k8s subzone MUST come before its parent -- otherwise k8s
           -- queries land on Knot, which only holds a delegation back to this
           -- same IP, and the resolver loops.
-          addAction("acme.garvey.sh.", PoolAction("acmedns"))
           addAction("k8s.home.garvey.sh.", PoolAction("k8sgw"))
           addAction("home.garvey.sh.", PoolAction("knot"))
 

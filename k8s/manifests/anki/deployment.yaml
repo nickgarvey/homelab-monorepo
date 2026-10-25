@@ -21,7 +21,7 @@ spec:
       containers:
         # TLS terminator for anki.home.garvey.sh. anki-sync-server has no
         # cert/key config path of its own, so this follows the jellyfin
-        # sidecar pattern from manifests/acme-dns/ONBOARDING.md.
+        # sidecar pattern from manifests/cert-manager/ONBOARDING.md.
         #
         # Caddy's static `tls` directive loads the cert at startup only and
         # does NOT hot-reload on renewal, and no Reloader is installed -- so a

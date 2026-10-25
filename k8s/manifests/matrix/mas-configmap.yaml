@@ -39,7 +39,7 @@ data:
       database: mas
       username: mas
       # Certificate login (manifests/postgres, pg_hba); the server is checked
-      # against the SPIFFE CA in the same Secret.
+      # against the cluster CA in the same Secret.
       ssl_mode: verify-full
       ssl_ca_file: /etc/mas/postgres/ca.crt
       ssl_certificate_file: /etc/mas/postgres/tls.crt

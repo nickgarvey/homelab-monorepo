@@ -133,4 +133,9 @@ in
   }
   # K3s nodes
   // k3sNodes;
+
+  checks.x86_64-linux.cert-manager-acme-names = import ../modules/networking/cert-manager-acme-check.nix {
+    pkgs = nixpkgs.legacyPackages.x86_64-linux;
+    inherit (nixpkgs) lib;
+  };
 }

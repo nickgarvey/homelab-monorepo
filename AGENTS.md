@@ -22,7 +22,7 @@ homelab-esp32-devices).
 ## The flake
 
 There is one flake, at the repo root, with one `flake.lock`. `hosts/`,
-`devshells/`, `packages/`, `firmware/` and `agents/` each define their outputs in
+`devshells/`, `packages/`, `firmware/`, `agents/` and `pki/` each define their outputs in
 their own `outputs.nix`, and `flake.nix` merges them, failing evaluation if two
 define the same output name. Nix finds the root flake from any subdirectory,
 so `nix run .#deploy` and `nix build .#<pkg>` work from anywhere in the repo.

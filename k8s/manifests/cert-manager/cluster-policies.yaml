@@ -1,4 +1,4 @@
-# What the spiffe-ca ClusterIssuer may issue. approver-policy approves a request
+# What the cluster-ca ClusterIssuer may issue. approver-policy approves a request
 # only if a policy below matches it (issuer, namespace, and every field); anything
 # else stays unapproved and is never signed. One policy per identity: a new
 # workload adds a policy here.
@@ -7,16 +7,16 @@
 # access control: cert-manager creates the CertificateRequest itself, so the
 # requester is always its ServiceAccount and cannot be matched. Whoever can
 # create a Certificate in the selected namespace can obtain these identities.
-# The exception is spiffe-spire-ca at the end, requested by SPIRE directly.
 #
-# SPIRE's CA, under the same root, signs SVIDs these policies never see, with
-# subjects SPIRE chooses (O=SPIRE, C=US, an entry's DNS name as CN). These policies
-# gate an identity only for a consumer that matches a subject SPIRE cannot
-# produce: postgres maps a certificate's whole DN, not its CN, to a role.
+# SPIRE's CA, signed by the same key in OpenBao (docs/openbao.md), signs SVIDs
+# these policies never see, with subjects SPIRE chooses (O=SPIRE, C=US, an
+# entry's DNS name as CN). These policies gate an identity only for a consumer
+# that matches a subject SPIRE cannot produce: postgres maps a certificate's
+# whole DN, not its CN, to a role.
 apiVersion: policy.cert-manager.io/v1alpha1
 kind: CertificateRequestPolicy
 metadata:
-  name: spiffe-temporal
+  name: cluster-temporal
   labels:
     app.kubernetes.io/managed-by: ngarvey-homelab
 spec:
@@ -43,7 +43,7 @@ spec:
     issuerRef:
       group: cert-manager.io
       kind: ClusterIssuer
-      name: spiffe-ca
+      name: cluster-ca
     namespace:
       matchNames:
         - temporal
@@ -51,7 +51,7 @@ spec:
 apiVersion: policy.cert-manager.io/v1alpha1
 kind: CertificateRequestPolicy
 metadata:
-  name: spiffe-temporal-frontend
+  name: cluster-temporal-frontend
   labels:
     app.kubernetes.io/managed-by: ngarvey-homelab
 spec:
@@ -60,8 +60,6 @@ spec:
   allowed:
     dnsNames:
       values:
-        - temporal-frontend
-        - temporal-frontend.temporal
         - temporal-frontend.temporal.svc
         - temporal-frontend.temporal.svc.cluster.local
     usages:
@@ -78,7 +76,7 @@ spec:
     issuerRef:
       group: cert-manager.io
       kind: ClusterIssuer
-      name: spiffe-ca
+      name: cluster-ca
     namespace:
       matchNames:
         - temporal
@@ -86,7 +84,7 @@ spec:
 apiVersion: policy.cert-manager.io/v1alpha1
 kind: CertificateRequestPolicy
 metadata:
-  name: spiffe-postgres-replication
+  name: cluster-postgres-replication
   labels:
     app.kubernetes.io/managed-by: ngarvey-homelab
 spec:
@@ -109,7 +107,7 @@ spec:
     issuerRef:
       group: cert-manager.io
       kind: ClusterIssuer
-      name: spiffe-ca
+      name: cluster-ca
     namespace:
       matchNames:
         - postgres
@@ -119,7 +117,7 @@ spec:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: spiffe-policy-use
+  name: cluster-policy-use
   labels:
     app.kubernetes.io/managed-by: ngarvey-homelab
 rules:
@@ -127,33 +125,33 @@ rules:
     resources: [certificaterequestpolicies]
     verbs: [use]
     resourceNames:
-      - spiffe-temporal
-      - spiffe-temporal-frontend
-      - spiffe-postgres-replication
-      - spiffe-postgres-server
-      - spiffe-openshell
-      - spiffe-openshell-gateway
-      - spiffe-openshell-client
-      - spiffe-celler
-      - spiffe-agents-worker
-      - spiffe-agents-postgres
-      - spiffe-agent-token
-      - spiffe-habit-helper-api
-      - spiffe-habit-helper-owner
-      - spiffe-synapse
-      - spiffe-mas
-      - spiffe-playwright-renderer
+      - cluster-temporal
+      - cluster-temporal-frontend
+      - cluster-postgres-replication
+      - cluster-postgres-server
+      - cluster-openshell
+      - cluster-openshell-gateway
+      - cluster-openshell-client
+      - cluster-celler
+      - cluster-agents-worker
+      - cluster-agents-postgres
+      - cluster-agent-token
+      - cluster-habit-helper-api
+      - cluster-habit-helper-owner
+      - cluster-synapse
+      - cluster-mas
+      - cluster-playwright-renderer
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: spiffe-policy-use
+  name: cluster-policy-use
   labels:
     app.kubernetes.io/managed-by: ngarvey-homelab
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: spiffe-policy-use
+  name: cluster-policy-use
 subjects:
   - kind: ServiceAccount
     name: cert-manager
@@ -162,7 +160,7 @@ subjects:
 apiVersion: policy.cert-manager.io/v1alpha1
 kind: CertificateRequestPolicy
 metadata:
-  name: spiffe-postgres-server
+  name: cluster-postgres-server
   labels:
     app.kubernetes.io/managed-by: ngarvey-homelab
 spec:
@@ -171,16 +169,10 @@ spec:
   allowed:
     dnsNames:
       values:
-        - postgres-rw
-        - postgres-rw.postgres
         - postgres-rw.postgres.svc
         - postgres-rw.postgres.svc.cluster.local
-        - postgres-r
-        - postgres-r.postgres
         - postgres-r.postgres.svc
         - postgres-r.postgres.svc.cluster.local
-        - postgres-ro
-        - postgres-ro.postgres
         - postgres-ro.postgres.svc
         - postgres-ro.postgres.svc.cluster.local
     usages:
@@ -197,7 +189,7 @@ spec:
     issuerRef:
       group: cert-manager.io
       kind: ClusterIssuer
-      name: spiffe-ca
+      name: cluster-ca
     namespace:
       matchNames:
         - postgres
@@ -205,7 +197,7 @@ spec:
 apiVersion: policy.cert-manager.io/v1alpha1
 kind: CertificateRequestPolicy
 metadata:
-  name: spiffe-openshell
+  name: cluster-openshell
   labels:
     app.kubernetes.io/managed-by: ngarvey-homelab
 spec:
@@ -232,7 +224,7 @@ spec:
     issuerRef:
       group: cert-manager.io
       kind: ClusterIssuer
-      name: spiffe-ca
+      name: cluster-ca
     namespace:
       matchNames:
         - openshell
@@ -240,7 +232,7 @@ spec:
 apiVersion: policy.cert-manager.io/v1alpha1
 kind: CertificateRequestPolicy
 metadata:
-  name: spiffe-openshell-gateway
+  name: cluster-openshell-gateway
   labels:
     app.kubernetes.io/managed-by: ngarvey-homelab
 spec:
@@ -251,8 +243,6 @@ spec:
   allowed:
     dnsNames:
       values:
-        - openshell
-        - openshell.openshell
         - openshell.openshell.svc
         - openshell.openshell.svc.cluster.local
         - gateway.openshell.k8s.home.garvey.sh
@@ -270,7 +260,7 @@ spec:
     issuerRef:
       group: cert-manager.io
       kind: ClusterIssuer
-      name: spiffe-ca
+      name: cluster-ca
     namespace:
       matchNames:
         - openshell
@@ -278,14 +268,14 @@ spec:
 apiVersion: policy.cert-manager.io/v1alpha1
 kind: CertificateRequestPolicy
 metadata:
-  name: spiffe-openshell-client
+  name: cluster-openshell-client
   labels:
     app.kubernetes.io/managed-by: ngarvey-homelab
 spec:
   # The OpenShell chart's client certificate (Certificate openshell-client),
   # the transport certificate of the CLI and of sandbox supervisors. With
   # mtls_auth the gateway reads it as user openshell-client with no role,
-  # which is why no OU is allowed (see spiffe-agents-worker).
+  # which is why no OU is allowed (see cluster-agents-worker).
   allowed:
     commonName:
       value: openshell-client
@@ -304,7 +294,7 @@ spec:
     issuerRef:
       group: cert-manager.io
       kind: ClusterIssuer
-      name: spiffe-ca
+      name: cluster-ca
     namespace:
       matchNames:
         - openshell
@@ -312,7 +302,7 @@ spec:
 apiVersion: policy.cert-manager.io/v1alpha1
 kind: CertificateRequestPolicy
 metadata:
-  name: spiffe-celler
+  name: cluster-celler
   labels:
     app.kubernetes.io/managed-by: ngarvey-homelab
 spec:
@@ -339,7 +329,7 @@ spec:
     issuerRef:
       group: cert-manager.io
       kind: ClusterIssuer
-      name: spiffe-ca
+      name: cluster-ca
     namespace:
       matchNames:
         - celler
@@ -347,7 +337,7 @@ spec:
 apiVersion: policy.cert-manager.io/v1alpha1
 kind: CertificateRequestPolicy
 metadata:
-  name: spiffe-agents-worker
+  name: cluster-agents-worker
   labels:
     app.kubernetes.io/managed-by: ngarvey-homelab
 spec:
@@ -356,7 +346,7 @@ spec:
   # certificate's CN as the user and its OU values as the user's roles, so the
   # subject must be exactly CN=agents-worker, OU=openshell: openshell is the
   # gateway's user role (server.oidc.userRole in vendor/openshell/values.yaml).
-  # No other policy here allows an OU, and none may: any spiffe-ca certificate
+  # No other policy here allows an OU, and none may: any cluster-ca certificate
   # carrying OU=openshell or OU=admins gets that gateway role. No URI SAN:
   # the gateway's TLS library (rustls-webpki) does not process the root's URI
   # name constraint and refuses any client certificate with a URI under it
@@ -383,7 +373,7 @@ spec:
     issuerRef:
       group: cert-manager.io
       kind: ClusterIssuer
-      name: spiffe-ca
+      name: cluster-ca
     namespace:
       matchNames:
         - agents
@@ -391,7 +381,7 @@ spec:
 apiVersion: policy.cert-manager.io/v1alpha1
 kind: CertificateRequestPolicy
 metadata:
-  name: spiffe-agents-postgres
+  name: cluster-agents-postgres
   labels:
     app.kubernetes.io/managed-by: ngarvey-homelab
 spec:
@@ -419,7 +409,7 @@ spec:
     issuerRef:
       group: cert-manager.io
       kind: ClusterIssuer
-      name: spiffe-ca
+      name: cluster-ca
     namespace:
       matchNames:
         - agents
@@ -427,19 +417,17 @@ spec:
 apiVersion: policy.cert-manager.io/v1alpha1
 kind: CertificateRequestPolicy
 metadata:
-  name: spiffe-agent-token
+  name: cluster-agent-token
   labels:
     app.kubernetes.io/managed-by: ngarvey-homelab
 spec:
   # The token service's server certificate
   # (manifests/agents/agent-token-certificate.yaml), for its ClusterIP Service.
-  # Sandbox supervisors trust any spiffe-ca server certificate, so these names
+  # Sandbox supervisors trust any cluster-ca server certificate, so these names
   # are what keeps another workload from posing as the token service.
   allowed:
     dnsNames:
       values:
-        - agent-token
-        - agent-token.agents
         - agent-token.agents.svc
         - agent-token.agents.svc.cluster.local
     usages:
@@ -456,7 +444,7 @@ spec:
     issuerRef:
       group: cert-manager.io
       kind: ClusterIssuer
-      name: spiffe-ca
+      name: cluster-ca
     namespace:
       matchNames:
         - agents
@@ -464,7 +452,7 @@ spec:
 apiVersion: policy.cert-manager.io/v1alpha1
 kind: CertificateRequestPolicy
 metadata:
-  name: spiffe-habit-helper-api
+  name: cluster-habit-helper-api
   labels:
     app.kubernetes.io/managed-by: ngarvey-homelab
 spec:
@@ -492,7 +480,7 @@ spec:
     issuerRef:
       group: cert-manager.io
       kind: ClusterIssuer
-      name: spiffe-ca
+      name: cluster-ca
     namespace:
       matchNames:
         - habit-helper
@@ -500,7 +488,7 @@ spec:
 apiVersion: policy.cert-manager.io/v1alpha1
 kind: CertificateRequestPolicy
 metadata:
-  name: spiffe-habit-helper-owner
+  name: cluster-habit-helper-owner
   labels:
     app.kubernetes.io/managed-by: ngarvey-homelab
 spec:
@@ -527,7 +515,7 @@ spec:
     issuerRef:
       group: cert-manager.io
       kind: ClusterIssuer
-      name: spiffe-ca
+      name: cluster-ca
     namespace:
       matchNames:
         - habit-helper
@@ -535,81 +523,7 @@ spec:
 apiVersion: policy.cert-manager.io/v1alpha1
 kind: CertificateRequestPolicy
 metadata:
-  name: spiffe-spire-ca
-  labels:
-    app.kubernetes.io/managed-by: ngarvey-homelab
-spec:
-  # SPIRE's intermediate CA (UpstreamAuthority cert_manager, see
-  # manifests/spire/README.md). SPIRE creates the CertificateRequest itself, as
-  # its spire-server ServiceAccount, so unlike the policies above this one is
-  # usable only by that ServiceAccount (spiffe-spire-ca-use below), never by
-  # cert-manager: a Certificate in the spire namespace cannot obtain a CA.
-  allowed:
-    commonName:
-      value: home.garvey.sh SPIRE CA
-    subject:
-      countries:
-        values: [US]
-      organizations:
-        values: [SPIFFE]
-      # SPIRE puts the certificate's serial number here.
-      serialNumber:
-        value: "*"
-    uris:
-      values:
-        - spiffe://home.garvey.sh
-    usages:
-      - cert sign
-      - crl sign
-    isCA: true
-  constraints:
-    # SPIRE asks for its ca_ttl (24h) and rotates at half-life.
-    maxDuration: 24h
-    privateKey:
-      algorithm: RSA
-      minSize: 2048
-      maxSize: 4096
-  selector:
-    issuerRef:
-      group: cert-manager.io
-      kind: ClusterIssuer
-      name: spiffe-ca
-    namespace:
-      matchNames:
-        - spire
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: spiffe-spire-ca-use
-  labels:
-    app.kubernetes.io/managed-by: ngarvey-homelab
-rules:
-  - apiGroups: [policy.cert-manager.io]
-    resources: [certificaterequestpolicies]
-    verbs: [use]
-    resourceNames:
-      - spiffe-spire-ca
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: spiffe-spire-ca-use
-  labels:
-    app.kubernetes.io/managed-by: ngarvey-homelab
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: spiffe-spire-ca-use
-subjects:
-  - kind: ServiceAccount
-    name: spire-server
-    namespace: spire
----
-apiVersion: policy.cert-manager.io/v1alpha1
-kind: CertificateRequestPolicy
-metadata:
-  name: spiffe-synapse
+  name: cluster-synapse
   labels:
     app.kubernetes.io/managed-by: ngarvey-homelab
 spec:
@@ -635,7 +549,7 @@ spec:
     issuerRef:
       group: cert-manager.io
       kind: ClusterIssuer
-      name: spiffe-ca
+      name: cluster-ca
     namespace:
       matchNames:
         - matrix
@@ -643,7 +557,7 @@ spec:
 apiVersion: policy.cert-manager.io/v1alpha1
 kind: CertificateRequestPolicy
 metadata:
-  name: spiffe-mas
+  name: cluster-mas
   labels:
     app.kubernetes.io/managed-by: ngarvey-homelab
 spec:
@@ -670,7 +584,7 @@ spec:
     issuerRef:
       group: cert-manager.io
       kind: ClusterIssuer
-      name: spiffe-ca
+      name: cluster-ca
     namespace:
       matchNames:
         - matrix
@@ -678,7 +592,7 @@ spec:
 apiVersion: policy.cert-manager.io/v1alpha1
 kind: CertificateRequestPolicy
 metadata:
-  name: spiffe-playwright-renderer
+  name: cluster-playwright-renderer
   labels:
     app.kubernetes.io/managed-by: ngarvey-homelab
 spec:
@@ -689,8 +603,6 @@ spec:
   allowed:
     dnsNames:
       values:
-        - playwright-renderer
-        - playwright-renderer.playwright-renderer
         - playwright-renderer.playwright-renderer.svc
         - playwright-renderer.playwright-renderer.svc.cluster.local
     uris:
@@ -710,7 +622,7 @@ spec:
     issuerRef:
       group: cert-manager.io
       kind: ClusterIssuer
-      name: spiffe-ca
+      name: cluster-ca
     namespace:
       matchNames:
         - playwright-renderer

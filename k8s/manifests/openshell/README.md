@@ -19,8 +19,8 @@ IPv6 literal fails (the supervisor writes the CONNECT host unbracketed), so
 use hostnames. The build also carries
 `patches/openshell-supervisor-template-labels.patch`, which puts the sandbox
 template's labels on the supervisor pod too ("Provider token grants"). The
-supervisor image also trusts the spiffe-ca root, for token endpoints with
-spiffe-ca certificates, so the supervisor stays our build after the patches
+supervisor image also trusts the root (pki/root.crt), for token endpoints with
+cluster-ca certificates, so the supervisor stays our build after the patches
 are gone.
 
 ## Apply order (from `k8s/`)
@@ -38,9 +38,9 @@ kubectl -n openshell rollout status deployment/openshell
 
 The gateway pod waits (CreateContainerConfigError, ContainerCreating) until
 `openshell-kek`, `openshell-jwt-keys` and the cert-manager Secrets exist, then
-starts on its own. The gateway's certificates come from the spiffe-ca
-ClusterIssuer, so `manifests/cert-manager/spiffe-policies.yaml` must be applied
-first (policies `spiffe-openshell-gateway` and `spiffe-openshell-client`).
+starts on its own. The gateway's certificates come from the cluster-ca
+ClusterIssuer, so `manifests/cert-manager/cluster-policies.yaml` must be applied
+first (policies `cluster-openshell-gateway` and `cluster-openshell-client`).
 
 These Secrets exist nowhere else, or are costly to lose; nothing should delete
 them: `openshell-kek` (in sops here; losing it makes stored provider
@@ -51,8 +51,8 @@ credentials unreadable) and `openshell-jwt-keys`.
 The gateway's server certificate (`openshell-server-tls`, the in-cluster
 Service names and the LAN name) and the chart's client certificate
 (`openshell-client-tls`, used by the CLI and the sandbox supervisors) are
-issued by the spiffe-ca ClusterIssuer, patched in
-`vendor/openshell/kustomization.yaml`. Each Secret's `ca.crt` is the spiffe-ca
+issued by the cluster-ca ClusterIssuer, patched in
+`vendor/openshell/kustomization.yaml`. Each Secret's `ca.crt` is the cluster-ca
 root, which the CLI, the supervisors, the gateway's peers and the agents worker
 all verify the gateway with, and which the gateway verifies client
 certificates with. The root is long-lived and replaced only by hand, so no copy
@@ -70,7 +70,7 @@ People log in through Authelia (OIDC client `openshell-cli` in
 no role (see "Certificate users"). Supervisors get only its CA. The gateway is on the LAN at
 `gateway.openshell.k8s.home.garvey.sh:443` (`service-lb.yaml`); that name is
 on its certificate. The CLI reads `mtls/ca.crt` to trust the gateway's
-certificate (the spiffe-ca root, "Certificates").
+certificate (the root (pki/root.crt), "Certificates").
 
 ```sh
 d=~/.config/openshell/gateways/k8s/mtls; mkdir -p "$d"
@@ -97,15 +97,15 @@ Programs log in with a client certificate instead (`mtls_auth`, turned on in
 `vendor/openshell/kustomization.yaml`). A request without a bearer token
 becomes the user named by its certificate's CN, with the certificate's OU
 values as its roles. The gateway trusts client certificates under the
-spiffe-ca root.
+root (pki/root.crt).
 
-Only approver-policy decides who gets a role: a spiffe-ca certificate carrying
+Only approver-policy decides who gets a role: a cluster-ca certificate carrying
 `OU=openshell` or `OU=admins` is a gateway user or admin, so no policy in
-`manifests/cert-manager/spiffe-policies.yaml` may allow an OU other than its
-own exact identity's. Today one does: `spiffe-agents-worker`
+`manifests/cert-manager/cluster-policies.yaml` may allow an OU other than its
+own exact identity's. Today one does: `cluster-agents-worker`
 (`CN=agents-worker, OU=openshell`, `manifests/agents/`). The chart's
 `openshell-client` certificate has no OU, so it gets no role. A certificate
-from the SPIFFE CA must have no URI SAN: the gateway's TLS library
+from the cluster CA must have no URI SAN: the gateway's TLS library
 (rustls-webpki) does not process the root's URI name constraint and refuses
 the handshake with `NameConstraintViolation`, which also keeps SPIRE's SVIDs
 out. A user role reaches only the workspaces the user is a member of, and
@@ -139,8 +139,8 @@ answer's `expires_in` (at most an hour) less 30 seconds. The token
 and the socket never reach the workload pod. The token endpoint must be
 `https://` or `http://` to a `<svc>.<ns>.svc[.cluster.local]` name; we use
 `https://`. It is verified against the supervisor image's `SSL_CERT_FILE`,
-the public CAs plus the spiffe-ca root (`packages/openshell/spiffe-ca.crt`),
-so a spiffe-ca server certificate works. Our token endpoint is agent-token
+the public CAs plus the root (`pki/root.crt`, built in by
+`packages/openshell/outputs.nix`), so a cluster-ca server certificate works. Our token endpoint is agent-token
 ("The token service" in `manifests/agents/README.md`). The proxy's own
 upstream TLS does not use that file and trusts only the public roots.
 
@@ -198,7 +198,7 @@ The chart's `server.externalDbSecret` (`vendor/openshell/values.yaml`) makes it 
 `OPENSHELL_DB_URL` from `db-secret.yaml`. The URL has no password: the gateway logs in as
 the `openshell` role with the client certificate in `postgres-client-certificate.yaml`
 (CN `openshell`, URI SAN `spiffe://home.garvey.sh/ns/openshell/sa/openshell`, from the
-SPIFFE CA, 24h), mounted at `/etc/openshell-pg` by `vendor/openshell/kustomization.yaml`.
+cluster CA, 24h), mounted at `/etc/openshell-pg` by `vendor/openshell/kustomization.yaml`.
 
 Apply `postgres-client-certificate.yaml` and `db-secret.yaml` before
 `kubectl apply -k vendor/openshell`, and the role and database (`manifests/postgres/`)

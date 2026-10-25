@@ -1,0 +1,24 @@
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: cluster-ca
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  # The one CA of the SPIFFE trust domain spiffe://home.garvey.sh. Every
+  # workload certificate comes from here and each service decides which
+  # identities it accepts. Requests are approved by approver-policy, not by
+  # cert-manager (see cluster-policies.yaml and vendor/cert-manager/values.yaml).
+  # The CA key is in OpenBao's pki-cluster mount (docs/openbao.md, "Cluster
+  # CA"); sign-verbatim keeps each CSR's subject and SANs as approved.
+  vault:
+    server: https://openbao.home.garvey.sh:8200
+    path: pki-cluster/sign-verbatim/cluster-leaf
+    auth:
+      kubernetes:
+        mountPath: /v1/auth/k8s
+        role: cert-manager
+        serviceAccountRef:
+          name: openbao-issuer
+          audiences:
+            - openbao

@@ -118,7 +118,7 @@ in
           # oci.garvey.sh silently swallows queries for
           # _acme-challenge.oci.garvey.sh too (returning empty instead of
           # forwarding upstream), breaking ACME DNS-01 propagation checks for
-          # every acme-dns-issued cert. Disable so unmapped types/subdomains
+          # every cert-manager-issued cert. Disable so unmapped types/subdomains
           # fall through to kresd's normal recursion instead.
           filterUnmappedTypes = false;
         };

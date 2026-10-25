@@ -54,7 +54,7 @@ data:
 
     global:
       # mTLS on the frontend only: clients present a certificate that chains to
-      # the spiffe-ca root, and --authz-table maps its URI SAN to roles. The
+      # the root (pki/root.crt), and --authz-table maps its URI SAN to roles. The
       # internal frontend and the services behind it are loopback-only, plain.
       tls:
         refreshInterval: 1m

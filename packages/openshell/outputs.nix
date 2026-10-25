@@ -126,15 +126,14 @@ let
     };
   };
 
-  # The supervisor's trust store: the public CAs plus our spiffe-ca root
-  # (./spiffe-ca.crt, the same certificate as k8s/manifests/postgres/client-ca.yaml),
-  # which signs in-cluster server certificates such as agent-token's
-  # (k8s/manifests/agents/). Token grants verify their token_endpoint against
+  # The supervisor's trust store: the public CAs plus our root (pki/root.crt at
+  # the repo root), to which in-cluster server certificates such as agent-token's
+  # (k8s/manifests/agents/) chain. Token grants verify their token_endpoint against
   # SSL_CERT_FILE (reqwest's native roots, rustls-native-certs). The proxy's
   # upstream TLS does not use it: it trusts the bundled Mozilla roots plus
   # the first of a fixed list of system bundle paths, none of which the image
   # has.
-  supervisorCAs = pkgs.cacert.override { extraCertificateFiles = [ ./spiffe-ca.crt ]; };
+  supervisorCAs = pkgs.cacert.override { extraCertificateFiles = [ ../../pki/root.crt ]; };
 
   # Runs as root, as upstream's: the driver sets the supervisor's user.
   supervisor-image = pkgs.dockerTools.buildLayeredImage {
@@ -166,7 +165,7 @@ let
   # Unpacks each image and checks what the chart and the Kubernetes driver rely
   # on: the entrypoint exists and is executable, the user, the sandbox binary
   # is a static file of its own, the supervisor takes the patch's flag and
-  # trusts the spiffe-ca root.
+  # trusts the root.
   images-test = pkgs.runCommand "openshell-images-test"
     { nativeBuildInputs = [ pkgs.jq pkgs.file ]; } ''
       # unpack <image> <dir>: the image's layers, in order, into <dir>/root.
@@ -204,12 +203,12 @@ let
       "$supervisor" --help | grep -q -- --policy-dns-ipv6-egress \
         || { echo "supervisor: no --policy-dns-ipv6-egress; is the patch applied?"; exit 1; }
       # Token grants verify the token endpoint against SSL_CERT_FILE, which
-      # must hold the spiffe-ca root.
+      # must hold the root.
       cafile=$(jq -r '.Env[] | select(startswith("SSL_CERT_FILE=")) | ltrimstr("SSL_CERT_FILE=")' supervisor/config.json)
       [ -f "supervisor/root$cafile" ] \
         || { echo "supervisor: SSL_CERT_FILE $cafile is not in the image"; exit 1; }
-      grep -qF "$(sed -n 5p ${./spiffe-ca.crt})" "supervisor/root$cafile" \
-        || { echo "supervisor: SSL_CERT_FILE does not hold the spiffe-ca root"; exit 1; }
+      grep -qF "$(sed -n 5p ${../../pki/root.crt})" "supervisor/root$cafile" \
+        || { echo "supervisor: SSL_CERT_FILE does not hold the root"; exit 1; }
 
       unpack ${sandbox-image} sandbox
       expect sandbox .Entrypoint '["/openshell-sandbox"]'

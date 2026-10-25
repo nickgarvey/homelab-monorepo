@@ -53,7 +53,7 @@ spec:
           image: *image
           imagePullPolicy: IfNotPresent
           env:
-            # libpq: the server certificate is checked against the spiffe-ca
+            # libpq: the server certificate is checked against the cluster-ca
             # root (ca.crt) for the Service name; the client certificate is
             # the login. libpq reads the files for each new connection.
             - name: PGRST_DB_URI

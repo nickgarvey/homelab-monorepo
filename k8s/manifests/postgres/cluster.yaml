@@ -31,8 +31,8 @@ spec:
     podAntiAffinityType: required
     topologyKey: kubernetes.io/hostname
   certificates:
-    # Client certificates are validated against the SPIFFE CA shared by the
-    # whole trust domain (cert-manager/spiffe-ca-issuer.yaml). The cluster cannot
+    # Client certificates are validated against the cluster CA shared by the
+    # whole trust domain (cert-manager/cluster-ca-issuer.yaml). The cluster cannot
     # sign with it, so the streaming_replica certificate comes from there too
     # (replication-certificate.yaml). A role logs in with a certificate through a
     # 'hostssl <dbs> <role> all cert clientname=DN map=spiffe' rule in
@@ -138,7 +138,7 @@ spec:
     # A certificate login matches the client certificate's whole subject DN,
     # not just its CN. The client CA signs for the whole trust domain, so only
     # these exact DNs, which come from the policies in
-    # cert-manager/spiffe-policies.yaml, map to a role. SPIRE's SVIDs chain to
+    # cert-manager/cluster-policies.yaml, map to a role. SPIRE's SVIDs chain to
     # it too and put an entry's DNS name in the CN, but their subjects always
     # carry O=SPIRE and C=US, so they never equal these DNs.
     pg_ident:

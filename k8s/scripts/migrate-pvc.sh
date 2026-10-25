@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# migrate-pvc.sh [--copy-only] <namespace> <pvc> <owner, e.g. deploy/acme-dns or sts/couchdb> <target StorageClass>
+# migrate-pvc.sh [--copy-only] <namespace> <pvc> <owner, e.g. deploy/zot or sts/couchdb> <target StorageClass>
 # Moves one PVC to another StorageClass under the same name. Leaves the owner
 # scaled to 0; the caller switches the manifest to the new class and scales up.
 # The old volume stays as <pvc>-<old class prefix>-old, e.g. -ceph-old or

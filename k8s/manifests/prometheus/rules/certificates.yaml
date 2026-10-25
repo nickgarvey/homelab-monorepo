@@ -10,9 +10,8 @@ spec:
   groups:
     - name: certmanager.renewal
       rules:
-        # Every DNS-01 renewal depends on Let's Encrypt reaching ns1.home.garvey.sh
-        # and acme.garvey.sh, both of which publish our DHCP-assigned WAN IP with no
-        # DDNS automation (see the wan.dns group). When that breaks, renewal fails
+        # Every DNS-01 renewal depends on Let's Encrypt reaching ns1.home.garvey.sh,
+        # which publishes our DHCP-assigned WAN IP with no DDNS automation (see the wan.dns group). When that breaks, renewal fails
         # silently and the only symptom is the clock running down -- these rules are
         # the backstop that turns that into a page.
         #

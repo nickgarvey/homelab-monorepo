@@ -96,11 +96,10 @@ work — the first two cost nothing but cannot carry a publicly-trusted cert.
 | Scheme | Who serves it | Cert | Use it when |
 |---|---|---|---|
 | `<svc>.<ns>.k8s.home.garvey.sh` | `k8s_gateway` (`manifests/k8s-gateway/`), auto-generated from every LoadBalancer Service | none | You need *a* name and don't care which. Free — it appears the moment the Service exists. |
-| `<name>.home.garvey.sh` | our own Knot zone, from `modules/networking/dns.nix` | Let's Encrypt via acme-dns | **Preferred for a real cert.** Delegation lives in git, no Cloudflare credentials, no split-horizon override. `anki`. |
-| `<name>.garvey.sh` | Cloudflare | Let's Encrypt via acme-dns | The name genuinely belongs on the apex domain. Needs a CF token and a `garveyShOverrides` entry. `oci`, `jellyfin`, `temporal`. |
+| `<name>.home.garvey.sh` | our own Knot zone, from `modules/networking/dns.nix` | Let's Encrypt, DNS-01 in Knot | **Preferred for a real cert.** Everything lives in git, no Cloudflare credentials, no split-horizon override. `anki`. |
+| `<name>.garvey.sh` | Cloudflare | Let's Encrypt, DNS-01 in Knot via a Cloudflare CNAME | The name genuinely belongs on the apex domain. Needs a CF token for the challenge CNAME and a `garveyShOverrides` entry. `oci`, `jellyfin`, `temporal`. |
 
-Both cert-bearing schemes are covered by `manifests/acme-dns/ONBOARDING.md`, which
-forks per zone at step 2.
+Both cert-bearing schemes are covered by `manifests/cert-manager/ONBOARDING.md`.
 
 An app that cannot terminate TLS itself gets a Caddy sidecar — see `manifests/jellyfin/`
 and `manifests/anki/`.

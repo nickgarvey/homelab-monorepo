@@ -1,8 +1,8 @@
 # The worker's login to the OpenShell gateway: user agents-worker with the
 # gateway's user role (OU=openshell), which the gateway reads from the
 # certificate's subject (mtls_auth, vendor/openshell/kustomization.yaml).
-# Issued by the SPIFFE CA only because manifests/cert-manager/spiffe-policies.yaml
-# (spiffe-agents-worker) allows exactly this subject here. The role alone
+# Issued by the cluster CA only because manifests/cert-manager/cluster-policies.yaml
+# (cluster-agents-worker) allows exactly this subject here. The role alone
 # reaches no sandbox: the user must also be a member of the gateway workspace
 # it works in (agents).
 apiVersion: cert-manager.io/v1
@@ -35,4 +35,4 @@ spec:
   issuerRef:
     group: cert-manager.io
     kind: ClusterIssuer
-    name: spiffe-ca
+    name: cluster-ca

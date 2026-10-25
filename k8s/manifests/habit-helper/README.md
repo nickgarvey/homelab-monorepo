@@ -20,9 +20,9 @@ Habit Helper's data: the `habit_helper` database on the shared postgres
 
 The roles are managed by CloudNativePG (`manifests/postgres/cluster.yaml`),
 which also has their `pg_hba` and `pg_ident` lines; both certificates are
-from the SPIFFE CA, allowed only in this namespace by the
-`spiffe-habit-helper-api` and `spiffe-habit-helper-owner` policies
-(`manifests/cert-manager/spiffe-policies.yaml`). The grants are in the
+from the cluster CA, allowed only in this namespace by the
+`cluster-habit-helper-api` and `cluster-habit-helper-owner` policies
+(`manifests/cert-manager/cluster-policies.yaml`). The grants are in the
 migrations, which also close `CONNECT` on the database to everyone but
 `habit_helper_api`, so there is no manual `REVOKE` step.
 
@@ -103,11 +103,11 @@ migrations). Configured by environment only (`PGRST_DB_CONFIG=false`).
   5 minute lifetime ("The token service" in `manifests/agents/README.md`).
 - **Transport.** Plain HTTP on the ClusterIP Service: the sandbox
   supervisor's proxy verifies upstream TLS against the public roots only, so
-  a spiffe-ca certificate here would be refused. The token crosses the pod
+  a cluster-ca certificate here would be refused. The token crosses the pod
   network in cleartext and is good for 5 minutes. HTTPS would need the
-  supervisor image to put the spiffe-ca root where the proxy looks
+  supervisor image to put the root (pki/root.crt) where the proxy looks
   (`/etc/ssl/certs/ca-certificates.crt`), which would make the proxy trust
-  spiffe-ca for every upstream.
+  cluster-ca for every upstream.
 - **Network.** No CiliumNetworkPolicy of its own: there is no LoadBalancer,
   and `manifests/cilium/pod-ingress-default-deny.yaml` keeps the LAN out of
   the pod. Inside the cluster, the JWT is the boundary. The admin port (3001:
@@ -139,11 +139,11 @@ nixpkgs bump changes it; set it in `deployment.yaml` (the `&image` anchor).
 
 ## Apply (from `k8s/`)
 
-`manifests/cert-manager/spiffe-policies.yaml` first, then the roles and the
+`manifests/cert-manager/cluster-policies.yaml` first, then the roles and the
 database, then this namespace:
 
 ```sh
-kubectl apply -f manifests/cert-manager/spiffe-policies.yaml
+kubectl apply -f manifests/cert-manager/cluster-policies.yaml
 kubectl apply -f manifests/postgres/cluster.yaml -f manifests/postgres/databases.yaml
 kubectl -n postgres get cluster postgres -o jsonpath='{.status.managedRolesStatus.byStatus.reconciled}'   # lists the four roles
 kubectl apply -f manifests/habit-helper/namespace.yaml

@@ -1,5 +1,5 @@
-# matrix.garvey.sh's public certificate, through acme-dns (DNS-01; the account
-# is in manifests/acme-dns/secret.yaml). Synapse serves it itself on 443. It
+# matrix.garvey.sh's public certificate from Let's Encrypt, DNS-01 through Knot
+# (manifests/cert-manager/ONBOARDING.md). Synapse serves it itself on 443. It
 # reads the files only at start, so restart it after a renewal (README.md).
 apiVersion: cert-manager.io/v1
 kind: Certificate
@@ -13,5 +13,5 @@ spec:
   dnsNames:
     - matrix.garvey.sh
   issuerRef:
-    name: letsencrypt-acmedns-prod
+    name: letsencrypt-rfc2136-prod
     kind: ClusterIssuer

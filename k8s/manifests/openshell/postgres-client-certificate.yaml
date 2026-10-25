@@ -1,6 +1,6 @@
 # The gateway's login to the shared postgres: the CN is the postgres role, the URI
 # SAN its SPIFFE ID (the chart's ServiceAccount is openshell). Issued by the
-# SPIFFE CA only because manifests/cert-manager/spiffe-policies.yaml allows
+# cluster CA only because manifests/cert-manager/cluster-policies.yaml allows
 # exactly this name here.
 apiVersion: cert-manager.io/v1
 kind: Certificate
@@ -29,4 +29,4 @@ spec:
   issuerRef:
     group: cert-manager.io
     kind: ClusterIssuer
-    name: spiffe-ca
+    name: cluster-ca

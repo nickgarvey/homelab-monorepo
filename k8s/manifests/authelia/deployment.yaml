@@ -36,7 +36,7 @@ spec:
         fsGroup: 65532
       containers:
         # TLS terminator for auth.home.garvey.sh, following the anki/jellyfin sidecar
-        # pattern (manifests/acme-dns/ONBOARDING.md). Caddy loads the cert only
+        # pattern (manifests/cert-manager/ONBOARDING.md). Caddy loads the cert only
         # at startup, so a `kubectl rollout restart` is needed after each
         # ~60-day cert-manager renewal, same as anki, zot and jellyfin.
         - name: caddy

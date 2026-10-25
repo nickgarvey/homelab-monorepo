@@ -73,7 +73,7 @@ spec:
             - --temporal-ca=/run/spiffe/bundle.pem
             - --gateway-cert=/etc/agents/openshell/tls.crt
             - --gateway-key=/etc/agents/openshell/tls.key
-            # The spiffe-ca root, which also signs the gateway's certificate.
+            # The root (pki/root.crt), which also signs the gateway's certificate.
             - --gateway-ca=/etc/agents/openshell/ca.crt
             - --postgres=postgres://agents@postgres-rw.postgres.svc:5432/agents
             - --postgres-cert=/etc/agents/postgres/tls.crt

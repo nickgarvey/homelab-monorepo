@@ -21,14 +21,14 @@ cainjector:
   nodeSelector: *controlPlaneSelector
   tolerations: *controlPlaneTolerations
 
-# The cluster is IPv6-only and acme.garvey.sh has an IPv4-only A record.
-# cert-manager's default DNS-01 self-check queries the authoritative server
-# (64.186.8.205) directly -> NAT64 -> our own WAN IP -> router input reject
-# ("permission denied"), so DNS-01 challenges never advance. These two args
-# make the self-check use cluster CoreDNS as a recursive resolver instead;
-# CoreDNS -> node -> Blocky -> upstream resolves the public delegation/TXT
-# that Let's Encrypt itself also uses. (LE's own validation was never the
-# problem.)
+# The cluster is IPv6-only and home.garvey.sh's authoritative server is
+# published only at our own WAN IPv4 (ns1.home.garvey.sh). cert-manager's
+# default DNS-01 self-check queries the authoritative server directly -> NAT64
+# -> our own WAN IP -> router input reject ("permission denied"), so DNS-01
+# challenges never advance. These two args make the self-check use cluster
+# CoreDNS as a recursive resolver instead: CoreDNS -> Blocky -> kresd -> Knot,
+# and through the public CNAME for garvey.sh names. (LE's own validation
+# was never the problem.)
 #
 # fd43::a is the kube-dns Service ClusterIP (CoreDNS), i.e. the same resolver
 # every pod uses. It is NOT a magic constant: Kubernetes/k3s assigns cluster
@@ -44,10 +44,10 @@ extraArgs:
   - --dns01-recursive-nameservers-only
   - --dns01-recursive-nameservers=[fd43::a]:53
 
-# The built-in approver approves every issuer except the SPIFFE CA, whose
+# The built-in approver approves every issuer except the cluster CA, whose
 # requests approver-policy decides (vendor/cert-manager-approver-policy/). Listing
 # the ClusterIssuers by name keeps ACME renewals working without a policy.
 approveSignerNames:
   - issuers.cert-manager.io/*
-  - clusterissuers.cert-manager.io/letsencrypt-acmedns-prod
-  - clusterissuers.cert-manager.io/letsencrypt-acmedns-staging
+  - clusterissuers.cert-manager.io/letsencrypt-rfc2136-prod
+  - clusterissuers.cert-manager.io/letsencrypt-rfc2136-staging
