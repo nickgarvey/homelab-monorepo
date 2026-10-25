@@ -1,0 +1,24 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: repo-backup-alerts
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+    prometheus: prometheus
+spec:
+  groups:
+    - name: repo-backup
+      rules:
+        # Daily, with up to an hour of random delay; after talos has been off,
+        # the missed run starts within that hour of boot, hence the 2h `for`.
+        # Metric: modules/services/repo-backup.nix. While talos is off nothing
+        # is pushed and this stays quiet.
+        - alert: RepoBackupStale
+          expr: time() - max(repo_backup_last_success_timestamp_seconds) > 36 * 3600
+          for: 2h
+          labels:
+            severity: warning
+          annotations:
+            summary: "No homelab-monorepo backup for {{ $value | humanizeDuration }}"
+            description: "The daily repo-backup timer on talos has not written an archive to ~/local-drive/backups/homelab-monorepo. Check `journalctl -u repo-backup` on talos."
