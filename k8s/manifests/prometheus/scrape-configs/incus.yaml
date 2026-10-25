@@ -1,0 +1,57 @@
+# Incus's own metrics (/1.0/metrics) on lydia, the only Incus host
+# (modules/virtualisation/incus.nix). Incus accepts Prometheus's JWT-SVID
+# (spiffe-helper-configmap.yaml) and its authorization scriptlet lets
+# spiffe://home.garvey.sh/ns/prometheus/sa/prometheus view metrics only.
+#
+# The job is raw Prometheus config, in a Secret named by the Prometheus CR's
+# additionalScrapeConfigs, because a ScrapeConfig cannot read its bearer token
+# from a file. Nothing in it is secret.
+#
+# Incus serves a self-signed certificate (CN=root@microatx, SAN microatx,
+# valid to 2036), pinned below as the only CA, with that name to verify.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: prometheus-additional-scrape-configs
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+stringData:
+  incus.yaml: |
+    - job_name: incus
+      scheme: https
+      metrics_path: /1.0/metrics
+      authorization:
+        type: Bearer
+        credentials_file: /run/spiffe/jwt_svid.token
+      tls_config:
+        ca_file: /etc/prometheus/configmaps/prometheus-incus-ca/lydia.crt
+        server_name: microatx
+      static_configs:
+        - targets:
+            - lydia.home.garvey.sh:8443
+          labels:
+            hostname: lydia
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-incus-ca
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+data:
+  lydia.crt: |
+    -----BEGIN CERTIFICATE-----
+    MIICBDCCAYqgAwIBAgIRAMJ6BFWEeyVCHWFHwKO/GJkwCgYIKoZIzj0EAwMwMzEZ
+    MBcGA1UEChMQTGludXggQ29udGFpbmVyczEWMBQGA1UEAwwNcm9vdEBtaWNyb2F0
+    eDAeFw0yNjA0MDEwNDIyNDJaFw0zNjAzMjkwNDIyNDJaMDMxGTAXBgNVBAoTEExp
+    bnV4IENvbnRhaW5lcnMxFjAUBgNVBAMMDXJvb3RAbWljcm9hdHgwdjAQBgcqhkjO
+    PQIBBgUrgQQAIgNiAASMvWlrgJRyCQAcD3xwEzw7gNywe26IdclHDVNE1akFftCq
+    qM2zQRIe2XZobkKySihZJzeS8xGLYdEmZT6XQQ7FPTSJ8pEwNoD/GeWbFuYpI5cQ
+    kYGpJeo/Qf7rfT4OqJajYjBgMA4GA1UdDwEB/wQEAwIFoDATBgNVHSUEDDAKBggr
+    BgEFBQcDATAMBgNVHRMBAf8EAjAAMCsGA1UdEQQkMCKCCG1pY3JvYXR4hwR/AAAB
+    hxAAAAAAAAAAAAAAAAAAAAABMAoGCCqGSM49BAMDA2gAMGUCMAQHj2KkXXroEtvA
+    ouAl/zNMeliNQkLXHzhpGmpTBPKZE/XMSWCi/cGD/byWC9IkPwIxAOe0P9YUEAmd
+    +wmLKKa5XnVuCL/G7Lzl4XgvebTdcy8BTK/JzYEoO7bj7L5E1L4Now==
+    -----END CERTIFICATE-----

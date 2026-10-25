@@ -114,7 +114,56 @@ spec:
           memory: 32Mi
         limits:
           memory: 128Mi
+    # Writes the JWT-SVID that the incus scrape job sends
+    # (spiffe-helper-configmap.yaml, scrape-configs/incus.yaml).
+    - name: spiffe-helper
+      image: ghcr.io/spiffe/spiffe-helper:0.11.0
+      args: ["-config", "/etc/spiffe-helper/helper.conf"]
+      volumeMounts:
+        - name: spiffe-workload-api
+          mountPath: /spiffe-workload-api
+          readOnly: true
+        - name: spiffe-helper-config
+          mountPath: /etc/spiffe-helper
+          readOnly: true
+        - name: svid
+          mountPath: /run/spiffe
+      livenessProbe:
+        httpGet:
+          path: /live
+          port: 8081
+      readinessProbe:
+        httpGet:
+          path: /ready
+          port: 8081
+      resources:
+        requests:
+          cpu: 5m
+          memory: 16Mi
+        limits:
+          memory: 64Mi
+  # The prometheus container reads the JWT-SVID from here.
+  volumeMounts:
+    - name: svid
+      mountPath: /run/spiffe
+      readOnly: true
+  # Mounted at /etc/prometheus/configmaps/<name>.
+  configMaps:
+    - prometheus-incus-ca
+  additionalScrapeConfigs:
+    name: prometheus-additional-scrape-configs
+    key: incus.yaml
   volumes:
+    - name: spiffe-workload-api
+      csi:
+        driver: csi.spiffe.io
+        readOnly: true
+    - name: spiffe-helper-config
+      configMap:
+        name: prometheus-spiffe-helper
+    - name: svid
+      emptyDir:
+        medium: Memory
     - name: caddy-config
       configMap:
         name: prometheus-caddy

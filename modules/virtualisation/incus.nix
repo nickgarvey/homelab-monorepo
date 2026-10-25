@@ -4,6 +4,28 @@
 
 let
   cfg = config.homelab.incus;
+
+  # Prometheus in k3s reads /1.0/metrics with a JWT-SVID
+  # (k8s/manifests/prometheus/scrape-configs/incus.yaml). Incus checks
+  # the token against SPIRE's OIDC discovery provider (issuer, signature,
+  # expiry, audience), then this scriptlet decides. Every OIDC client comes
+  # here, and any pod can get a JWT-SVID for any audience, so the scriptlet
+  # checks the subject: Prometheus may read and nothing else. The endpoint
+  # needs can_view_metrics on the server, but Incus keeps each sample only if
+  # the caller has can_view on its instance (instance:<project>/<name>) or, for
+  # host-level samples, on the server: its can_view_metrics fallback is never
+  # reached through a scriptlet. So Prometheus can also read server and
+  # instance details through the API.
+  metricsReader = "spiffe://home.garvey.sh/ns/prometheus/sa/prometheus";
+  authorizationScriptlet = ''
+    def authorize(details, object, entitlement):
+        return (
+            details.Protocol == "oidc"
+            and details.Username == "${metricsReader}"
+            and entitlement in ("can_view", "can_view_metrics")
+            and (object == "server:incus" or object.startswith("instance:"))
+        )
+  '';
 in
 {
   options.homelab.incus = {
@@ -26,21 +48,6 @@ in
       default = [ ];
       description = "Users to add to the incus-admin group.";
     };
-
-    metrics = {
-      enable = lib.mkOption {
-        type = lib.types.bool;
-        default = true;
-        description = "Export a per-VM uptime gauge through the homelab metrics pipeline.";
-      };
-
-      hostname = lib.mkOption {
-        type = lib.types.str;
-        default = config.networking.hostName;
-        defaultText = lib.literalExpression "config.networking.hostName";
-        description = "Value for the hostname tag on exported metrics.";
-      };
-    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -50,6 +57,13 @@ in
       preseed = {
         config = {
           "core.https_address" = cfg.httpsAddress;
+          "oidc.issuer" = "https://spiffe-oidc.home.garvey.sh";
+          # Incus enables OIDC only with a client ID set; bearer tokens never
+          # use it (it is for the browser login flow, which SPIRE has none of).
+          "oidc.client.id" = "incus";
+          "oidc.audience" = "incus.home.garvey.sh";
+          "authorization.client.oidc" = "scriptlet";
+          "authorization.scriptlet" = authorizationScriptlet;
         };
         storage_pools = [
           {
@@ -74,51 +88,5 @@ in
     systemd.services.incus.serviceConfig.ExecStartPre = lib.mkBefore [
       "-${pkgs.coreutils}/bin/timeout 60 ${pkgs.qemu_kvm}/bin/qemu-system-x86_64 -version"
     ];
-
-    # Incus VMs are created/destroyed dynamically, so their uptime can't be
-    # hardcoded per-VM the way a static guest's can — enumerate whatever's
-    # actually running at collection time instead.
-    homelab.metrics.sources = lib.mkIf cfg.metrics.enable {
-      incus_vm_uptime = {
-        type = "exec";
-        mode = "scheduled";
-        scheduled.exec_interval_secs = 60;
-        decoding.codec = "json";
-        command = [
-          "${pkgs.bash}/bin/bash"
-          "-c"
-          # Wrapped in an array (not one object per line) so a zero-VM result is
-          # still valid JSON (`[]`) instead of empty stdout, which the decoder
-          # below can't parse. Vector's json codec expands a top-level array into
-          # one event per element.
-          # started_at has fractional-second precision (like incus's created_at),
-          # which jq's fromdateiso8601 can't parse — strip it before converting.
-          # HOME must point somewhere writable: the incus CLI needs to create
-          # ~/.config/incus for its client cert on first run, but vector's
-          # systemd DynamicUser has no home directory by default.
-          ''HOME=/var/lib/vector ${pkgs.incus}/bin/incus list --format json | ${pkgs.jq}/bin/jq -c '[.[] | select(.type=="virtual-machine" and .status=="Running") | {name: .name, uptime: ((now|floor) - (.state.started_at | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601))}]' ''
-        ];
-      };
-    };
-
-    homelab.metrics.transforms = lib.mkIf cfg.metrics.enable {
-      incus_vm_uptime_metric = {
-        type = "log_to_metric";
-        inputs = [ "incus_vm_uptime" ];
-        metrics = [{
-          type = "gauge";
-          field = "uptime";
-          name = "incus_vm_uptime_seconds";
-          tags = {
-            vm = "{{ name }}";
-            hostname = cfg.metrics.hostname;
-          };
-        }];
-      };
-    };
-
-    # Vector needs Incus API access to enumerate VMs for incus_vm_uptime above.
-    systemd.services.vector.serviceConfig.SupplementaryGroups =
-      lib.mkIf cfg.metrics.enable [ "incus-admin" ];
   };
 }
