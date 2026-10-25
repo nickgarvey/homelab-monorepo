@@ -6,6 +6,7 @@
     ../../modules/desktop/common-workstation.nix
     ../../modules/desktop/niri.nix
     ../../modules/desktop/openscad.nix
+    ../../modules/desktop/openbao-ssh-cert.nix
     ../../modules/networking/network-manager.nix
   ];
 
@@ -73,7 +74,8 @@
   # Build helpers (modules/core/nix-builder.nix, nix-oc1lr). They add capacity
   # but are never required: talos keeps its own build slots and every
   # system-feature, so a helper being down only makes builds slower. The
-  # daemon logs in with talos's SSH host key. Helpers fetch from the caches
+  # daemon logs in with an OpenBao-signed certificate and trusts the helpers by
+  # their host certificates (docs/openbao.md). Helpers fetch from the caches
   # themselves (builders-use-substitutes) instead of receiving inputs from talos.
   nix.distributedBuilds = true;
   nix.settings.builders-use-substitutes = true;
@@ -85,9 +87,8 @@
       systems = [ "x86_64-linux" "aarch64-linux" ];
       protocol = "ssh-ng";
       sshUser = "nix-ssh";
-      sshKey = "/etc/ssh/ssh_host_ed25519_key";
-      # base64 of wabbajack's /etc/ssh/ssh_host_ed25519_key.pub
-      publicHostKey = "c3NoLWVkMjU1MTkgQUFBQUMzTnphQzFsWkRJMU5URTVBQUFBSUkwYVExekVEdVFVN2ZWVVVGVDFJSGxWNWZLamtHRmJHaERNS3Y5cnpMVmEgcm9vdEBmcmFtZXdvcms=";
+      # Signed as nix-ssh by OpenBao (modules/desktop/openbao-ssh-cert.nix).
+      sshKey = "/var/lib/nix-builder-ssh/id_ed25519";
       maxJobs = 2;
       speedFactor = 4;
       supportedFeatures = [ "big-parallel" "nixos-test" "benchmark" "kvm" ];
@@ -97,9 +98,8 @@
       systems = [ "x86_64-linux" ];
       protocol = "ssh-ng";
       sshUser = "nix-ssh";
-      sshKey = "/etc/ssh/ssh_host_ed25519_key";
-      # base64 of lydia's /etc/ssh/ssh_host_ed25519_key.pub
-      publicHostKey = "c3NoLWVkMjU1MTkgQUFBQUMzTnphQzFsWkRJMU5URTVBQUFBSUI0ckNZSVRTQ1NTdG52aFJqVitoZFpJcWl3dWpxU0JSTmJhaXphd2M4NEggcm9vdEBtaWNyb2F0eA==";
+      # Signed as nix-ssh by OpenBao (modules/desktop/openbao-ssh-cert.nix).
+      sshKey = "/var/lib/nix-builder-ssh/id_ed25519";
       maxJobs = 2;
       speedFactor = 1;
       supportedFeatures = [ "big-parallel" "nixos-test" "benchmark" "kvm" ];

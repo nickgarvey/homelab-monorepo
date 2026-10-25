@@ -126,3 +126,47 @@ bao operator raft snapshot restore -force <file>.snap
 After the restore the node holds the snapshot's data, including its auth methods,
 so `login.sh` works against it. Tested on 2026-10-25 with a throwaway node on talos.
 Re-grow by starting the other nodes empty: `retry_join` brings them in.
+
+## SSH certificates
+
+The `ssh-user` mount is an Ed25519 SSH CA (`pki/openbao/main.tf`); every NixOS host
+trusts it (`TrustedUserCAKeys` in `modules/core/nixos-common.nix`, public key in
+`pki/openbao/ssh-user-ca.pub`). A certificate logs in as the account named in its
+principals; the `ngarvey` role signs for `ngarvey` only, for 8 hours.
+
+On talos, `modules/desktop/openbao-ssh-cert.nix` keeps
+`~/.local/state/openbao-ssh/deploy` (a key in no `authorized_keys`) signed: an hourly
+user timer renews once fewer than 2 hours remain, logging in with `login.sh`. The
+system ssh config offers that key first and `~/.ssh/id_rsa` second, so deploys and
+logins use the certificate, and fall back to `id_rsa` (the break-glass key, still in
+`authorized_keys`) when the certificate has expired and OpenBao is unreachable.
+Logging in with a certificate never contacts OpenBao.
+
+The key is kept out of `~/.ssh` because gcr-ssh-agent loads every `~/.ssh` key that
+has a `.pub` beside it, certificate included, and would keep each expired
+certificate as another identity to offer first until sshd's `MaxAuthTries` ran out.
+
+```sh
+systemctl --user start openbao-ssh-cert     # renew now
+ssh-keygen -L -f ~/.local/state/openbao-ssh/deploy-cert.pub
+```
+
+sshd logs a certificate login as `ED25519-CERT ... ID ngarvey-jwt-ngarvey`.
+Replacing the CA means updating `ssh-user-ca.pub` and deploying every host before
+the old CA's certificates stop being issued.
+
+### Build helpers
+
+talos's nix-daemon logs in to lydia and wabbajack as `nix-ssh` with
+`/var/lib/nix-builder-ssh/id_ed25519` and an 8-hour certificate from the `nix-ssh`
+role, renewed hourly by `openbao-builder-cert.service` (talos-builder AppRole,
+`secrets/openbao-talos-builder.yaml`). The helpers have no authorized key for
+`nix-ssh`: the certificate is the only way in. If OpenBao is down long enough for
+it to lapse, talos builds locally until the next renewal.
+
+The helpers present host certificates from the separate `ssh-host` CA
+(`pki/openbao/ssh-host-ca.pub`, role `builder-host`, 30 days, renewed with 10 left
+by `openbao-host-cert.service`, `secrets/openbao-builder-host.yaml`). talos trusts
+them through an `@cert-authority` line in `/etc/ssh/ssh_known_hosts` instead of
+pinned host keys. A new helper needs its name added to the `builder-host` role's
+`allowed_domains` and to that known_hosts entry.

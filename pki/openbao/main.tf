@@ -73,3 +73,114 @@ resource "vault_approle_auth_backend_role" "snapshot" {
   secret_id_bound_cidrs = ["127.0.0.1/32"]
   token_bound_cidrs     = ["127.0.0.1/32"]
 }
+
+# SSH user certificates for deploys and logins (docs/openbao.md). Every NixOS
+# host trusts this CA (TrustedUserCAKeys in modules/core/nixos-common.nix); a
+# certificate's principal must equal the account it logs in as.
+resource "vault_mount" "ssh_user" {
+  path        = "ssh-user"
+  type        = "ssh"
+  description = "SSH user CA"
+}
+
+resource "vault_ssh_secret_backend_ca" "user" {
+  backend              = vault_mount.ssh_user.path
+  generate_signing_key = true
+  key_type             = "ed25519"
+}
+
+# talos's openbao-deploy key, refreshed hourly by modules/desktop/openbao-ssh-cert.nix.
+resource "vault_ssh_secret_backend_role" "ngarvey" {
+  backend                 = vault_mount.ssh_user.path
+  name                    = "ngarvey"
+  key_type                = "ca"
+  allow_user_certificates = true
+  allowed_users           = "ngarvey"
+  default_user            = "ngarvey"
+  ttl                     = "28800"
+  max_ttl                 = "28800"
+  allowed_extensions      = "permit-pty,permit-port-forwarding,permit-agent-forwarding"
+  default_extensions = {
+    "permit-pty"             = ""
+    "permit-port-forwarding" = ""
+  }
+  key_id_format = "{{role_name}}-{{token_display_name}}"
+}
+
+# talos's nix-daemon logging in to the build helpers as nix-ssh
+# (modules/desktop/openbao-ssh-cert.nix, modules/core/nix-builder.nix).
+resource "vault_ssh_secret_backend_role" "nix_ssh" {
+  backend                 = vault_mount.ssh_user.path
+  name                    = "nix-ssh"
+  key_type                = "ca"
+  allow_user_certificates = true
+  allowed_users           = "nix-ssh"
+  default_user            = "nix-ssh"
+  ttl                     = "28800"
+  max_ttl                 = "28800"
+  allowed_extensions      = ""
+  default_extensions      = {}
+  key_id_format           = "{{role_name}}-{{token_display_name}}"
+}
+
+resource "vault_policy" "talos_builder" {
+  name   = "talos-builder"
+  policy = <<-EOT
+    path "ssh-user/sign/nix-ssh" {
+      capabilities = ["update"]
+    }
+  EOT
+}
+
+resource "vault_approle_auth_backend_role" "talos_builder" {
+  backend        = vault_auth_backend.approle.path
+  role_name      = "talos-builder"
+  token_policies = [vault_policy.talos_builder.name]
+  token_ttl      = 600
+  token_max_ttl  = 600
+}
+
+# SSH host certificates for the build helpers, so talos trusts them by CA
+# instead of pinned host keys. A separate CA from the user one: host and user
+# trust are configured in different places and must not be interchangeable.
+resource "vault_mount" "ssh_host" {
+  path        = "ssh-host"
+  type        = "ssh"
+  description = "SSH host CA"
+}
+
+resource "vault_ssh_secret_backend_ca" "host" {
+  backend              = vault_mount.ssh_host.path
+  generate_signing_key = true
+  key_type             = "ed25519"
+}
+
+resource "vault_ssh_secret_backend_role" "builder_host" {
+  backend                 = vault_mount.ssh_host.path
+  name                    = "builder-host"
+  key_type                = "ca"
+  allow_host_certificates = true
+  allowed_domains         = "lydia,wabbajack,lydia.home.garvey.sh,wabbajack.home.garvey.sh"
+  allow_bare_domains      = true
+  allow_subdomains        = false
+  ttl                     = "2592000"
+  max_ttl                 = "2592000"
+  key_id_format           = "{{role_name}}-{{token_display_name}}"
+}
+
+resource "vault_policy" "builder_host" {
+  name   = "builder-host"
+  policy = <<-EOT
+    path "ssh-host/sign/builder-host" {
+      capabilities = ["update"]
+    }
+  EOT
+}
+
+resource "vault_approle_auth_backend_role" "builder_host" {
+  backend        = vault_auth_backend.approle.path
+  role_name      = "builder-host"
+  token_policies = [vault_policy.builder_host.name]
+  token_ttl      = 600
+  token_max_ttl  = 600
+}

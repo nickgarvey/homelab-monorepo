@@ -60,8 +60,13 @@
     settings = {
       PasswordAuthentication = false;
       KbdInteractiveAuthentication = false;
+      # OpenBao's SSH user CA (docs/openbao.md): a certificate logs in as the
+      # account named in its principals. authorized_keys still works alongside,
+      # which is the break-glass path when OpenBao is down.
+      TrustedUserCAKeys = "/etc/ssh/trusted-user-ca.pub";
     };
   };
+  environment.etc."ssh/trusted-user-ca.pub".source = ../../pki/openbao/ssh-user-ca.pub;
 
   # No LLMNR responder or lookups: anyone on the LAN can answer a single-label
   # query, and nothing here resolves single-label names.

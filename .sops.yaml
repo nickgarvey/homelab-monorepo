@@ -98,6 +98,20 @@ creation_rules:
       - *fus
       - *ro
       - *dah
+  #   openbao-talos-builder: AppRole for talos's nix-ssh certificate (`workstation`
+  #     is talos's age key).
+  #   openbao-builder-host: AppRole for the build helpers' SSH host certificates.
+  - path_regex: secrets/openbao-talos-builder\.yaml$
+    key_groups:
+    - age:
+      - *ngarvey
+      - *workstation
+  - path_regex: secrets/openbao-builder-host\.yaml$
+    key_groups:
+    - age:
+      - *ngarvey
+      - *lydia
+      - *wabbajack
   - path_regex: secrets/openbao-(recovery|admin)\.yaml$
     key_groups:
     - age:
