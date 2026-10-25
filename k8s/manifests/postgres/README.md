@@ -70,12 +70,76 @@ spec:
   cluster: {name: postgres}
   pluginConfiguration: {name: barman-cloud.cloudnative-pg.io}
 YAML
-kubectl -n postgres get backup
+kubectl -n postgres get objectstore postgres-backups -o jsonpath='{.status.serverRecoveryWindow}'
 ```
+`kubectl -n postgres get backup` lists no `Backup` objects; the recovery window
+(oldest restorable point, last base backup) is in the ObjectStore status above.
 
-To restore, create a new `Cluster` with `bootstrap.recovery` and
-`externalClusters` pointing at the `postgres-backups` ObjectStore (see the
-CloudNativePG recovery docs); try it in a scratch namespace first.
+### Restore
+
+A restore builds a new `Cluster` from the bucket; it never touches the
+running one. This procedure was tested on 2026-10-25 into a scratch namespace.
+That restore took about four minutes and matched the live row counts in every
+database.
+
+1. To restore up to now, first close the current WAL segment so it gets
+   archived, because recovery replays only archived WAL:
+   ```sh
+   kubectl -n postgres exec postgres-1 -c postgres -- psql -U postgres -c 'select pg_switch_wal()'
+   ```
+2. Create the target namespace and copy in the S3 credentials (the
+   sops-secrets-operator only writes them into `postgres`):
+   ```sh
+   kubectl create namespace postgres-restore-test
+   kubectl -n postgres get secret postgres-backups-s3 -o json \
+     | jq '{apiVersion,kind,type,data,metadata:{name:.metadata.name,namespace:"postgres-restore-test"}}' \
+     | kubectl apply -f -
+   ```
+3. Apply an ObjectStore with the same spec as `objectstore.yaml` but in the
+   new namespace and without `retentionPolicy`, plus this Cluster:
+   ```yaml
+   apiVersion: postgresql.cnpg.io/v1
+   kind: Cluster
+   metadata:
+     name: restored
+     namespace: postgres-restore-test
+   spec:
+     instances: 1
+     imageName: ghcr.io/cloudnative-pg/postgresql:17.11-standard-trixie
+     storage: {storageClass: ceph-rbd, size: 20Gi}
+     bootstrap:
+       recovery:
+         source: origin
+         # For a point-in-time restore instead of the latest:
+         # recoveryTarget: {targetTime: "2026-10-25 18:00:00+00"}
+     externalClusters:
+       - name: origin
+         plugin:
+           name: barman-cloud.cloudnative-pg.io
+           parameters:
+             barmanObjectName: postgres-backups
+             serverName: postgres
+   ```
+   There is no `spec.plugins`, so nothing in the restored cluster archives to
+   `postgres-backups`. A cluster that replaces the live one needs the
+   `plugins` block back with its own `serverName`, because two clusters must
+   not archive under the same name. The restored cluster also lacks the
+   certificates, roles and `pg_hba` from `cluster.yaml`: the roles themselves
+   come back with the data, but the rest must be carried over.
+4. Wait for `kubectl -n postgres-restore-test get cluster restored` to show a
+   healthy state. Partway through, the event "Primary instance is being
+   restarted without a switchover" is expected: the pod first starts with the
+   barman sidecar used for the recovery, then the operator rolls it once to
+   remove that sidecar.
+5. Check it. Compare `count(*)` of each table between the two clusters, and
+   check the recovery end point:
+   `cat $PGDATA/pg_wal/*.history` in the new pod shows the LSN where recovery
+   stopped. UNLOGGED tables come back empty: that is Postgres behaviour, not
+   data loss. Currently these are `mas.queue_leader`,
+   `synapse.worker_read_write_locks` and
+   `synapse.worker_read_write_locks_mode`, all of them locks or leases.
+6. A test restore ends with `kubectl delete namespace postgres-restore-test`,
+   which deletes its PVC along with it.
 
 ## Access control
 
