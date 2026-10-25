@@ -7,6 +7,7 @@
     ../../modules/desktop/niri.nix
     ../../modules/desktop/openscad.nix
     ../../modules/desktop/openbao-ssh-cert.nix
+    ../../modules/services/repo-backup.nix
     ../../modules/networking/network-manager.nix
   ];
 
