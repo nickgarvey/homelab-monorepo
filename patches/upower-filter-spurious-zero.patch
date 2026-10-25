@@ -1,3 +1,21 @@
+Upstream:      upower (gitlab.freedesktop.org/upower/upower):
+               src/linux/up-device-supply-battery.c
+Upstreamable:  yes, behind a quirk flag rather than unconditionally
+How:           A merge request on freedesktop GitLab; search its issues for
+               Framework 13 AMD zero readings first. Upstream would likely want
+               the filter enabled by a hwdb/udev property for affected machines.
+Written:       2026-05-11, against upower 1.91.1
+Last checked:  2026-10-25: 1.91.5 has no such filter
+Remove when:   upower filters these readings itself, or no host has a battery
+               that produces them
+Applied by:    modules/desktop/upower-overlay.nix
+
+Some embedded controllers (seen on a Framework 13 AMD) report charge_now and
+capacity as 0 for a single polling cycle. upower passes that through, and the
+desktop fires a "battery critical" warning. The patch drops a near-zero reading
+that follows a healthy one, and accepts it on the next cycle if the kernel
+still reports 0.
+
 --- a/src/linux/up-device-supply-battery.c
 +++ b/src/linux/up-device-supply-battery.c
 @@ -76,6 +76,8 @@

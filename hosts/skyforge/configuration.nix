@@ -227,8 +227,8 @@
   };
 
   # The mainsail module builds its nginx upstream as `${moonraker.address}:${port}`,
-  # which leaves an IPv6 address unbracketed (`::1:7125`). Override it with the
-  # bracketed form so nginx parses it correctly.
+  # which leaves an IPv6 address unbracketed (`server ::1:7125;`), and nginx rejects
+  # it. Override it with the bracketed form. fluidd.nix has the same bug upstream.
   services.nginx.upstreams.mainsail-apiserver.servers = lib.mkForce {
     "[::1]:7125" = {};
   };

@@ -1,5 +1,30 @@
-Moves the #!/bin/sh line of the bundled qatlib and qatzip autogen.sh files above
-Intel's license header, so the kernel can exec them (patches/ceph-overlay.nix).
+Upstream:      Ceph's vendored Intel qatlib and QATzip: src/qatlib/autogen.sh,
+               src/qatzip/autogen.sh; nixpkgs pkgs/by-name/ce/ceph
+Upstreamable:  yes; already fixed in Intel's repos and Ceph main, not in any
+               stable branch
+How:           Issues filed: NixOS/nixpkgs#576414 and
+               https://tracker.ceph.com/issues/81385 (backport to umbrella and
+               tentacle requested). Ceph main has it via ceph/ceph#72402, a QATzip
+               major-version bump, so a shebang-only backport may suit the stable
+               branches better. Until a release reaches nixpkgs, nixpkgs could
+               carry this patch in src.nix.
+Written:       2026-10-15, against Ceph 20.2.4 (nixpkgs)
+Last checked:  2026-10-25: nixpkgs still at 20.2.4 without a fix; #576414 open
+Remove when:   nixpkgs' ceph builds without it (patches/ceph-overlay.nix throws
+               once nixpkgs' ceph files mention autogen, and this patch stops
+               applying if the tarball fixes the files)
+Applied by:    patches/ceph-overlay.nix
+
+Moves the #!/bin/sh line of the bundled qatlib and qatzip autogen.sh files
+above Intel's license header, where it sits on line 36. cmake runs ./autogen.sh
+as qatlib_ext's configure command, execve returns ENOEXEC, and the build stops
+at ~4% with "Command failed (exec format error)". patchShebangs only rewrites a
+shebang on line 1.
+
+The files were always broken; libuv 1.53.0 exposed them. cmake spawns through
+libuv, which until 1.52.1 used fork and glibc's execvp (which reruns an ENOEXEC
+file with /bin/sh). 1.53.0 (libuv#3520) uses posix_spawn on Linux, and glibc's
+posix_spawn has not retried through the shell since 2.15.
 
 diff -ru a/src/qatlib/autogen.sh b/src/qatlib/autogen.sh
 --- a/src/qatlib/autogen.sh

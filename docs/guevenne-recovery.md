@@ -114,7 +114,8 @@ That preference lives in the web client's `localStorage` inside JMP's QtWebEngin
 profile, i.e. a LevelDB blob — not a file worth managing. It may also be redundant now:
 jellyfin-web asks the host app via `appHost.getDefaultLayout()`, JMP feeds that from its
 `webMode` setting, and that hook only started working once the NativeShell injection bug
-was fixed (see `patches/UPSTREAMABLE_FIXES.md`). Worth checking before setting it by hand.
+was fixed (jellyfin-desktop commit `cabddc6`, in nixpkgs' 2.0.0-unstable-2026-08-31).
+Worth checking before setting it by hand.
 
 ## 4. Recreate the controller input map
 
@@ -184,8 +185,18 @@ eyes and hands:
 | JMP log | `~/.local/share/jellyfin-desktop/profiles/*/logs/jellyfin-desktop.log` |
 
 `Web Client has not connected, handling input in host instead.` in that log means the
-NativeShell bridge is down and *all* input is dead — see `patches/UPSTREAMABLE_FIXES.md`, and
-note the Qt QML disk-cache trap documented there before you conclude a patch didn't work.
+NativeShell bridge is down and *all* input is dead, and mpv logs
+`vo/libmpv: No render context set`. In jellyfin-desktop 2.0.0 the cause was the bootstrap
+script being registered on the view (`web.userScripts`) rather than the profile, so it was
+not injected into the remote web client after the cross-origin navigation from the bundled
+server picker; upstream fixed it in `cabddc6`. With `--remote-debugging-port`, check the
+web client document for `window.jmpInfo`, `window.NativeShell` and `QWebChannel`.
+
+Qt caches compiled QML under `~/.cache/jellyfin-desktop/qmlcache`, keyed on the `qrc:`
+path, so a stale unit can keep running an old `webview.qml` across rebuilds. The
+`jellyfin-tv` launcher sets `QML_DISABLE_DISK_CACHE=1`; if you launch JMP another way,
+compare the QML line numbers in the log (`@ 275`) with the file you think you built
+before concluding a fix didn't work.
 
 ## Do not use "Switch to Desktop"
 

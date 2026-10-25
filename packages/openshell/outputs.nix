@@ -13,16 +13,16 @@ let
 
   # Upstream's v0.1.3 policy DNS answers every AAAA query with NODATA, so no
   # sandbox in this IPv6-only cluster could resolve a name (NVIDIA/OpenShell#3702,
-  # rebased; see patches/UPSTREAMABLE_FIXES.md). agents/outputs.nix checks it
-  # is applied.
+  # rebased; see the patch header). agents/outputs.nix checks it is
+  # applied.
   patch = ../../patches/openshell-ipv6-policy-dns.patch;
 
   # Upstream's Kubernetes driver puts the sandbox template's labels only on the
   # workload pod, never on the supervisor pod that holds the SPIFFE identity,
   # where the openshell-sandboxes ClusterSPIFFEID (k8s/vendor/spire/values.yaml)
   # reads the agent type. This copies them over, under the driver's own labels
-  # (see patches/UPSTREAMABLE_FIXES.md). agents/outputs.nix gives it a
-  # deadline. Applies on top of the #3702 patch.
+  # (see the patch header). agents/outputs.nix gives it a deadline. Applies on
+  # top of the #3702 patch.
   labelsPatch = ../../patches/openshell-supervisor-template-labels.patch;
 
   src = pkgs.applyPatches {
