@@ -226,19 +226,9 @@
     hostName = "skyforge.home.garvey.sh";
   };
 
-  # Upstream:      nixpkgs nixos/modules/services/web-apps/mainsail.nix (and fluidd.nix)
-  # Upstreamable:  yes
-  # How:           nixpkgs PR bracketing IPv6 hosts in the upstream server key,
-  #                e.g. escapedHost = host: if lib.hasInfix ":" host then "[${host}]"
-  #                else host; fix fluidd.nix, which has the same line, in the same PR.
-  #                No PR filed yet.
-  # Written:       2026-05-24, against nixpkgs d7a713c
-  # Last checked:  2026-10-25: both modules still build the key as
-  #                "${moonraker.address}:${toString moonraker.port}"
-  # Remove when:   the mainsail module brackets IPv6 addresses
-  #
-  # With moonraker on ::1 the module writes `server ::1:7125;`, which nginx
-  # rejects, so the mainsail vhost fails to start.
+  # The mainsail module builds its nginx upstream as `${moonraker.address}:${port}`,
+  # which leaves an IPv6 address unbracketed (`server ::1:7125;`), and nginx rejects
+  # it. Override it with the bracketed form. fluidd.nix has the same bug upstream.
   services.nginx.upstreams.mainsail-apiserver.servers = lib.mkForce {
     "[::1]:7125" = {};
   };

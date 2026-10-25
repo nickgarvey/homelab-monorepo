@@ -9,7 +9,7 @@ homelab-esp32-devices).
 |---|---|---|
 | `hosts/` | One directory per NixOS host; `hosts/outputs.nix` defines every `nixosConfiguration`. | below |
 | `modules/` | Shared NixOS modules, grouped by concern; dotfiles and other inputs sit beside the module that uses them. | below |
-| `patches/` | Patches for bugs in upstream software (nixpkgs or the project itself). Each patch, and each Nix override that works around an upstream bug, starts with a header: Upstream, Upstreamable (and if not, why), How, Written (date, version), Last checked, Remove when. | — |
+| `patches/` | Patches for bugs in upstream software (nixpkgs or the project itself). Each patch starts with a header: Upstream, Upstreamable (and if not, why), How, Written (date, version), Last checked, Remove when. | — |
 | `secrets/` | SOPS secrets for NixOS hosts. (k8s and firmware secrets live in their own directories.) | — |
 | `docs/` | Runbooks and notes for hosts and infrastructure. | — |
 | `devshells/` | The dev shells (`default`, `makernexus`). | — |
