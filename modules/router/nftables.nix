@@ -64,7 +64,7 @@ in
 
             # LAN -> router
             iifname "${cfg.lanInterface}" tcp dport { 22 } accept
-            iifname "${cfg.lanInterface}" udp dport { 53, 67, 68 } accept
+            iifname "${cfg.lanInterface}" udp dport { 53, 67, 68, 123 } accept
             iifname "${cfg.lanInterface}" tcp dport { 53 } accept
 
             # LAN inventory page (modules/router/lan-table.nix)
