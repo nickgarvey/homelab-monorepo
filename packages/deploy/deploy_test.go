@@ -44,6 +44,8 @@ func buildOKResponses(systemPath string) []FakeResponse {
 		{Match: MatchContains("booted-system/kernel-params"), Result: RunResult{Stdout: "quiet\n"}},
 		{Match: MatchContains("current-system/kernel-params"), Result: RunResult{Stdout: "quiet\n"}},
 		{Match: MatchContains("/etc/machine-id"), Result: RunResult{Stdout: fakeRemoteMachineID + "\n"}},
+		// OpenBao Raft gate (fus/ro/dah): every node unsealed
+		{Match: MatchContains(baoHealthOn), Result: RunResult{Stdout: baoServing}},
 		// Default for everything else (arm, activate, persist, disarm)
 		{Match: func([]string) bool { return true }, Result: RunResult{}},
 	}
@@ -79,6 +81,7 @@ func TestSafeDeployHappyPath(t *testing.T) {
 func TestSafeDeploySkipsIfAlreadyDeployed(t *testing.T) {
 	host := AllHosts[1] // ro
 	host.K8sHealthCheck = false
+	host.OpenBaoHealthCheck = false
 
 	// Both the active system and the boot default already point at the built
 	// path, so deploySafe should short-circuit after the build.
@@ -114,6 +117,7 @@ func TestSafeDeploySkipsIfAlreadyDeployed(t *testing.T) {
 func TestSafeDeploySkipStillRebootsWhenOwed(t *testing.T) {
 	host := AllHosts[1] // ro
 	host.K8sHealthCheck = false
+	host.OpenBaoHealthCheck = false
 
 	// Active + boot already match the build (skip path), but the running
 	// kernel differs from the activated config, so a reboot is still owed.
@@ -292,6 +296,7 @@ func TestSafeDeployUnreadableActivePathKeepsWatchdog(t *testing.T) {
 func TestSafeDeployActivatesThePlannedPath(t *testing.T) {
 	host := AllHosts[1] // ro
 	host.K8sHealthCheck = false
+	host.OpenBaoHealthCheck = false
 
 	fake := &FakeRunner{Responses: buildOKResponses(fakeSystemPath)}
 	if !Deploy(testCtx(fake), host, ModeSafe, Plan{SystemPath: fakeSystemPath}) {

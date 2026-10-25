@@ -42,7 +42,7 @@ func parseArgs(argv []string) (CLIArgs, error) {
 	hostsCSV := fs.String("hosts", "", hostsFlagUsage(AllHosts))
 	modeStr := fs.String("mode", "safe", "Deploy mode: safe|switch|boot")
 	rebootStr := fs.String("reboot", "never", "Reboot behavior: never|auto|always|ask (-mode boot allows only never|always)")
-	force := fs.Bool("force", false, "Skip safety pre-checks (e.g. active print on printer hosts)")
+	force := fs.Bool("force", false, "Skip safety gates (active print on printer hosts, OpenBao Raft quorum)")
 	self := fs.Bool("self", false, "Deploy to the host running this command (equivalent to -hosts $(hostname))")
 	build := fs.Bool("build", false, "Only build configurations for the selected hosts; do not deploy or activate anything")
 	copyJobs := fs.Int("copy-jobs", defaultCopyJobs, "Concurrent closure copies")
@@ -220,6 +220,7 @@ func run() int {
 		Warnings:   &warnings,
 		// Unreadable leaves it empty, which blocks every watchdog and reboot.
 		LocalMachineID: readLocalMachineID(),
+		Force:          args.Force,
 	}
 
 	var failed, skipped []string

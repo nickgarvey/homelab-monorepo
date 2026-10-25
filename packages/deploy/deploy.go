@@ -45,6 +45,9 @@ type DeployContext struct {
 	// trimmed. Empty means unknown, which isLocalHost treats as "cannot rule
 	// out that the target is this machine".
 	LocalMachineID string
+	// Force skips the safety gates that refuse a deploy: the OpenBao Raft gate
+	// (see openbao.go) here, the printer check in the precheck pass.
+	Force bool
 }
 
 func (c *DeployContext) sleep(d time.Duration) {
@@ -77,6 +80,13 @@ func Deploy(ctx *DeployContext, host Host, mode Mode, plan Plan) bool {
 	if host.CephHealthCheck && !CephBeforeDeploy(ctx.Runner, host) {
 		return false
 	}
+	openbaoGate := host.OpenBaoHealthCheck && !ctx.Force
+	if host.OpenBaoHealthCheck && ctx.Force {
+		fmt.Println("\n  OpenBao: Raft gate skipped (--force)")
+	}
+	if openbaoGate && !OpenBaoBeforeDeploy(ctx.Runner, host) {
+		return false
+	}
 	ok := false
 	switch mode {
 	case ModeSafe:
@@ -88,6 +98,9 @@ func Deploy(ctx *DeployContext, host Host, mode Mode, plan Plan) bool {
 	}
 	if host.CephHealthCheck && ok {
 		ok = CephAfterDeploy(ctx.Runner, host, ctx.Sleeper)
+	}
+	if openbaoGate && ok {
+		ok = OpenBaoAfterDeploy(ctx.Runner, host, ctx.Sleeper)
 	}
 	return ok
 }

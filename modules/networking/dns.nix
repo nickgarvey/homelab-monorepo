@@ -58,6 +58,14 @@ in rec {
     # Nightscout (CGM data from Loop); Caddy sidecar terminates TLS on 443
     # (k8s/manifests/nightscout).
     nightscout    = { v4 = []; v6 = [ "2001:470:482f:2::5012" ]; };
+    # OpenBao, the private CA's issuing tier, on 8200 (modules/services/openbao.nix).
+    # Clients use the shared name; any node serves the whole API (standbys
+    # forward to the active node). The per-node names are the Raft peers' API
+    # addresses, and each node's certificate covers its own and the shared one.
+    openbao       = { v4 = []; v6 = map hostV6 [ "fus" "ro" "dah" ]; };
+    openbao-fus   = { v4 = []; v6 = [ (hostV6 "fus") ]; };
+    openbao-ro    = { v4 = []; v6 = [ (hostV6 "ro") ]; };
+    openbao-dah   = { v4 = []; v6 = [ (hostV6 "dah") ]; };
   };
 
   # CNAMEs (targets are FQDNs with trailing dot).

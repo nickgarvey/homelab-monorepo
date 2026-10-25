@@ -19,7 +19,17 @@ keys:
   # guevenne: also from its ssh_host_ed25519_key.pub via ssh-to-age.
   - &guevenne age1wht0shv9rw22tmcnuvmzpywxsfzv0ujgswsuc0nuw72p7g3p4scqzdmxv8
   - &k8s-operator age1zd28lg5yxxc06jnyym92fep4gdwwnk3k3my9l247pvskjdj8mv4sa89d08
+  # paper: an offline age key written on paper, kept out of every machine. Second
+  # recipient on secrets that must survive losing *ngarvey (pki/).
+  - &paper age15entx47hsg4rgdmrasv9yxthgk3tdk0r3jfjxha7nz2gsskqfaksw5xv42
 creation_rules:
+  # The private root CA key (pki/README.md). No machine is a recipient: it is
+  # decrypted only on talos, by the user, to sign intermediates.
+  - path_regex: pki/root-key\.yaml$
+    key_groups:
+    - age:
+      - *ngarvey
+      - *paper
   - path_regex: secrets/frigate.yaml
     key_groups:
     - age:
@@ -56,6 +66,43 @@ creation_rules:
       - *joor
       - *zah
       - *frul
+  # OpenBao on fus, ro and dah (modules/services/openbao.nix, docs/openbao.md).
+  #   openbao: the static seal key every node unseals with at boot.
+  #   openbao-acme: TSIG secret for the acme-openbao key (listener certificates);
+  #     dragonsreach holds it for Knot.
+  #   openbao-snapshot: the snapshot timer's AppRole credentials and its RGW key.
+  #   openbao-recovery: the recovery key from init; *paper so it survives losing
+  #     *ngarvey, no machine.
+  #   openbao-admin: the offline admin login key and the OpenTofu state passphrase
+  #     (pki/openbao/); same recipients as the recovery key.
+  - path_regex: secrets/openbao\.yaml$
+    key_groups:
+    - age:
+      - *ngarvey
+      - *paper
+      - *fus
+      - *ro
+      - *dah
+  - path_regex: secrets/openbao-acme\.yaml$
+    key_groups:
+    - age:
+      - *ngarvey
+      - *dragonsreach
+      - *fus
+      - *ro
+      - *dah
+  - path_regex: secrets/openbao-snapshot\.yaml$
+    key_groups:
+    - age:
+      - *ngarvey
+      - *fus
+      - *ro
+      - *dah
+  - path_regex: secrets/openbao-(recovery|admin)\.yaml$
+    key_groups:
+    - age:
+      - *ngarvey
+      - *paper
   # skyforge-acme: TSIG secret for the acme-skyforge key (ACME DNS-01 for
   # skyforge.home.garvey.sh). dragonsreach holds it for Knot; skyforge runs lego
   # (hosts/skyforge/web-gate.nix).

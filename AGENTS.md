@@ -17,6 +17,7 @@ homelab-esp32-devices).
 | `k8s/` | Kubernetes manifests for the k3s cluster, applied by hand (no in-cluster GitOps controller). | `k8s/AGENTS.md` |
 | `firmware/` | ESP32 device firmware (ESP-IDF) and its dev shell. | — |
 | `agents/` | Agents run in OpenShell sandboxes on k3s: per-agent image, sandbox policy, provider profile and instructions. | `agents/README.md` |
+| `pki/` | The private root CA: its certificate, its sops-encrypted key, and the scripts that create it and sign intermediates. | `pki/README.md` |
 
 ## The flake
 

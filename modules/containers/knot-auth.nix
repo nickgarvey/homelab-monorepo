@@ -15,7 +15,7 @@ let
   domain = "home.garvey.sh";
 
   # TSIG identities allowed to write ACME DNS-01 challenges into the zone. Each
-  # entry becomes a key, an ACL scoped to exactly one owner name and to TXT
+  # entry becomes a key, an ACL scoped to its listed owner names and to TXT
   # records, and an entry in the zone's ACL list. `sopsName` is the
   # sops.secrets attribute this container's host renders the secret into.
   #
@@ -31,40 +31,51 @@ let
   #                         the shared name rgw.home.garvey.sh (Ceph RGW,
   #                         modules/services/ceph.nix). They are IPv6-only and
   #                         reach Knot through NAT64.
+  #   acme-openbao       -> lego on fus, ro and dah, one listener cert per node
+  #                         covering openbao and that node's openbao-<node>
+  #                         (modules/services/openbao.nix). IPv6-only, via NAT64.
   acmeKeys = [
     {
       name = "acme-homeassistant";
-      owner = "_acme-challenge.homeassistant.${domain}.";
+      owners = [ "_acme-challenge.homeassistant.${domain}." ];
       sopsName = "knot-acme-tsig";
       sopsFile = ../../secrets/dragonsreach.yaml;
       sopsKey = "knot-acme-tsig";
     }
     {
       name = "acme-garage";
-      owner = "_acme-challenge.garage.${domain}.";
+      owners = [ "_acme-challenge.garage.${domain}." ];
       sopsName = "garage-acme-tsig";
       sopsFile = ../../secrets/garage-acme.yaml;
       sopsKey = "acme_tsig_secret";
     }
     {
       name = "acme-storj";
-      owner = "_acme-challenge.storj-gateway.${domain}.";
+      owners = [ "_acme-challenge.storj-gateway.${domain}." ];
       sopsName = "storj-acme-tsig";
       sopsFile = ../../secrets/dragonsreach.yaml;
       sopsKey = "storj-acme-tsig";
     }
     {
       name = "acme-rgw";
-      owner = "_acme-challenge.rgw.${domain}.";
+      owners = [ "_acme-challenge.rgw.${domain}." ];
       sopsName = "rgw-acme-tsig";
       sopsFile = ../../secrets/rgw-acme.yaml;
       sopsKey = "acme_tsig_secret";
     }
     {
       name = "acme-skyforge";
-      owner = "_acme-challenge.skyforge.${domain}.";
+      owners = [ "_acme-challenge.skyforge.${domain}." ];
       sopsName = "skyforge-acme-tsig";
       sopsFile = ../../secrets/skyforge-acme.yaml;
+      sopsKey = "acme_tsig_secret";
+    }
+    {
+      name = "acme-openbao";
+      owners = map (n: "_acme-challenge.${n}.${domain}.")
+        [ "openbao" "openbao-fus" "openbao-ro" "openbao-dah" ];
+      sopsName = "openbao-acme-tsig";
+      sopsFile = ../../secrets/openbao-acme.yaml;
       sopsKey = "acme_tsig_secret";
     }
   ];
@@ -141,9 +152,9 @@ in
           server.listen = [ "0.0.0.0@53" "::@53" ];
 
           # Lets each ACME client write its own DNS-01 challenge, and nothing
-          # else. A key is scoped to a single owner name and to TXT records, so
-          # a compromise of the host holding it cannot repoint any real record in
-          # this zone -- it can only write TXT at the one challenge name. That
+          # else. A key is scoped to its own challenge names and to TXT records,
+          # so a compromise of the host holding it cannot repoint any real record
+          # in this zone -- it can only write TXT at those challenge names. That
           # scoping is what makes on-box issuance an acceptable substitute for
           # acme-dns, which otherwise exists to keep DDNS off the real zone. It
           # is also why one key can be shared by every garage node: the ACL is
@@ -155,7 +166,7 @@ in
               action = [ "update" ];
               update-owner = "name";
               update-owner-match = "equal";
-              update-owner-name = [ k.owner ];
+              update-owner-name = k.owners;
               update-type = [ "TXT" ];
             };
           }) acmeKeys);

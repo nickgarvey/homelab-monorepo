@@ -3,6 +3,7 @@
   imports = [
     ../../modules/k3s/k3s-common.nix
     ../../modules/core/nixos-common.nix
+    ../../modules/services/openbao.nix
     ./hardware-configuration.nix
   ];
 

@@ -28,7 +28,9 @@ type Host struct {
 	K8sHealthCheck bool
 	// CephHealthCheck gates the deploy on the Ceph cluster: see ceph.go.
 	CephHealthCheck bool
-	Groups          []string
+	// OpenBaoHealthCheck gates the deploy on the OpenBao Raft cluster: see openbao.go.
+	OpenBaoHealthCheck bool
+	Groups             []string
 	// Default hosts are deployed when --hosts is not given. The rest are still
 	// built on such a run, and deployed only when named in --hosts.
 	Default    bool
@@ -64,19 +66,19 @@ func (h Host) InGroup(g string) bool {
 var AllHosts = []Host{
 	{
 		Name: "fus", FlakeName: "fus",
-		Order: 10, K8sHealthCheck: true,
+		Order: 10, K8sHealthCheck: true, OpenBaoHealthCheck: true,
 		Groups: []string{"k3s", "infra"}, Default: true,
 		ConnChecks: []ConnCheck{CheckSSH, CheckPing6Gateway},
 	},
 	{
 		Name: "ro", FlakeName: "ro",
-		Order: 11, K8sHealthCheck: true,
+		Order: 11, K8sHealthCheck: true, OpenBaoHealthCheck: true,
 		Groups: []string{"k3s", "infra"}, Default: true,
 		ConnChecks: []ConnCheck{CheckSSH, CheckPing6Gateway},
 	},
 	{
 		Name: "dah", FlakeName: "dah",
-		Order: 12, K8sHealthCheck: true,
+		Order: 12, K8sHealthCheck: true, OpenBaoHealthCheck: true,
 		Groups: []string{"k3s", "infra"}, Default: true,
 		ConnChecks: []ConnCheck{CheckSSH, CheckPing6Gateway},
 	},
