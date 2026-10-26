@@ -60,9 +60,16 @@ spec:
               readOnly: true
             - name: data
               mountPath: /var/lib/vector
+            - name: credentials
+              mountPath: /run/secrets/metrics-collector
+              readOnly: true
       volumes:
         - name: config
           configMap:
             name: metrics-collector
         - name: data
           emptyDir: {}
+        # Read through Vector's directory secret backend (configmap.yaml).
+        - name: credentials
+          secret:
+            secretName: metrics-collector-credentials

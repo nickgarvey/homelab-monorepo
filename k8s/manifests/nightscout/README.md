@@ -26,6 +26,15 @@ kubectl apply -f manifests/nightscout/
 Caddy does not reload a renewed certificate: after each renewal,
 `kubectl -n nightscout rollout restart deploy/nightscout`.
 
+## Metrics
+
+`manifests/metrics-collector` polls the v1 API every minute and serves the
+newest glucose reading, Loop status (IOB, COB, forecast), pump and phone state,
+and the time of the last pod change and sensor start as `nightscout_*` metrics
+in the main Prometheus. Its token belongs to the subject `metrics-collector`
+(Admin Tools → Subjects), which has only the `readable` role; the token is in
+`manifests/metrics-collector/secret.yaml`.
+
 ## Backups
 
 Two independent copies:

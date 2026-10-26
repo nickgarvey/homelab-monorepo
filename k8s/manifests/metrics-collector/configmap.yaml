@@ -18,6 +18,13 @@ data:
       enabled: true
       address: "[::]:8686"
 
+    # Credentials from secret.yaml, mounted by deployment.yaml.
+    secret:
+      credentials:
+        type: directory
+        path: /run/secrets/metrics-collector
+        remove_trailing_whitespace: true
+
     sources:
       # When Loop was last uploaded to TestFlight: the newest successful run
       # of each build workflow on the LoopWorkspace fork. A successful run
@@ -43,6 +50,60 @@ data:
         scrape_interval_secs: 900
         scrape_timeout_secs: 30
 
+      # Nightscout (manifests/nightscout), through its v1 API with a token
+      # that has only the readable role. Nightscout takes such a token only as
+      # ?token= (a Bearer header must be a JWT), so a failed request logs it
+      # with the URL. Each poll fetches the newest glucose reading and the
+      # newest Loop status. Alerts:
+      # manifests/prometheus/rules/nightscout.yaml.
+      nightscout_entries:
+        type: http_client
+        endpoint: https://nightscout.home.garvey.sh/api/v1/entries.json
+        query:
+          count: ["1"]
+          token: ["SECRET[credentials.nightscout-token]"]
+        decoding:
+          codec: json
+        scrape_interval_secs: 60
+        scrape_timeout_secs: 30
+      nightscout_devicestatus:
+        type: http_client
+        endpoint: https://nightscout.home.garvey.sh/api/v1/devicestatus.json
+        query:
+          count: ["1"]
+          token: ["SECRET[credentials.nightscout-token]"]
+        decoding:
+          codec: json
+        scrape_interval_secs: 60
+        scrape_timeout_secs: 30
+      # The newest pod change and sensor start. v1 returns only the last 4
+      # days unless the query bounds the date itself, which would hide a
+      # 10-day sensor's start, hence the created_at bound.
+      nightscout_site_change:
+        type: http_client
+        endpoint: https://nightscout.home.garvey.sh/api/v1/treatments.json
+        query:
+          count: ["1"]
+          "find[eventType]": ["Site Change"]
+          "find[created_at][$gte]": ["2000-01-01"]
+          token: ["SECRET[credentials.nightscout-token]"]
+        decoding:
+          codec: json
+        scrape_interval_secs: 300
+        scrape_timeout_secs: 30
+      nightscout_sensor_start:
+        type: http_client
+        endpoint: https://nightscout.home.garvey.sh/api/v1/treatments.json
+        query:
+          count: ["1"]
+          "find[eventType]": ["Sensor Start"]
+          "find[created_at][$gte]": ["2000-01-01"]
+          token: ["SECRET[credentials.nightscout-token]"]
+        decoding:
+          codec: json
+        scrape_interval_secs: 300
+        scrape_timeout_secs: 30
+
     transforms:
       loop_build_fields:
         type: remap
@@ -66,6 +127,111 @@ data:
             name: homelab_loop_build_last_success_timestamp_seconds
             tags:
               workflow: "{{ workflow }}"
+
+      # The Nightscout remaps emit metric-shaped events (name, tags, gauge),
+      # one per metric, and leave out any field the document does not have,
+      # so nightscout_metric needs no per-field config.
+      nightscout_glucose:
+        type: remap
+        inputs: [nightscout_entries]
+        drop_on_abort: true
+        source: |
+          if !(is_integer(.sgv) || is_float(.sgv)) || !(is_integer(.date) || is_float(.date)) { abort }
+          metrics = [
+            {"name": "nightscout_glucose_mg_dl", "value": .sgv},
+            {"name": "nightscout_glucose_timestamp_seconds", "value": to_float!(.date) / 1000}
+          ]
+          # Dexcom's rate of change, mg/dL per minute.
+          if (is_integer(.trendRate) || is_float(.trendRate)) {
+            metrics = push(metrics, {"name": "nightscout_glucose_trend_mg_dl_per_minute", "value": .trendRate})
+          }
+          . = metrics
+      nightscout_loop:
+        type: remap
+        inputs: [nightscout_devicestatus]
+        drop_on_abort: true
+        source: |
+          if !is_string(.loop.timestamp) { abort }
+          metrics = [{
+            "name": "nightscout_loop_timestamp_seconds",
+            "value": to_unix_timestamp(parse_timestamp!(string!(.loop.timestamp), "%+"))
+          }]
+          if (is_integer(.loop.iob.iob) || is_float(.loop.iob.iob)) {
+            metrics = push(metrics, {"name": "nightscout_loop_iob_units", "value": .loop.iob.iob})
+          }
+          if (is_integer(.loop.cob.cob) || is_float(.loop.cob.cob)) {
+            metrics = push(metrics, {"name": "nightscout_loop_cob_grams", "value": .loop.cob.cob})
+          }
+          if (is_integer(.loop.recommendedBolus) || is_float(.loop.recommendedBolus)) {
+            metrics = push(metrics, {"name": "nightscout_loop_recommended_bolus_units", "value": .loop.recommendedBolus})
+          }
+          # Loop's forecast, one value per 5 minutes from the latest reading.
+          if is_array(.loop.predicted.values) {
+            values = array!(.loop.predicted.values)
+            # [minutes ahead, index into values]
+            for_each([["30", 6], ["60", 12], ["120", 24]]) -> |_i, h| {
+              v = get!(values, [h[1]])
+              if (is_integer(v) || is_float(v)) {
+                metrics = push(metrics, {
+                  "name": "nightscout_loop_predicted_glucose_mg_dl",
+                  "tags": {"horizon_minutes": h[0]},
+                  "value": v
+                })
+              }
+            }
+            low = null
+            for_each(values) -> |_i, v| {
+              if is_integer(v) || is_float(v) {
+                f = to_float!(v)
+                if low == null || f < to_float(low) { low = f }
+              }
+            }
+            if low != null {
+              metrics = push(metrics, {"name": "nightscout_loop_predicted_glucose_min_mg_dl", "value": low})
+            }
+          }
+          flags = [
+            ["nightscout_pump_suspended", .pump.suspended],
+            ["nightscout_pump_bolusing", .pump.bolusing],
+            ["nightscout_uploader_charging", .uploader.isCharging],
+            ["nightscout_override_active", .override.active]
+          ]
+          for_each(flags) -> |_i, f| {
+            if is_boolean(f[1]) {
+              metrics = push(metrics, {"name": f[0], "value": to_int!(f[1])})
+            }
+          }
+          if (is_integer(.uploader.battery) || is_float(.uploader.battery)) {
+            metrics = push(metrics, {"name": "nightscout_uploader_battery_percent", "value": .uploader.battery})
+          }
+          . = metrics
+      nightscout_treatment:
+        type: remap
+        inputs: [nightscout_site_change, nightscout_sensor_start]
+        # No such event yet: the response is empty and nothing is emitted.
+        drop_on_abort: true
+        source: |
+          if !is_string(.eventType) || !is_string(.created_at) { abort }
+          . = {
+            "name": "nightscout_treatment_last_timestamp_seconds",
+            "tags": {"event_type": .eventType},
+            "value": to_unix_timestamp(parse_timestamp!(string!(.created_at), "%+"))
+          }
+      nightscout_gauge:
+        type: remap
+        inputs: [nightscout_glucose, nightscout_loop, nightscout_treatment]
+        source: |
+          . = compact({
+            "name": .name,
+            "kind": "absolute",
+            "tags": .tags,
+            "gauge": {"value": to_float!(.value)}
+          })
+      nightscout_metric:
+        type: log_to_metric
+        inputs: [nightscout_gauge]
+        all_metrics: true
+        metrics: []
 
     sinks:
       prometheus:

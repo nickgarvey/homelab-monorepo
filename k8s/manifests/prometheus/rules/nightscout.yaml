@@ -1,0 +1,23 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: nightscout-alerts
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+    prometheus: prometheus
+spec:
+  groups:
+    - name: nightscout.collector
+      rules:
+        # The collector polls Nightscout every minute but keeps serving the
+        # last values for an hour after polls stop working, so this fires
+        # only after that hour. Metrics: manifests/metrics-collector/configmap.yaml.
+        - alert: NightscoutMetricsMissing
+          expr: absent(nightscout_loop_timestamp_seconds)
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "No Nightscout metrics from the metrics collector"
+            description: "The metrics collector is down or cannot read the Nightscout API (Nightscout down, or the token in manifests/metrics-collector/secret.yaml revoked). Check `kubectl -n metrics-collector logs deploy/metrics-collector`."
