@@ -1184,7 +1184,7 @@ spec:
         resources:
           requests:
             storage: 1Gi
-        storageClassName: longhorn
+        storageClassName: longhorn-wffc
 
 ---
 # Source: spire/charts/spire-server/templates/controller-manager-webhook.yaml

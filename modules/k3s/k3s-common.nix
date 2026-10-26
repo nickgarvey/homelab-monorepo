@@ -114,7 +114,7 @@ in
     # ceph-csi maps RBD volumes with the kernel client. Its node plugin would
     # modprobe rbd itself, but it looks in /lib/modules, which NixOS does not
     # have, so load it at boot instead.
-    boot.kernelModules = [ "rbd" ];
+    boot.kernelModules = [ "rbd" ] ++ lib.optional isServer "dm_crypt";
 
     # Longhorn attaches its volumes over iSCSI, and only fus/ro/dah run it
     # (k8s/: system-managed-components-node-selector is control-plane).
@@ -126,6 +126,14 @@ in
       serviceConfig.PrivateMounts = "yes";
       serviceConfig.BindPaths = "/run/current-system/sw/bin:/bin";
     };
+
+    # Longhorn encrypts its volumes with LUKS (k8s/vendor/longhorn). Its CSI
+    # plugin runs a bare `cryptsetup` in the host mount namespace with the
+    # container's PATH, which starts at /usr/local/sbin; NixOS has nothing
+    # there, so link it in.
+    systemd.tmpfiles.rules = lib.optionals isServer [
+      "L+ /usr/local/sbin/cryptsetup - - - - ${pkgs.cryptsetup}/bin/cryptsetup"
+    ];
 
     system.stateVersion = "25.11";
   };

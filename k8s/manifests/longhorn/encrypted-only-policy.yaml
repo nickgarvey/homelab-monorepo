@@ -1,0 +1,38 @@
+# New PVCs may not use Longhorn's unencrypted StorageClasses: `longhorn`, which
+# the chart defines and longhorn-manager recreates from its ConfigMap (the chart
+# has no encryption parameter), and `longhorn-static`, which longhorn-manager
+# creates for volumes bound by hand. Use longhorn-wffc (storage-class.yaml).
+# A claim that names an existing PV (spec.volumeName) provisions nothing, so it
+# may use them, e.g. scripts/migrate-pvc.sh keeping the old volume.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: longhorn-encrypted-only
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE"]
+        resources: ["persistentvolumeclaims"]
+  validations:
+    - expression: >-
+        !has(object.spec.storageClassName) ||
+        !(object.spec.storageClassName in ['longhorn', 'longhorn-static']) ||
+        (has(object.spec.volumeName) && object.spec.volumeName != '')
+      message: >-
+        Longhorn StorageClasses longhorn and longhorn-static are unencrypted;
+        use longhorn-wffc (k8s/manifests/longhorn/storage-class.yaml).
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: longhorn-encrypted-only
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  policyName: longhorn-encrypted-only
+  validationActions: [Deny]

@@ -14,3 +14,17 @@ parameters:
   fsType: "ext4"
   # Automatically applies the "all-volumes" recurring job group to all PVCs using this StorageClass
   recurringJobSelector: '[{"name":"all-volumes","isGroup":true}]'
+  # LUKS with the passphrase in crypto-secret.yaml. Replica traffic, replica
+  # files and backups are then ciphertext: Longhorn has no auth on its data path
+  # or manager API, and a LAN client spoofing a pod address can reach both.
+  # StorageClass parameters are immutable; change them by deleting and
+  # re-applying this object, which leaves existing volumes as they are.
+  encrypted: "true"
+  csi.storage.k8s.io/provisioner-secret-name: longhorn-crypto
+  csi.storage.k8s.io/provisioner-secret-namespace: longhorn-system
+  csi.storage.k8s.io/node-publish-secret-name: longhorn-crypto
+  csi.storage.k8s.io/node-publish-secret-namespace: longhorn-system
+  csi.storage.k8s.io/node-stage-secret-name: longhorn-crypto
+  csi.storage.k8s.io/node-stage-secret-namespace: longhorn-system
+  csi.storage.k8s.io/node-expand-secret-name: longhorn-crypto
+  csi.storage.k8s.io/node-expand-secret-namespace: longhorn-system

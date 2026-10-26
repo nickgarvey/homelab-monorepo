@@ -45,7 +45,7 @@ spire-server:
   # so SPIRE keeps working with joor/zah/frul down. Agents keep serving cached
   # SVIDs while the server fails over.
   persistence:
-    storageClass: longhorn
+    storageClass: longhorn-wffc
 
   # Every pod outside kube-system, kube-public, local-path-storage (the
   # controller-manager's ignoreNamespaces) and spire (the default

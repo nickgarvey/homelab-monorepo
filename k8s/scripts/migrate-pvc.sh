@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # migrate-pvc.sh [--copy-only] <namespace> <pvc> <owner, e.g. deploy/zot or sts/couchdb> <target StorageClass>
-# Moves one PVC to another StorageClass under the same name. Leaves the owner
+# Moves one PVC to another StorageClass under the same name, or re-creates an
+# unencrypted Longhorn volume on its own class once that class encrypts
+# (longhorn-wffc, manifests/longhorn/storage-class.yaml). Leaves the owner
 # scaled to 0; the caller switches the manifest to the new class and scales up.
 # The old volume stays as <pvc>-<old class prefix>-old, e.g. -ceph-old or
 # -longhorn-old (PV reclaimPolicy Retain).
@@ -18,7 +20,11 @@ if [ $copy_only = 0 ]; then
 pv=$(k -n "$ns" get pvc "$pvc" -o jsonpath='{.spec.volumeName}')
 size=$(k -n "$ns" get pvc "$pvc" -o jsonpath='{.spec.resources.requests.storage}')
 oldsc=$(k -n "$ns" get pvc "$pvc" -o jsonpath='{.spec.storageClassName}' 2>/dev/null || true)
-[ "$oldsc" != "$target" ] || { echo "$ns/$pvc is already on $target" >&2; exit 1; }
+if [ "$oldsc" = "$target" ]; then
+  [ "$(k get sc "$target" -o jsonpath='{.parameters.encrypted}')" = true ] &&
+    [ "$(k -n longhorn-system get volumes.longhorn.io "$pv" -o jsonpath='{.spec.encrypted}' 2>/dev/null)" != true ] ||
+    { echo "$ns/$pvc is already on $target" >&2; exit 1; }
+fi
 log "$ns/$pvc: PV $pv, $size, class $oldsc -> $target, owner $owner"
 
 # 1. Fresh Longhorn backup while the app still runs (Longhorn cannot back up a
@@ -34,7 +40,7 @@ spec: {volume: $pv, createSnapshot: true}
 apiVersion: longhorn.io/v1beta2
 kind: Backup
 metadata: {name: $tag-$pv, namespace: longhorn-system}
-spec: {snapshotName: $tag-$pv, labels: {migration: ceph}}
+spec: {snapshotName: $tag-$pv, labels: {migration: $target}}
 EOF
 for _ in $(seq 180); do
   st=$(k -n longhorn-system get backups.longhorn.io "$tag-$pv" -o jsonpath='{.status.state}' 2>/dev/null || true)

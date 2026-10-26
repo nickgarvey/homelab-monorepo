@@ -326,6 +326,15 @@ creation_rules:
     - age:
       - *ngarvey
       - *k8s-operator
+  # The LUKS passphrase for every Longhorn volume. Losing it makes every
+  # Longhorn backup unrecoverable, so the offline *paper key is a recipient.
+  - path_regex: k8s/manifests/longhorn/crypto-secret\.yaml$
+    encrypted_regex: "^(data|stringData)$"
+    key_groups:
+    - age:
+      - *ngarvey
+      - *paper
+      - *k8s-operator
   - path_regex: k8s/manifests/.*/secret\.yaml$
     # Only encrypt values under stringData and data keys
     encrypted_regex: "^(data|stringData)$"

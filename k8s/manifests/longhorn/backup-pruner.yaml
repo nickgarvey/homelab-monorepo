@@ -1,0 +1,106 @@
+# Daily pruning of Longhorn backups whose volume has been deleted. The
+# backup-daily RecurringJob's retain count only prunes volumes that still
+# exist, so a deleted volume's backups would stay in the longhorn-backup
+# bucket forever. This deletes the BackupVolume (and so its backups) once the
+# volume is gone and its last backup is older than MIN_AGE_DAYS, which leaves
+# that long to restore an app deleted by mistake.
+#
+# Script: packages/longhorn-backup-pruner. Push its image from the repo root
+# (from a workstation; see the zot section of k8s/AGENTS.md):
+#   nix build .#longhorn-backup-pruner-image
+#   skopeo copy docker-archive:result \
+#     docker://oci.garvey.sh/longhorn-backup-pruner:$(nix eval --raw .#longhorn-backup-pruner-image.imageTag)
+# then set the tag below.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: longhorn-backup-pruner
+  namespace: longhorn-system
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: longhorn-backup-pruner
+  namespace: longhorn-system
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+rules:
+  - apiGroups: ["longhorn.io"]
+    resources: ["volumes"]
+    verbs: ["list"]
+  - apiGroups: ["longhorn.io"]
+    resources: ["backupvolumes"]
+    verbs: ["list", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: longhorn-backup-pruner
+  namespace: longhorn-system
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: longhorn-backup-pruner
+subjects:
+  - kind: ServiceAccount
+    name: longhorn-backup-pruner
+    namespace: longhorn-system
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: longhorn-backup-pruner
+  namespace: longhorn-system
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  # After backup-daily (09:00 UTC) has run.
+  schedule: "0 12 * * *"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 600
+      template:
+        metadata:
+          labels:
+            app: longhorn-backup-pruner
+            app.kubernetes.io/managed-by: ngarvey-homelab
+        spec:
+          serviceAccountName: longhorn-backup-pruner
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: prune
+              image: oci.garvey.sh/longhorn-backup-pruner:gq682khllfl9s06hf87db44largncdv5
+              env:
+                # kubectl writes its discovery cache under $HOME.
+                - name: HOME
+                  value: /tmp
+                - name: MIN_AGE_DAYS
+                  value: "30"
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: [ALL]}
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  memory: 128Mi
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir: {}
