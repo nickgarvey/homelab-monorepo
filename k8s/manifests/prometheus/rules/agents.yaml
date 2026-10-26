@@ -1,0 +1,73 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: agents-alerts
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+    prometheus: prometheus
+spec:
+  groups:
+    - name: agents
+      rules:
+        # The agents worker (manifests/agents, packages/agents) runs every
+        # agent conversation and the hourly SandboxReaper. Its metrics are
+        # the Temporal SDK's (manifests/agents/pod-monitor.yaml). Its counters
+        # appear at their first value, which increase() does not count, so the
+        # failure rules add a series that is new within the window
+        # (`x unless x offset <window>`).
+        # Runs are in the Temporal UI, namespace agents.
+        - alert: AgentsWorkerDown
+          expr: absent(up{job="agents/agents-worker"} == 1)
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "The agents worker is down"
+            description: "No agents-worker pod has been scraped for 10 minutes, so no agent answers and no sandbox is stopped or reaped. `kubectl -n agents get pods -l app=agents-worker` and its logs (container worker)."
+
+        # Hourly; quiet for 3h after a worker start, while the new pod has
+        # not yet completed two runs.
+        - alert: AgentsReaperNotRunning
+          expr: |
+            (sum(increase(temporal_workflow_completed_total{job="agents/agents-worker", workflow_type="SandboxReaper"}[3h])) or vector(0)) == 0
+            unless on() (time() - max(process_start_time_seconds{job="agents/agents-worker"}) < 3 * 3600)
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "No SandboxReaper run has completed for 3 hours"
+            description: "Stopped sandboxes past their retention, and their PVCs, are not being deleted. Is the Schedule sandbox-reaper paused, or does every run fail (PlanReap)? Temporal UI, namespace agents."
+
+        # A failed reap step is logged and listed in the run's result, and
+        # the run still completes. The 75m window spans one hourly run; the
+        # 90m `for` needs failures in two runs in a row.
+        - alert: AgentsReaperFailing
+          expr: |
+            sum(
+              increase(temporal_activity_execution_failed_total{job="agents/agents-worker", workflow_type="SandboxReaper"}[75m])
+              or (temporal_activity_execution_failed_total{job="agents/agents-worker", workflow_type="SandboxReaper"}
+                unless temporal_activity_execution_failed_total{job="agents/agents-worker", workflow_type="SandboxReaper"} offset 75m)
+            ) > 0
+          for: 90m
+          labels:
+            severity: warning
+          annotations:
+            summary: "SandboxReaper steps have failed in consecutive runs"
+            description: "The Failed lists in the last SandboxReaper results (Temporal UI, namespace agents) name the sandboxes; the worker logs say why (\"Reaping failed\")."
+
+        # StopSandbox retries every 5 minutes for up to a day, so a failure
+        # shows in every 15m window while it lasts.
+        - alert: AgentsSandboxStopFailing
+          expr: |
+            sum(
+              increase(temporal_activity_execution_failed_total{job="agents/agents-worker", activity_type="StopSandbox"}[15m])
+              or (temporal_activity_execution_failed_total{job="agents/agents-worker", activity_type="StopSandbox"}
+                unless temporal_activity_execution_failed_total{job="agents/agents-worker", activity_type="StopSandbox"} offset 15m)
+            ) > 0
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: "Stopping an agent sandbox has failed for over an hour"
+            description: "A sandbox that should be stopped is still running and holding a node's resources; the reaper does not touch running sandboxes. The pending StopSandbox activity is in the ChatSession workflow (Temporal UI, namespace agents); worker logs: \"Stopping the sandbox failed\"."

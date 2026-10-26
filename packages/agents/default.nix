@@ -21,7 +21,7 @@ buildGoModule {
     filter = path: _type:
       !(builtins.elem (lib.removePrefix (toString ./. + "/") path) [ "cmd/habit" "cmd/habit-admin" "default.nix" "habit-cli.nix" "habit-admin-cli.nix" ]);
   };
-  vendorHash = "sha256-+eZCgrKKASUFtt62xN47o0nPTCmjPHYYVtTYJgJDMWk=";
+  vendorHash = "sha256-tgWecjllaGwp+4y7Y5oNhiX3jIdlazPkhXkzujbJxwg=";
 
   nativeCheckInputs = [ postgresql postgresqlTestHook ];
   # storetest gives each test package its own database.

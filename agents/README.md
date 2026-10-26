@@ -27,7 +27,8 @@ Each type has a directory here with everything that defines it:
 
 `nix build .#agents-desired-state` builds the declaration into the
 desired-state JSON (format in `desired-state.nix`), with each type's
-`version`: a hash of everything about the type, session settings included.
+`version`: a hash of everything that shapes the type's sandbox. Session
+settings are left out, since only the worker reads them.
 `nix flake check` runs `declaration-test.nix`, which checks that bad
 declarations fail to evaluate.
 
@@ -66,7 +67,8 @@ The worker reads the ConfigMap afresh for every turn, so a publish needs no
 restart, but the pod's copy lags the write by up to a minute or so. A type
 whose `version` changed reaches a conversation at its next message: its
 sandbox is deleted and recreated, and pi starts a new session primed from the
-chat log. Changing a session setting changes the version too.
+chat log. A session setting change does not touch the version: the worker uses
+the new value from its next read, and running sandboxes are kept.
 
 ## Sessions
 

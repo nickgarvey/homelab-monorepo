@@ -13,8 +13,10 @@
 #     session                   idleTimeoutSeconds, retentionSeconds, primeMessages,
 #                               defaultWakeupSeconds (null: no wake-ups), timezone
 #     version                   sha256 of everything above except the store
-#                               paths (archive, file), plus the specs of the
-#                               profiles behind the type's providers
+#                               paths (archive, file) and session, plus the specs
+#                               of the profiles behind the type's providers.
+#                               session is left out because only the worker reads
+#                               it, so changing it must not recreate sandboxes.
 #
 # Also fails the build if a profile's id is not its attribute name, an image
 # has no Cmd, which can only be read once the image config is built, or a
@@ -102,7 +104,7 @@ lib.throwIf (failed != [ ])
       version=$(jq -cS --arg t "$t" '
         . as $s | $s.types[$t] as $type
         | {
-            type: ($type | del(.image.archive, .policy.file)),
+            type: ($type | del(.image.archive, .policy.file, .session)),
             profiles: [$type.providers[] | $s.providers[.].profile | $s.profiles[.].spec]
           }
       ' <<< "$state" | sha256sum | cut -d ' ' -f 1)

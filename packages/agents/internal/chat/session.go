@@ -349,8 +349,10 @@ func (s *chat) stopSandbox(ctx workflow.Context) {
 var (
 	ensureOptions = workflow.ActivityOptions{
 		// Creating a sandbox and waiting for it to take commands takes
-		// ~10 s; EnsureSandbox gives up waiting after 5 minutes.
-		StartToCloseTimeout: 10 * time.Minute,
+		// ~10 s; EnsureSandbox gives up waiting after 5 minutes. A start
+		// that times out is followed by a create in the same attempt, so
+		// two waits fit.
+		StartToCloseTimeout: 15 * time.Minute,
 		RetryPolicy: &temporal.RetryPolicy{
 			MaximumInterval:        30 * time.Second,
 			MaximumAttempts:        5,
