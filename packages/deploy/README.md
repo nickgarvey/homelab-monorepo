@@ -110,9 +110,41 @@ Summary:
 | wabbajack | 20 | – | ✓ | build helper (held, below); SSH + gateway ping + IPv6 gateway ping |
 | talos | 21 | – | ✓ | SSH + gateway ping |
 | lydia | 30 | – | ✓ | build helper (held, below); SSH + gateway ping |
+| browser | 31 | – | ✓ | Incus VM on lydia (`Parent`, below); SSH only |
 | dovahkiin | 40 | – | build only | deploys only when named explicitly |
 | skyforge | 50 | – | ✓ | aarch64; needs binfmt on the deploying machine; printer idle pre-check |
 | dragonsreach | 99 | – | ✓ | SSH + internet ping + DNS + IPv6 tunnel + IPv6 internet |
+
+### VMs and their parent (browser)
+
+A host with `Parent` set (`hosts.go`) is a VM running on that host under
+Incus (`modules/virtualisation/incus-vms.nix`). `browser` runs on lydia. The
+deploy still reaches it over SSH at its own address; `Parent` only orders
+and gates it (`parent.go`):
+
+- **Selection is exact.** `--hosts lydia` does not add browser, and
+  `--hosts browser` does not add lydia. A plain run selects both.
+- **The parent must declare the VM.** The precheck evaluates, once per parent
+  per run, the names in `nixosConfigurations.<parent>.config.homelab.incus.vms`
+  (none if the option is absent), and refuses a VM that is not among them as a
+  failure.
+- **Build and copy stay parallel; activation waits.** When both are in the
+  run, the VM's activation is held until the parent's whole deploy has
+  finished, health checks and any reboot included
+  (`[activate] browser is a VM on lydia: holding…`). lydia is also a build
+  helper, so in practice browser activates after the fleet build and lydia.
+- **Parent failed or skipped → VM skipped.** In the precheck or at any later
+  stage, the VM is reported as skipped with the reason `parent lydia failed`
+  (or `skipped`), not attempted and not counted as a failure. A parent
+  cancelled by `--on-failure stop` cancels its VM too.
+- **Parent rebooted → wait for the VM.** Incus autostarts the VM once the
+  parent is up, so the VM's SSH is polled with the same wait used after a
+  reboot (up to 5 min) before it is deployed.
+- **The plan nests VMs** under their parent when both are in it.
+
+`--mode switch` and `--mode boot` deploy one host at a time in `Order`, which
+puts each parent before its VMs (a test enforces this), and apply the same
+skip and reboot-wait checks before each VM.
 
 ### Ceph gate (joor / zah / frul)
 
@@ -150,12 +182,13 @@ Before any host is touched, the run does two things for the whole fleet at once:
    per host (~30s for nine hosts).
 2. **Probe** all hosts concurrently: SSH reachability, moonraker print state for
    the `printer` group, and whether the host already runs *and* boots the
-   resolved path.
+   resolved path. Alongside the probes, each selected VM's parent is evaluated
+   for the VMs it declares (see VMs and their parent).
 
 The result is printed as a `Plan` block in host order (the probes are
 concurrent; the reporting is not, so the output stays deterministic).
 
-This decides three things before the first build runs:
+This decides these things before the first build runs:
 
 - **Up to date** hosts skip build and copy entirely. They still go through the
   post-deploy path, because a host can be running the right config and still owe
@@ -163,6 +196,8 @@ This decides three things before the first build runs:
 - **Mid-print** printer hosts are skipped without having built the most
   expensive closure in the fleet first. `--force` overrides.
 - **Unreachable** hosts fail in seconds instead of after a multi-minute build.
+- **VMs** their parent does not declare fail; VMs whose parent failed or was
+  skipped here are skipped.
 
 A k3s node that fails the precheck aborts the whole run: the rolling deploy
 takes one node down at a time assuming the other two are up, so rolling a second

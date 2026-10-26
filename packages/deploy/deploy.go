@@ -48,7 +48,20 @@ type DeployContext struct {
 	// Force skips the safety gates that refuse a deploy: the OpenBao Raft gate
 	// (see openbao.go) here, the printer check in the precheck pass.
 	Force bool
+	// rebootedHosts names the hosts this run has rebooted, so a VM deployed
+	// after its parent knows to wait for itself to come back. Written and read
+	// only by the single activation worker.
+	rebootedHosts map[string]bool
 }
+
+func (c *DeployContext) markRebooted(name string) {
+	if c.rebootedHosts == nil {
+		c.rebootedHosts = map[string]bool{}
+	}
+	c.rebootedHosts[name] = true
+}
+
+func (c *DeployContext) rebooted(name string) bool { return c.rebootedHosts[name] }
 
 func (c *DeployContext) sleep(d time.Duration) {
 	if c.Sleeper == nil {
@@ -528,12 +541,18 @@ func rebootAndWait(ctx *DeployContext, host Host) bool {
 	// SSH will drop; ignore errors. Not retried, for the same reason: the
 	// connection dying here is the expected outcome, not a fault to redial.
 	SSHRunOnce(ctx.Runner, host, "sudo systemctl reboot", 10*time.Second)
+	ctx.markRebooted(host.Name)
 	// The host is on its way down, so the master is about to point at nothing.
 	dropSSHMaster(ctx.Runner, host)
 
 	fmt.Printf("  Waiting %s for %s to start rebooting...\n", rebootWaitInitial, host.FQDN())
 	ctx.sleep(rebootWaitInitial)
+	return waitBackOnline(ctx, host)
+}
 
+// waitBackOnline polls SSH until host answers or rebootWaitMax passes. Used
+// after rebooting a host, and for a VM whose parent was rebooted.
+func waitBackOnline(ctx *DeployContext, host Host) bool {
 	deadline := ctx.now().Add(rebootWaitMax)
 	for ctx.now().Before(deadline) {
 		// Each poll dials its own connection: "has the host come back?" is a

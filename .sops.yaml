@@ -73,6 +73,15 @@ creation_rules:
       - *ngarvey
       - *dragonsreach
       - *lydia
+  # incus-acme: TSIG secret for the acme-incus key (ACME DNS-01 for
+  # incus.home.garvey.sh). dragonsreach holds it for Knot; Incus on lydia runs
+  # lego with it (modules/virtualisation/incus.nix).
+  - path_regex: secrets/incus-acme.yaml
+    key_groups:
+    - age:
+      - *ngarvey
+      - *dragonsreach
+      - *lydia
   # OpenBao on fus, ro and dah (modules/services/openbao.nix, docs/openbao.md).
   #   openbao: the static seal key every node unseals with at boot.
   #   openbao-acme: TSIG secret for the acme-openbao key (listener certificates);

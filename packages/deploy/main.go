@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strings"
@@ -256,21 +257,38 @@ func run() int {
 		// safe mode is pipelined: build, copy and activate overlap across
 		// hosts, with activation kept to one host at a time.
 		for _, r := range RunPipeline(ctx, quiet, todo, extraDrvs, args.pipelineOpts()) {
-			runJournal.hostResult(r.Host.Name, r.Status.String(), "")
-			if r.Status.failed() {
+			runJournal.hostResult(r.Host.Name, r.Status.String(), r.Reason)
+			switch {
+			case r.Status == StatusSkipped:
+				skipped = append(skipped, r.Host.Name)
+			case r.Status.failed():
 				failed = append(failed, r.Host.Name)
 			}
 		}
 	} else {
 		// switch/boot are the debug paths: nixos-rebuild does its own build and
-		// copy per host, so there is nothing to overlap.
+		// copy per host, so there is nothing to overlap. Hosts go in Order, and a
+		// parent's Order is below its VMs' (TestParentsPrecedeTheirVMs), so a
+		// parent in the run has finished before its VMs come up.
+		status := map[string]HostStatus{}
 		for _, p := range todo {
-			ok := Deploy(ctx, p.Host, args.Mode, p.Plan)
+			if parent, inRun := status[p.Host.Parent]; inRun {
+				if s, reason, blocked := parentBlocks(p.Host, parent); blocked {
+					fmt.Printf("\n⊘ %s: %s; not deploying it\n", p.Host.Name, reason)
+					runJournal.hostResult(p.Host.Name, s.String(), reason)
+					skipped = append(skipped, p.Host.Name)
+					continue
+				}
+			}
+			ok := (p.Host.Parent == "" || awaitVMAfterParent(ctx, p.Host)) &&
+				Deploy(ctx, p.Host, args.Mode, p.Plan)
 			ctl.Drop(quiet, p.Host)
 			if ok {
+				status[p.Host.Name] = StatusDeployed
 				runJournal.hostResult(p.Host.Name, "deployed", "")
 				continue
 			}
+			status[p.Host.Name] = StatusDeployFailed
 			runJournal.hostResult(p.Host.Name, "failed", "")
 			failed = append(failed, p.Host.Name)
 			if p.Host.InGroup("k3s") {
@@ -321,22 +339,50 @@ func installSSHCleanup(ctl *SSHControl, r Runner) func() {
 // printPlan reports what the precheck pass decided, in host order. The probes
 // themselves run concurrently, so printing here rather than inside them is what
 // keeps the output deterministic.
+//
+// A VM whose parent is in the plan is listed under the parent, so that the
+// order of the lines is the order of activation between the two.
 func printPlan(pre []PrecheckResult, buildOnly []Host) {
-	fmt.Printf("\n%s\nPlan\n%s\n", strings.Repeat("=", 60), strings.Repeat("=", 60))
+	writePlan(os.Stdout, pre, buildOnly)
+}
+
+func writePlan(w io.Writer, pre []PrecheckResult, buildOnly []Host) {
+	fmt.Fprintf(w, "\n%s\nPlan\n%s\n", strings.Repeat("=", 60), strings.Repeat("=", 60))
+	inPlan := map[string]bool{}
+	vms := map[string][]PrecheckResult{}
 	for _, p := range pre {
+		inPlan[p.Host.Name] = true
+	}
+	for _, p := range pre {
+		if inPlan[p.Host.Parent] {
+			vms[p.Host.Parent] = append(vms[p.Host.Parent], p)
+		}
+	}
+	line := func(indent string, p PrecheckResult) {
+		// The name column shrinks by the indent, so the third column lines up.
+		name := fmt.Sprintf("%-*s", 13-len([]rune(indent)), p.Host.Name)
 		switch {
 		case p.Skip && p.Failed:
-			fmt.Printf("  ✗ %-13s %s\n", p.Host.Name, p.Reason)
+			fmt.Fprintf(w, "  ✗ %s%s %s\n", indent, name, p.Reason)
 		case p.Skip:
-			fmt.Printf("  ⊘ %-13s %s\n", p.Host.Name, p.Reason)
+			fmt.Fprintf(w, "  ⊘ %s%s %s\n", indent, name, p.Reason)
 		case p.Plan.UpToDate:
-			fmt.Printf("  = %-13s up to date (no build or copy)\n", p.Host.Name)
+			fmt.Fprintf(w, "  = %s%s up to date (no build or copy)\n", indent, name)
 		default:
-			fmt.Printf("  → %-13s deploy %s\n", p.Host.Name, p.Plan.SystemPath)
+			fmt.Fprintf(w, "  → %s%s deploy %s\n", indent, name, p.Plan.SystemPath)
+		}
+	}
+	for _, p := range pre {
+		if inPlan[p.Host.Parent] {
+			continue
+		}
+		line("", p)
+		for _, vm := range vms[p.Host.Name] {
+			line("└ ", vm)
 		}
 	}
 	for _, h := range buildOnly {
-		fmt.Printf("  ⚒ %-13s build only (not deployed)\n", h.Name)
+		fmt.Fprintf(w, "  ⚒ %-13s build only (not deployed)\n", h.Name)
 	}
 }
 

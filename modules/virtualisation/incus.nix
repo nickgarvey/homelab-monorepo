@@ -43,6 +43,32 @@ in
       description = "Listen address for the HTTPS API and web UI.";
     };
 
+    acme = lib.mkOption {
+      type = lib.types.nullOr (lib.types.submodule {
+        options = {
+          domain = lib.mkOption {
+            type = lib.types.str;
+            example = "incus.home.garvey.sh";
+            description = "Name of the Let's Encrypt certificate Incus serves.";
+          };
+          tsigKey = lib.mkOption {
+            type = lib.types.str;
+            example = "acme-incus";
+            description = "Knot TSIG key that may write the name's challenge (modules/containers/knot-auth.nix).";
+          };
+          sopsFile = lib.mkOption {
+            type = lib.types.path;
+            description = "sops file holding the key's secret as acme_tsig_secret.";
+          };
+        };
+      });
+      default = null;
+      description = ''
+        Serve a Let's Encrypt certificate instead of Incus's self-signed one.
+        Incus's own ACME client issues and renews it, by DNS-01 in Knot.
+      '';
+    };
+
     adminUsers = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ ];
@@ -50,7 +76,7 @@ in
     };
   };
 
-  config = lib.mkIf cfg.enable {
+  config = lib.mkIf cfg.enable (lib.mkMerge [ {
     virtualisation.incus = {
       enable = true;
       ui.enable = true;
@@ -88,5 +114,52 @@ in
     systemd.services.incus.serviceConfig.ExecStartPre = lib.mkBefore [
       "-${pkgs.coreutils}/bin/timeout 60 ${pkgs.qemu_kvm}/bin/qemu-system-x86_64 -version"
     ];
-  };
+  }
+
+  (lib.mkIf (cfg.acme != null) {
+    # Incus runs lego itself, renews daily when due and swaps the listener
+    # certificate in place. VM agents trust a per-VM certificate, not this
+    # one, so incus exec is unaffected by a renewal.
+    #
+    # The settings go in by `incus config set` rather than preseed because
+    # acme.provider.environment holds the TSIG secret, and preseed is a store
+    # path. lego gets that environment, which also turns off its propagation
+    # check, as dnsPropagationCheck = false does for security.acme: the check
+    # asks the public name servers, which the LAN reaches only through
+    # blocky's negative cache, and Knot has committed the update before lego
+    # moves on.
+    sops.secrets.incus-acme-tsig = {
+      inherit (cfg.acme) sopsFile;
+      key = "acme_tsig_secret";
+    };
+    sops.templates."incus-acme.env".content = ''
+      RFC2136_NAMESERVER=10.28.0.6:53
+      RFC2136_TSIG_KEY=${cfg.acme.tsigKey}
+      RFC2136_TSIG_ALGORITHM=hmac-sha256.
+      RFC2136_TSIG_SECRET=${config.sops.placeholder.incus-acme-tsig}
+      LEGO_DNS_PROPAGATION_DISABLE_ANS=true
+      LEGO_DNS_PROPAGATION_DISABLE_RNS=true
+    '';
+    systemd.services.incus-acme = {
+      description = "Configure Incus's ACME client";
+      after = [ "incus.service" "incus-preseed.service" ];
+      requires = [ "incus.service" ];
+      wantedBy = [ "multi-user.target" ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
+      script = ''
+        ${config.virtualisation.incus.package.client}/bin/incus config set \
+          acme.domain=${cfg.acme.domain} \
+          acme.email=garvey.nick@gmail.com \
+          acme.agree_tos=true \
+          acme.challenge=DNS-01 \
+          acme.provider=rfc2136 \
+          acme.provider.resolvers=10.28.0.6:53 \
+          acme.provider.environment="$(cat ${config.sops.templates."incus-acme.env".path})"
+      '';
+    };
+  })
+  ]);
 }

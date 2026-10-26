@@ -58,7 +58,7 @@ func TestSelectHosts(t *testing.T) {
 			input: nil,
 			want: []string{
 				"fus", "ro", "dah", "joor", "zah", "frul",
-				"wabbajack", "talos", "lydia",
+				"wabbajack", "talos", "lydia", "browser",
 				"skyforge", "dragonsreach",
 			},
 		},
@@ -169,5 +169,49 @@ func TestHostNamesDoesNotReorderInput(t *testing.T) {
 	HostNames(hosts, func(Host) bool { return true })
 	if hosts[0].Name != "b" {
 		t.Errorf("input slice reordered: %v", hosts)
+	}
+}
+
+// Every Parent names a managed host that is not itself a VM, and sorts before
+// its VMs: --mode switch/boot deploy in Order and rely on the parent going
+// first.
+func TestParentsPrecedeTheirVMs(t *testing.T) {
+	for _, h := range AllHosts {
+		if h.Parent == "" {
+			continue
+		}
+		parent, ok := hostByName(AllHosts, h.Parent)
+		if !ok {
+			t.Errorf("%s: parent %q is not in AllHosts", h.Name, h.Parent)
+			continue
+		}
+		if parent.Parent != "" {
+			t.Errorf("%s: parent %s is itself a VM", h.Name, parent.Name)
+		}
+		if parent.Order >= h.Order {
+			t.Errorf("%s (Order %d) must sort after its parent %s (Order %d)",
+				h.Name, h.Order, parent.Name, parent.Order)
+		}
+	}
+}
+
+// Selection does not follow Parent in either direction.
+func TestSelectHostsNotTransitiveThroughParent(t *testing.T) {
+	for _, c := range []struct{ input, want string }{
+		{"lydia", "lydia"},
+		{"browser", "browser"},
+		{"browser,lydia", "lydia,browser"},
+	} {
+		got, err := SelectHosts(AllHosts, strings.Split(c.input, ","))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var names []string
+		for _, h := range got {
+			names = append(names, h.Name)
+		}
+		if strings.Join(names, ",") != c.want {
+			t.Errorf("--hosts %s: got %v, want %s", c.input, names, c.want)
+		}
 	}
 }

@@ -7,7 +7,7 @@ homelab-esp32-devices).
 
 | Directory | What it holds | Its own conventions |
 |---|---|---|
-| `hosts/` | One directory per NixOS host; `hosts/outputs.nix` defines every `nixosConfiguration`. | below |
+| `hosts/` | One directory per NixOS host, with Incus VMs under `hosts/vms/` (plus `seed.nix`, the image they are created from); `hosts/outputs.nix` defines every `nixosConfiguration`. | below |
 | `modules/` | Shared NixOS modules, grouped by concern; dotfiles and other inputs sit beside the module that uses them. | below |
 | `patches/` | Patches for bugs in upstream software (nixpkgs or the project itself). Each patch starts with a header: Upstream, Upstreamable (and if not, why), How, Written (date, version), Last checked, Remove when. | — |
 | `secrets/` | SOPS secrets for NixOS hosts. (k8s and firmware secrets live in their own directories.) | — |
@@ -71,7 +71,7 @@ narrowest matching subdir; create a new one only when you have ≥2 related file
 | `router/` | Router subsystem (nftables, DHCP, DNS, IPv6 tunnel, NAT64). Exposes a `default.nix` — import the directory. |
 | `containers/` | systemd-nspawn container definitions. Common networking lives in `common.nix`. |
 | `microvm/` | MicroVM guest definitions. |
-| `virtualisation/` | VM hypervisors. Currently: `incus`. |
+| `virtualisation/` | VM hypervisors and their guests. Currently: `incus`, `incus-vms` (VMs a host owns: project, profile, client cert, creation from the seed image), `incus-guest` (baseline for NixOS guests in Incus VMs). |
 | `llms/` | LLM tooling. Currently: `hf-to-garage` (pushes HuggingFace repos to the `llm-models` bucket), `pi` (terminal coding agent). |
 | `home/` | home-manager config. Currently: `ngarvey` (imported by `common-workstation`), and the dotfiles it installs in `dotfiles/`. |
 

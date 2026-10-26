@@ -90,6 +90,23 @@ in
       ];
     };
 
+    # Incus VMs on lydia (modules/virtualisation/incus-vms.nix). The seed is
+    # the bootstrap image lydia creates them from; the deploy tool then
+    # installs each VM's own configuration.
+    incus-vm-seed = nixpkgs.lib.nixosSystem {
+      specialArgs = { inherit inputs; };
+      modules = [ ./vms/seed.nix ];
+    };
+
+    # Desktop + browser that Claude drives
+    browser = nixpkgs.lib.nixosSystem {
+      specialArgs = { inherit inputs; };
+      modules = [
+        sops-nix.nixosModules.sops
+        ./vms/browser/configuration.nix
+      ];
+    };
+
     # Live boot ISO for installation and rescue
     live-iso = nixpkgs.lib.nixosSystem {
       specialArgs = { inherit inputs; };

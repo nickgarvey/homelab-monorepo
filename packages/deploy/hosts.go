@@ -40,6 +40,11 @@ type Host struct {
 	// nix-daemon and kill those builds, so the pipeline holds it until the
 	// fleet build has finished.
 	Builder bool
+	// Parent is the host a VM runs on (its Incus host); "" for bare metal. In
+	// a run that deploys both, the VM activates only after the parent's whole
+	// deploy, and not at all if that failed. The parent must declare the VM in
+	// homelab.incus.vms (see parentVMs). Selection does not follow Parent.
+	Parent string
 }
 
 func (h Host) FQDN() string {
@@ -118,6 +123,12 @@ var AllHosts = []Host{
 		Builder:    true,
 	},
 	{
+		// Incus VM on lydia (homelab.incus.vms.browser).
+		Name: "browser", FlakeName: "browser", Parent: "lydia",
+		Order: 31, Groups: []string{"vm"}, Default: true,
+		ConnChecks: []ConnCheck{CheckSSH},
+	},
+	{
 		Name: "dovahkiin", FlakeName: "dovahkiin",
 		Order: 40, Groups: []string{"workstation"}, Default: false,
 		ConnChecks: []ConnCheck{CheckSSH},
@@ -172,6 +183,9 @@ func BuildOnlyHosts(all []Host, names []string) []Host {
 // SelectHosts filters AllHosts by the --hosts flag. Empty selector returns all
 // Default hosts. Named hosts are returned even if !Default. Unknown names are
 // an error. Output is sorted by Order; duplicates in the input are deduped.
+//
+// Selection is exact, never transitive through Parent: naming a VM does not
+// add its parent, and naming a parent does not add its VMs.
 func SelectHosts(all []Host, names []string) ([]Host, error) {
 	var out []Host
 	if len(names) == 0 {

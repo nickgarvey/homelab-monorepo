@@ -9,6 +9,7 @@
     ../../modules/containers/garage.nix
     ../../modules/microvm/smb.nix
     ../../modules/virtualisation/incus.nix
+    ../../modules/virtualisation/incus-vms.nix
     ../../modules/services/fancontrol.nix
     ../../modules/services/netboot-server.nix
     ../../modules/services/pki-dns-cert.nix
@@ -127,6 +128,23 @@
     enable = true;
     storageSource = "/fast/incus";
     adminUsers = [ "ngarvey" ];
+    acme = {
+      domain = "incus.home.garvey.sh";
+      tsigKey = "acme-incus";
+      sopsFile = ../../secrets/incus-acme.yaml;
+    };
+
+    # Desktop + browser that Claude drives (hosts/vms/browser).
+    vms.browser = {
+      cpus = 4;
+      memory = "8GiB";
+      diskSize = "40GiB";
+      clientCertificates = {
+        mcp = ../vms/browser/incus-client.crt;
+        # The Incus web UI on the phone (docs/browser-vm.md).
+        phone = ../vms/browser/incus-phone.crt;
+      };
+    };
   };
 
   microvm-smb = {

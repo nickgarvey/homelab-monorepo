@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "browser-playwright": {
+      "command": "incus",
+      "args": ["exec", "-T", "browser", "--", "/run/current-system/sw/bin/browser-mcp-playwright"],
+      "env": { "INCUS_CONF": "${HOME}/.config/incus-browser" }
+    },
+    "browser-computer": {
+      "command": "incus",
+      "args": ["exec", "-T", "browser", "--", "/run/current-system/sw/bin/browser-mcp-computer"],
+      "env": { "INCUS_CONF": "${HOME}/.config/incus-browser" }
+    }
+  }
+}

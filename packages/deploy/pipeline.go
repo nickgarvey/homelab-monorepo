@@ -44,15 +44,20 @@ const (
 	StatusCopyFailed
 	StatusDeployFailed
 	StatusCancelled
+	// StatusSkipped is a VM not attempted because its parent failed: see
+	// parentGate. Not a failure of its own.
+	StatusSkipped
 )
 
 // HostResult is one host's outcome.
 type HostResult struct {
 	Host   Host
 	Status HostStatus
+	// Reason explains StatusSkipped.
+	Reason string
 }
 
-func (s HostStatus) failed() bool { return s != StatusDeployed }
+func (s HostStatus) failed() bool { return s != StatusDeployed && s != StatusSkipped }
 
 // String is the status as journaled in DEPLOY_RESULT.
 func (s HostStatus) String() string {
@@ -67,6 +72,8 @@ func (s HostStatus) String() string {
 		return "deploy-failed"
 	case StatusCancelled:
 		return "cancelled"
+	case StatusSkipped:
+		return "skipped"
 	}
 	return "unknown"
 }
@@ -110,6 +117,13 @@ func RunPipeline(ctx *DeployContext, quiet Runner, todo []PrecheckResult, extraD
 		index[p.Host.Name] = i
 	}
 	setStatus := func(name string, s HostStatus) { results[index[name]].Status = s }
+	inRun := func(name string) bool { _, ok := index[name]; return ok }
+	// statusOf is read only by the activation worker, and only for hosts whose
+	// slot no other stage writes any more: see drainActivations.
+	statusOf := func(name string) HostStatus { return results[index[name]].Status }
+	skip := func(name string, s HostStatus, reason string) {
+		results[index[name]].Status, results[index[name]].Reason = s, reason
+	}
 
 	copyCh := make(chan PrecheckResult, len(todo))
 	actCh := make(chan PrecheckResult, len(todo))
@@ -163,7 +177,7 @@ func RunPipeline(ctx *DeployContext, quiet Runner, todo []PrecheckResult, extraD
 	}
 	go func() { wg.Wait(); close(actCh) }()
 
-	drainActivations(ctx, actCh, buildDone, opts, setStatus)
+	drainActivations(ctx, actCh, buildDone, opts, activationResults{set: setStatus, skip: skip, status: statusOf, inRun: inRun})
 	return results
 }
 
@@ -216,6 +230,17 @@ func pollBuilds(
 	}
 }
 
+// activationResults is the activation worker's view of the run's results.
+type activationResults struct {
+	set  func(string, HostStatus)
+	skip func(name string, s HostStatus, reason string)
+	// status reads a host's slot, which pollBuilds and the copy workers also
+	// write: only safe for a host this worker has finished, or once actCh is
+	// drained.
+	status func(string) HostStatus
+	inRun  func(string) bool
+}
+
 // drainActivations empties the ready queue with a single worker, so exactly one
 // host is ever inside a watchdog window. Everything that depended on serialised
 // activation therefore still holds: the k3s rolling gate (WaitForK8sReady runs
@@ -226,26 +251,22 @@ func pollBuilds(
 // held until buildDone closes: its activation can restart its nix-daemon, which
 // would kill the builds it is running for the other hosts. Held hosts activate,
 // in the order they arrived, as soon as the build finishes.
+//
+// A VM whose parent is in this run is held until the parent's deploy has
+// finished, reboot included (Deploy returns only after it), and then goes
+// through parentBlocks and awaitVMAfterParent. A parent that never reaches
+// this worker failed its build or copy; its VMs are released once the queue is
+// drained, when no other stage writes the parent's status any more.
 func drainActivations(
 	ctx *DeployContext,
 	actCh <-chan PrecheckResult,
 	buildDone <-chan struct{},
 	opts PipelineOpts,
-	setStatus func(string, HostStatus),
+	res activationResults,
 ) {
 	stopped := false
-	activate := func(p PrecheckResult) {
-		if stopped {
-			setStatus(p.Host.Name, StatusCancelled)
-			return
-		}
-		ok := Deploy(ctx, p.Host, ModeSafe, p.Plan)
-		// Close this host's master now that nothing else will talk to it.
-		dropSSHMaster(ctx.Runner, p.Host)
-		if ok {
-			return
-		}
-		setStatus(p.Host.Name, StatusDeployFailed)
+	fail := func(p PrecheckResult) {
+		res.set(p.Host.Name, StatusDeployFailed)
 		// A k3s failure always stops the rest: the rolling deploy takes one
 		// node down at a time assuming the others are up, so continuing after
 		// one is broken risks quorum.
@@ -257,6 +278,48 @@ func drainActivations(
 		if opts.OnFailure == OnFailureStop {
 			say("\n✗ %s failed; stopping (--on-failure=continue to keep going).\n", p.Host.Name)
 			stopped = true
+		}
+	}
+
+	// finished holds the hosts this worker is done with; waiting holds ready
+	// VMs by parent, until the parent is in finished.
+	finished := map[string]bool{}
+	waiting := map[string][]PrecheckResult{}
+
+	var activate func(p PrecheckResult)
+	activate = func(p PrecheckResult) {
+		defer func() {
+			finished[p.Host.Name] = true
+			vms := waiting[p.Host.Name]
+			delete(waiting, p.Host.Name)
+			for _, vm := range vms {
+				activate(vm)
+			}
+		}()
+		// Only reached once the parent is finished or the queue is drained, so
+		// reading its status is safe (see activationResults.status).
+		if p.Host.Parent != "" && res.inRun(p.Host.Parent) {
+			if s, reason, blocked := parentBlocks(p.Host, res.status(p.Host.Parent)); blocked {
+				if s == StatusSkipped {
+					say("[activate] ⊘ %s: %s; not deploying it\n", p.Host.Name, reason)
+				}
+				res.skip(p.Host.Name, s, reason)
+				return
+			}
+		}
+		if stopped {
+			res.set(p.Host.Name, StatusCancelled)
+			return
+		}
+		if p.Host.Parent != "" && !awaitVMAfterParent(ctx, p.Host) {
+			fail(p)
+			return
+		}
+		ok := Deploy(ctx, p.Host, ModeSafe, p.Plan)
+		// Close this host's master now that nothing else will talk to it.
+		dropSSHMaster(ctx.Runner, p.Host)
+		if !ok {
+			fail(p)
 		}
 	}
 
@@ -272,6 +335,12 @@ func drainActivations(
 				actCh = nil
 				continue
 			}
+			if parent := p.Host.Parent; parent != "" && res.inRun(parent) && !finished[parent] {
+				say("[activate] %s is a VM on %s: holding its activation until %s's deploy finishes\n",
+					p.Host.Name, parent, parent)
+				waiting[parent] = append(waiting[parent], p)
+				continue
+			}
 			if p.Host.Builder && building != nil {
 				say("[activate] %s is a build helper: holding its activation until the build finishes\n", p.Host.Name)
 				held = append(held, p)
@@ -284,6 +353,18 @@ func drainActivations(
 				activate(p)
 			}
 			held = nil
+		}
+	}
+	// Whatever still waits has a parent that never reached activation, so its
+	// status is a build or copy failure and parentBlocks skips the VM.
+	parents := make([]string, 0, len(waiting))
+	for parent := range waiting {
+		parents = append(parents, parent)
+	}
+	sort.Strings(parents)
+	for _, parent := range parents {
+		for _, vm := range waiting[parent] {
+			activate(vm)
 		}
 	}
 	// In-flight builds and copies are left to finish. They only populate nix

@@ -50,6 +50,15 @@ func PrecheckAll(r Runner, hosts []Host, tops map[string]Toplevel, force bool) [
 	sem := make(chan struct{}, precheckConcurrency)
 	var wg sync.WaitGroup
 
+	// The parents' VM lists are local evals, so they run alongside the probes
+	// rather than ahead of them.
+	var decls map[string]parentDecl
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		decls = resolveParentVMs(r, AllHosts, hosts)
+	}()
+
 	for i, h := range hosts {
 		wg.Add(1)
 		go func(i int, h Host) {
@@ -61,6 +70,7 @@ func PrecheckAll(r Runner, hosts []Host, tops map[string]Toplevel, force bool) [
 		}(i, h)
 	}
 	wg.Wait()
+	checkParents(out, decls)
 	return out
 }
 

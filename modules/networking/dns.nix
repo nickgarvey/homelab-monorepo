@@ -19,6 +19,9 @@ in rec {
     router        = { v4 = [ "10.28.0.1" ];    v6 = [ "2001:470:482f::1" ]; };
     dragonsreach  = { v4 = [ "10.28.0.1" ];    v6 = [ "2001:470:482f::1" ]; };
     frigate       = { v4 = [ "10.28.12.109" ]; v6 = [ "2001:470:482f:200::3" ]; };
+    # Incus API and web UI on lydia :8443, with its own Let's Encrypt certificate
+    # (modules/virtualisation/incus.nix).
+    incus         = { v4 = [ "10.28.12.108" ]; v6 = [ (hostV6 "lydia") ]; };
     smb           = { v4 = [ "10.28.12.110" ]; v6 = [ "2001:470:482f::14" ]; };
     # Both garage nodes. Clients round-robin; any node serves the whole S3 API.
     # Peer-to-peer RPC does not use this — see modules/containers/garage.nix.

@@ -37,6 +37,8 @@ let
   #                         reach Knot through NAT64.
   #   acme-frigate       -> lego on lydia, for the Frigate UI served by the
   #                         container's nginx (modules/containers/frigate.nix).
+  #   acme-incus         -> Incus's own ACME (lego) on lydia, for the Incus API
+  #                         and web UI (modules/virtualisation/incus.nix).
   #   acme-openbao       -> lego on fus, ro and dah, one listener cert per node
   #                         covering openbao and that node's openbao-<node>
   #                         (modules/services/openbao.nix). IPv6-only, via NAT64.
@@ -88,6 +90,13 @@ let
       owners = [ "_acme-challenge.frigate.${domain}." ];
       sopsName = "frigate-acme-tsig";
       sopsFile = ../../secrets/frigate-acme.yaml;
+      sopsKey = "acme_tsig_secret";
+    }
+    {
+      name = "acme-incus";
+      owners = [ "_acme-challenge.incus.${domain}." ];
+      sopsName = "incus-acme-tsig";
+      sopsFile = ../../secrets/incus-acme.yaml;
       sopsKey = "acme_tsig_secret";
     }
     {
