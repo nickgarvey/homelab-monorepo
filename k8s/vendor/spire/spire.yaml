@@ -215,10 +215,8 @@ data:
         ],
         "KeyManager": [
           {
-            "disk": {
-              "plugin_data": {
-                "keys_path": "/run/spire/data/keys.json"
-              }
+            "memory": {
+              "plugin_data": null
             }
           }
         ],
@@ -1010,7 +1008,7 @@ spec:
     metadata:
       annotations:
         kubectl.kubernetes.io/default-container: spire-server
-        checksum/config: c28f7cd60358d09220b19f8a43215dc563215b75dade857ab2d7b6a0e9e393c3
+        checksum/config: 0fdca24576b6679962e19eb555d5e74fe6fea44adae05192ffac727dc9cfa60b
         checksum/config2: 01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b
         checksum/config3: 789ed87793a5155426a02d1dad903f217167df123c5654bd55481738d06edd6b
         checksum/configTornjak: 01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b

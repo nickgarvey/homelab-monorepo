@@ -91,6 +91,13 @@ k8s`) is only needed after a month without use. Running sandboxes never use
 this login: their supervisors authenticate with their own ServiceAccount
 tokens.
 
+Do not use `openshell service expose` on this gateway. The gateway routes
+exposed services by Host header (`*.openshell.localhost`) with no
+authentication, and its listener is on the LAN, so an exposed service is open
+to every LAN client. To reach a sandbox's service, use `openshell forward
+service <sandbox> --target-port N --local N`, which tunnels over the
+authenticated session.
+
 ## Certificate users
 
 Programs log in with a client certificate instead (`mtls_auth`, turned on in

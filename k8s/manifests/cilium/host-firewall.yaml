@@ -1,22 +1,61 @@
+# Host firewall for the k3s nodes, as Cilium host policies (the nodes run
+# networking.firewall off; see modules/k3s/k3s-common.nix). Once a host policy
+# selects a node, ingress to it is default-deny except for the ports below.
+# The node's own traffic, and replies to connections it opened, always pass.
+# A new daemon listening on a node address needs a rule here before anything
+# else can reach it.
+#
+# Two levels of exposure:
+#   - LAN: SSH and the authenticated client APIs (apiserver, OpenBao, Ceph,
+#     RGW). fromCIDR never matches cluster identities (pods, nodes), so each
+#     of these rules lists the ports for fromEntities cluster as well.
+#   - cluster: node-to-node and pod-to-node ports (etcd, kubelet, Cilium
+#     health and Hubble, OpenBao Raft, the ceph-mgr and ceph-backup metrics
+#     Prometheus scrapes).
+# Ports used only by the node itself get no rule: kubelet probes of
+# host-network pods (spiffe-helper 8081, spire-agent 9982, cilium 9879/9234),
+# metrics nothing scrapes (cephcsi 8080, cilium 9963/9964, csi-smb 29644)
+# and mDNS 5353.
+#
+# Only Cilium's devices (enp+, vendor/cilium/values.yaml) are filtered. The
+# Thunderbolt mesh carrying Ceph's cluster network (fd2f::/48,
+# modules/networking/thunderbolt-mesh.nix) is not.
 apiVersion: cilium.io/v2
 kind: CiliumClusterwideNetworkPolicy
 metadata:
   name: k3s-node-firewall
 spec:
-  description: "Allow LAN, cluster-internal, and ICMPv6; drop everything else"
+  description: "Every k3s node: SSH from the LAN, kubelet and Cilium from the cluster, ICMPv6"
   nodeSelector: {}
   ingress:
-    # Allow all traffic from LAN (trusted home network)
-    - fromCIDR:
+    - fromCIDR: &lan
         - "10.28.0.0/16"
         - "2001:470:482f::/48"
-    # Allow all cluster-internal traffic (pods, nodes)
-    - fromEntities:
-        - cluster
-        - remote-node
-    # Allow ICMPv6 from anywhere (ping, NDP, PMTUD)
+      toPorts: &lanPorts
+        - ports:
+            - port: "22"
+              protocol: TCP
+    - fromEntities: [cluster]
+      toPorts: *lanPorts
+    - fromEntities: [cluster]
+      toPorts:
+        - ports:
+            - port: "10250"  # kubelet: apiserver, Prometheus
+              protocol: TCP
+            - port: "4240"   # cilium-health
+              protocol: TCP
+            - port: "4244"   # Hubble peer server, for hubble-relay
+              protocol: TCP
     - icmps:
         - fields:
+            - family: IPv6
+              type: 1    # Destination Unreachable
+            - family: IPv6
+              type: 2    # Packet Too Big (PMTUD)
+            - family: IPv6
+              type: 3    # Time Exceeded
+            - family: IPv6
+              type: 4    # Parameter Problem
             - family: IPv6
               type: 128  # Echo Request
             - family: IPv6
@@ -24,7 +63,69 @@ spec:
             - family: IPv6
               type: 136  # Neighbor Advertisement
   egress:
-    # Allow all egress
     - toEntities:
         - world
         - cluster
+---
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: k3s-control-plane-firewall
+spec:
+  description: "fus/ro/dah: apiserver and OpenBao from the LAN, etcd and OpenBao Raft from the cluster"
+  nodeSelector:
+    matchLabels:
+      node-role.kubernetes.io/control-plane: "true"
+  ingress:
+    - fromCIDR:
+        - "10.28.0.0/16"
+        - "2001:470:482f::/48"
+      toPorts: &controlPlaneLanPorts
+        - ports:
+            - port: "6443"  # kube-apiserver
+              protocol: TCP
+            - port: "8200"  # OpenBao API (modules/services/openbao.nix)
+              protocol: TCP
+    - fromEntities: [cluster]
+      toPorts: *controlPlaneLanPorts
+    - fromEntities: [cluster]
+      toPorts:
+        - ports:
+            - port: "2379"  # etcd client
+              endPort: 2380 # etcd peer
+              protocol: TCP
+            - port: "8201"  # OpenBao Raft
+              protocol: TCP
+---
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: k3s-storage-firewall
+spec:
+  description: "joor/zah/frul: Ceph and RGW from the LAN, metrics from the cluster"
+  nodeSelector:
+    matchExpressions:
+      - key: node-role.kubernetes.io/control-plane
+        operator: DoesNotExist
+  ingress:
+    - fromCIDR:
+        - "10.28.0.0/16"
+        - "2001:470:482f::/48"
+      toPorts: &storageLanPorts
+        - ports:
+            - port: "443"   # RGW (modules/services/ceph.nix)
+              protocol: TCP
+            - port: "3300"  # ceph-mon (msgr2)
+              protocol: TCP
+            - port: "6800"  # OSD, MDS and mgr daemons
+              endPort: 7300
+              protocol: TCP
+    - fromEntities: [cluster]
+      toPorts: *storageLanPorts
+    - fromEntities: [cluster]
+      toPorts:
+        - ports:
+            - port: "9283"  # ceph-mgr prometheus module
+              protocol: TCP
+            - port: "9090"  # ceph-backup-worker metrics
+              protocol: TCP

@@ -86,6 +86,14 @@ needs a `manifests/<app>/network-policy.yaml`** allowing its Service's *target* 
 LoadBalancer only answers inside the cluster. Allow the Caddy port, never the backend
 port behind it.
 
+## Node ingress is per-port
+
+The k3s nodes themselves are firewalled by the Cilium host policies in
+`manifests/cilium/host-firewall.yaml`, which allow specific ports only. **A
+host-network pod, or a NixOS daemon on a node, that something else must reach needs
+its port added there**, as LAN-reachable or cluster-only; without it only the node
+itself (e.g. kubelet probes) can connect.
+
 ---
 
 # DNS

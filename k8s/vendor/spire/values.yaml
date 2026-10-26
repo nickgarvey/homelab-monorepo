@@ -41,6 +41,17 @@ spire-server:
     organization: SPIFFE
     commonName: home.garvey.sh SPIRE CA
 
+  # The CA and JWT signing keys live only in memory, never on the Longhorn
+  # volume, whose replica traffic and backups a LAN client could read. A restart
+  # takes a fresh CA from OpenBao (so OpenBao must be up for the server to
+  # start); SVIDs signed by the previous key keep verifying, since trust
+  # anchors on the root and the bundle keeps old JWT keys until they expire.
+  keyManager:
+    disk:
+      enabled: false
+    memory:
+      enabled: true
+
   # One server, sqlite on Longhorn: the control plane keeps no volumes on Ceph,
   # so SPIRE keeps working with joor/zah/frul down. Agents keep serving cached
   # SVIDs while the server fails over.

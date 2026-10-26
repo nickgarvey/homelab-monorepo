@@ -58,3 +58,41 @@ nix develop -c deploy --hosts lydia
 ```
 
 Confirm the new paths took effect with `systemctl cat pixiecore | grep ExecStart`.
+
+## Installing a host: keys and trust
+
+The netboot image is served to anyone on the LAN who asks, so it must never
+contain a host private key, an age key, or any other secret.
+
+Nothing secret is pushed during an install either. A host's sops identity is
+derived from the SSH host key it generates on its own first boot:
+
+1. Install with `nixos-anywhere --flake .#<host>`, without `--extra-files`.
+2. After the first boot, derive the host's age recipient from its key:
+   ```sh
+   ssh <host> cat /etc/ssh/ssh_host_ed25519_key.pub | nix run nixpkgs#ssh-to-age
+   ```
+3. Add it to `.sops.yaml` as `&<host>`, add it to the creation rules for the
+   secrets the host needs, and re-encrypt those files:
+   ```sh
+   nix run nixpkgs#sops -- updatekeys secrets/<file>.yaml
+   ```
+4. Deploy the host. sops-nix reads the SSH host key by default
+   (`sops.age.sshKeyPaths`), so no `sops.age.keyFile` is set.
+
+lydia, dragonsreach, wabbajack and the workstations predate this and use a
+hand-placed `/root/.config/sops/age/keys.txt` (`sops.age.keyFile`). When one of
+them is reinstalled, move it to the flow above rather than pushing `keys.txt`.
+
+### Accepted risk: a rogue boot server
+
+PXE is unauthenticated. Another machine on `10.28.0.0/16` can answer the
+client's DHCP broadcast with its own proxyDHCP offer, and the kernel and initrd
+travel over plain TFTP/HTTP. Whoever wins that race boots their own image on the
+target, and that image writes the disk, so it can plant a host key or SSH key
+it knows. The steps above would then derive a sops recipient from a key the
+attacker holds.
+
+This is accepted: installs are rare, and the exposure lasts only while a machine
+is netbooting. For a host where it matters, install from the `live-iso` USB
+image instead, which takes the network out of the boot path.
