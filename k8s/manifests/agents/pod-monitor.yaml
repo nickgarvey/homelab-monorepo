@@ -1,0 +1,17 @@
+# Scrapes the agents worker's Temporal SDK metrics (port 9090, in-cluster
+# only under the pod ingress default-deny). The rules are in
+# manifests/prometheus/rules/agents.yaml.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: agents-worker
+  namespace: agents
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  selector:
+    matchLabels:
+      app: agents-worker
+  podMetricsEndpoints:
+    - port: metrics
+      interval: 60s

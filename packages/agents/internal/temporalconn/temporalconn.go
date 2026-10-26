@@ -23,6 +23,8 @@ type Config struct {
 	CertFile   string
 	KeyFile    string
 	CAFile     string
+	// MetricsHandler receives the SDK's metrics, if set.
+	MetricsHandler client.MetricsHandler
 }
 
 // Flags registers the connection flags on fs.
@@ -49,8 +51,9 @@ func (c *Config) Dial() (client.Client, error) {
 	}
 	certFile, keyFile := c.CertFile, c.KeyFile
 	return client.Dial(client.Options{
-		HostPort:  c.Address,
-		Namespace: c.Namespace,
+		HostPort:       c.Address,
+		Namespace:      c.Namespace,
+		MetricsHandler: c.MetricsHandler,
 		ConnectionOptions: client.ConnectionOptions{
 			TLS: &tls.Config{
 				RootCAs:    pool,

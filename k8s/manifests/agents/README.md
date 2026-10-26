@@ -43,6 +43,14 @@ names what it deleted. To run it now, from the break-glass path:
 temporal schedule trigger --schedule-id sandbox-reaper --address 127.0.0.1:7236 --namespace agents
 ```
 
+### Metrics and alerts
+
+The worker serves the Temporal SDK's metrics on port 9090 (`/metrics`),
+scraped by `pod-monitor.yaml`. The alerts in
+`manifests/prometheus/rules/agents.yaml` email when the worker is down, no
+reaper run has completed for 3 hours, reap steps fail in two runs in a row,
+or stopping a sandbox has failed for over an hour.
+
 The gateway's certificate is issued by the cluster-ca ClusterIssuer, so the
 worker trusts it with the `ca.crt` of its own gateway certificate's Secret,
 the same root.
@@ -323,6 +331,7 @@ image is pushed:
 ```sh
 kubectl apply -f manifests/agents/spiffe-helper-configmap.yaml
 kubectl apply -f manifests/agents/deployment.yaml
+kubectl apply -f manifests/agents/pod-monitor.yaml -f manifests/prometheus/rules/agents.yaml
 ```
 
 The token service, with `manifests/cert-manager/cluster-policies.yaml` applied
