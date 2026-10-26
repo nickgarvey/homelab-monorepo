@@ -7,6 +7,9 @@ let
   # The name the UI is served under: the `frigate` record in
   # modules/networking/dns.nix, and what the certificate attests.
   domain = "frigate.home.garvey.sh";
+  autheliaAuthz = "https://auth.home.garvey.sh/api/authz/auth-request";
+  # The frigate module's vhost, behind the Authelia gate.
+  frigatePort = 8080;
 in
 {
   imports = [ ./common.nix ];
@@ -225,14 +228,76 @@ in
           '';
         };
 
-        # The frigate module's vhost: HTTPS on 443, and 80 only redirects.
+        # Two vhosts. The gate on 443 (80 only redirects) asks Authelia
+        # (auth.home.garvey.sh, in k3s; policy in
+        # k8s/manifests/authelia/configmap.yaml) about every request, the
+        # skyforge web-gate.nix pattern, and passes the user and groups
+        # Authelia returns to the frigate module's vhost on loopback. The gate
+        # sets Remote-User and Remote-Groups itself, so whatever a client sent
+        # under those names never reaches Frigate, which trusts them
+        # (proxy.header_map below). The module's vhost cannot carry the
+        # Authelia check itself: its locations already use auth_request for
+        # Frigate's own /auth, and nginx allows one per location.
+        # If k3s or Authelia is down, the UI is unreachable; recording goes on.
         services.nginx.recommendedTlsSettings = true;
-        services.nginx.virtualHosts.frigate = {
+        services.nginx.virtualHosts.frigate-gate = {
           serverName = domain;
           forceSSL = true;
           sslCertificate = "/run/frigate-nginx-tls/fullchain.pem";
           sslCertificateKey = "/run/frigate-nginx-tls/key.pem";
+          extraConfig = ''
+            auth_request /internal/authelia/authz;
+            auth_request_set $authelia_user $upstream_http_remote_user;
+            auth_request_set $authelia_groups $upstream_http_remote_groups;
+            auth_request_set $redirection_url $upstream_http_location;
+            error_page 401 =302 $redirection_url;
+          '';
+          locations = {
+            # Authelia's nginx integration for the AuthRequest endpoint: 200,
+            # or 401 with the portal URL in Location.
+            "/internal/authelia/authz".extraConfig = ''
+              internal;
+              auth_request off;
+              # A variable in proxy_pass makes nginx resolve the name per
+              # request, so nginx still starts when DNS is not up yet.
+              resolver 10.28.0.1 valid=60s;
+              set $authelia_authz ${autheliaAuthz};
+              proxy_pass $authelia_authz;
+              proxy_ssl_server_name on;
+              proxy_ssl_verify on;
+              # The default depth of 1 stops short of Let's Encrypt's root.
+              proxy_ssl_verify_depth 3;
+              proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+              proxy_http_version 1.1;
+              proxy_set_header X-Original-Method $request_method;
+              proxy_set_header X-Original-URL $scheme://$http_host$request_uri;
+              proxy_set_header X-Forwarded-For $remote_addr;
+              proxy_set_header Content-Length "";
+              proxy_set_header Connection "";
+              proxy_pass_request_body off;
+            '';
+            "/" = {
+              proxyPass = "http://127.0.0.1:${toString frigatePort}";
+              proxyWebsockets = true;
+              extraConfig = ''
+                proxy_set_header Host $host;
+                proxy_set_header X-Forwarded-For $remote_addr;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_set_header Remote-User $authelia_user;
+                proxy_set_header Remote-Groups $authelia_groups;
+                # Live streams, recordings and exports go straight through.
+                proxy_buffering off;
+                proxy_request_buffering off;
+                proxy_read_timeout 1h;
+              '';
+            };
+          };
         };
+        # Not port 5000: requests arriving there are trusted as admin without
+        # auth (the module's internal listener).
+        services.nginx.virtualHosts.frigate.listen = [
+          { addr = "127.0.0.1"; port = frigatePort; }
+        ];
 
         services.frigate = {
           enable = true;
@@ -241,15 +306,18 @@ in
           # placeholders that Frigate substitutes at runtime from the env file.
           checkConfig = false;
           settings = {
-            auth = {
-              enabled = true;
-              # The session cookie is only ever sent over HTTPS.
-              cookie_secure = true;
-              # Keyed on the client address nginx appends to X-Forwarded-For.
-              # trusted_proxies stays empty: Frigate takes the last entry that
-              # is not a trusted proxy, which is nginx's, so a client cannot
-              # spoof it.
-              failed_login_rate_limit = "1/second;5/minute;20/hour";
+            # Authelia authenticates (the gate above). With auth off, Frigate
+            # takes the user and role from the headers the gate sets: members
+            # of the Authelia `admins` group are admin, everyone else viewer.
+            auth.enabled = false;
+            proxy = {
+              header_map = {
+                user = "remote-user";
+                role = "remote-groups";
+                role_map.admin = [ "admins" ];
+              };
+              default_role = "viewer";
+              logout_url = "https://auth.home.garvey.sh/logout";
             };
             mqtt.enabled = false;
             detectors.coral = {

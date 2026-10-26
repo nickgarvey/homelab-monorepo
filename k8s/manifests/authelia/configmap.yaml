@@ -45,6 +45,10 @@ data:
         # uses an API key that nginx checks and never reaches Authelia.
         - domain: skyforge.home.garvey.sh
           policy: two_factor
+        # Frigate on lydia (modules/containers/frigate.nix). Frigate maps the
+        # `admins` group to its admin role, everyone else to viewer.
+        - domain: frigate.home.garvey.sh
+          policy: two_factor
     session:
       cookies:
         - domain: home.garvey.sh
