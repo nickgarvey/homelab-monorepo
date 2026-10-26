@@ -44,3 +44,16 @@ spec:
   ingress:
     - fromEntities:
         - cluster
+    # ICMPv6 errors from routers outside the cluster, such as the router's
+    # Packet Too Big for a pod's packet that exceeds a link MTU (PMTUD).
+    # They report on traffic the pod sent and reach no port.
+    - icmps:
+        - fields:
+            - family: IPv6
+              type: 1  # Destination Unreachable
+            - family: IPv6
+              type: 2  # Packet Too Big
+            - family: IPv6
+              type: 3  # Time Exceeded
+            - family: IPv6
+              type: 4  # Parameter Problem
