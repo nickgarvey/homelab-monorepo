@@ -33,8 +33,9 @@ type EnsureResult struct {
 //   - stopped (or running but found stopped), same type version: start it;
 //     pi resumes its own session, so the turn is not primed;
 //   - anything else (no row, a different type version, a sandbox that is
-//     gone or in phase Error, a failed start): delete the old sandbox,
-//     record a new generation as creating, create it; the turn is primed.
+//     gone or in phase Error, a failed start, a start that is not usable
+//     within the ready timeout): delete the old sandbox, record a new
+//     generation as creating, create it; the turn is primed.
 //
 // A row left in creating or starting by a failed attempt is carried on with.
 func (a *Activities) EnsureSandbox(ctx context.Context, in EnsureInput) (EnsureResult, error) {
@@ -82,7 +83,8 @@ func (a *Activities) ensure(ctx context.Context, in EnsureInput, t desired.Type)
 
 // resume makes the row's existing sandbox ready, starting it if it is
 // stopped. It returns false when the sandbox cannot be used (gone, in phase
-// Error, or the row was claimed by the reaper), so a new one is needed.
+// Error, not usable within the ready timeout, or the row was claimed by the
+// reaper), so a new one is needed.
 func (a *Activities) resume(ctx context.Context, row *store.Session) (bool, error) {
 	sb, err := a.Gateway.Get(ctx, row.Sandbox)
 	if errors.Is(err, gateway.ErrNotFound) {
@@ -118,7 +120,7 @@ func (a *Activities) resume(ctx context.Context, row *store.Session) (bool, erro
 			return false, err
 		}
 	}
-	if err := a.waitUsable(ctx, row.Sandbox); errors.Is(err, gateway.ErrNotFound) || errors.Is(err, gateway.ErrLost) {
+	if err := a.waitUsable(ctx, row.Sandbox); unusable(err) {
 		return false, nil
 	} else if err != nil {
 		return false, err
@@ -152,9 +154,10 @@ func (a *Activities) create(ctx context.Context, c Conversation, row *store.Sess
 		return EnsureResult{}, fmt.Errorf("creating %s: %w", row.Sandbox, err)
 	}
 	if err := a.waitUsable(ctx, row.Sandbox); err != nil {
-		// A sandbox that fails as it starts is deleted and fails the
-		// activity; the retry finds the row deleted and makes another.
-		if errors.Is(err, gateway.ErrLost) {
+		// A sandbox that fails as it starts, or does not become usable in
+		// time, is deleted and fails the activity; the retry finds the row
+		// deleted and makes another.
+		if errors.Is(err, gateway.ErrLost) || errors.Is(err, errNotUsable) {
 			if rerr := a.retire(ctx, row); rerr != nil {
 				return EnsureResult{}, rerr
 			}
@@ -172,9 +175,30 @@ func (a *Activities) create(ctx context.Context, c Conversation, row *store.Sess
 	return EnsureResult{Sandbox: row.Sandbox, Created: true}, nil
 }
 
+// errNotUsable: the sandbox did not take commands within the ready timeout.
+// It counts as lost, so a sandbox that never comes up is replaced instead of
+// being waited on again by every later message.
+var errNotUsable = errors.New("not usable within the ready timeout")
+
+// unusable reports whether waitUsable's error means the sandbox has to be
+// replaced.
+func unusable(err error) bool {
+	return errors.Is(err, gateway.ErrNotFound) || errors.Is(err, gateway.ErrLost) || errors.Is(err, errNotUsable)
+}
+
 // waitUsable waits for the sandbox to be Ready and then to run a command:
-// exec can be refused for a moment after the phase turns Ready.
-func (a *Activities) waitUsable(ctx context.Context, name string) error {
+// exec can be refused for a moment after the phase turns Ready. Running out
+// of the ready timeout, while the caller's own context is still live, is
+// errNotUsable.
+func (a *Activities) waitUsable(parent context.Context, name string) error {
+	err := a.waitUsableWithin(parent, name)
+	if err != nil && errors.Is(err, context.DeadlineExceeded) && parent.Err() == nil {
+		return fmt.Errorf("%w: %w", errNotUsable, err)
+	}
+	return err
+}
+
+func (a *Activities) waitUsableWithin(ctx context.Context, name string) error {
 	ctx, cancel := context.WithTimeout(ctx, a.readyTimeout())
 	defer cancel()
 	if err := a.Gateway.WaitReady(ctx, name); err != nil {

@@ -66,7 +66,7 @@ spec:
               memory: 64Mi
       containers:
         - name: worker
-          image: oci.garvey.sh/agents-worker:25rd2pdw0k813c76bn995l08xakmg3q0
+          image: oci.garvey.sh/agents-worker:7a7bqqw9l74fc7w1v7c498ikpl2x5drx
           args:
             - --temporal-cert=/run/spiffe/svid.pem
             - --temporal-key=/run/spiffe/svid_key.pem

@@ -239,6 +239,79 @@ func TestLostSandbox(t *testing.T) {
 	}
 }
 
+// A stopped sandbox that does not come up after its start is replaced in
+// the same ensure, instead of being waited on by every later message.
+func TestStartNotUsableRecreates(t *testing.T) {
+	w := newWorld(t)
+	sb := w.ensure(t)
+	w.turn(t, &sb, "t1", "hello")
+	if err := w.StopSandbox(context.Background(), SandboxRef{Conversation: c1, Sandbox: sb.Sandbox}); err != nil {
+		t.Fatal(err)
+	}
+	w.gw.Stuck[sb.Sandbox] = true
+
+	next := w.ensure(t)
+	if !next.Created || next.Sandbox != store.SandboxName("pi", "c1", 2) {
+		t.Fatalf("ensure: %+v, calls %v", next, w.gw.Calls)
+	}
+	if _, ok := w.gw.Sandboxes[sb.Sandbox]; ok {
+		t.Error("stuck sandbox not deleted")
+	}
+	if row := w.row(t); row.Generation != 2 || row.State != store.Running {
+		t.Errorf("row: %+v", row)
+	}
+	w.turn(t, &next, "t2", "back?")
+	if prompt := w.prompts[len(w.prompts)-1]; !strings.Contains(prompt, "re: hello") {
+		t.Errorf("not primed:\n%s", prompt)
+	}
+}
+
+// A new sandbox that does not come up is deleted and fails the attempt; the
+// retry makes another.
+func TestCreateNotUsableRetires(t *testing.T) {
+	w := newWorld(t)
+	first := store.SandboxName("pi", "c1", 1)
+	w.gw.Stuck[first] = true
+
+	if _, err := w.EnsureSandbox(context.Background(), EnsureInput{Conversation: c1}); !errors.Is(err, errNotUsable) {
+		t.Fatalf("ensure: %v", err)
+	}
+	if _, ok := w.gw.Sandboxes[first]; ok {
+		t.Error("stuck sandbox not deleted")
+	}
+	if row := w.row(t); row.State != store.Deleted {
+		t.Errorf("row: %+v", row)
+	}
+	next := w.ensure(t)
+	if !next.Created || next.Sandbox != store.SandboxName("pi", "c1", 2) {
+		t.Fatalf("retry: %+v", next)
+	}
+}
+
+// The activity's own deadline running out is not the sandbox's fault: it is
+// kept for the retry.
+func TestCallerDeadlineKeepsSandbox(t *testing.T) {
+	w := newWorld(t)
+	sb := w.ensure(t)
+	if err := w.StopSandbox(context.Background(), SandboxRef{Conversation: c1, Sandbox: sb.Sandbox}); err != nil {
+		t.Fatal(err)
+	}
+	w.gw.Stuck[sb.Sandbox] = true
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
+	defer cancel()
+	<-ctx.Done()
+	if _, err := w.EnsureSandbox(ctx, EnsureInput{Conversation: c1}); err == nil || errors.Is(err, errNotUsable) {
+		t.Fatalf("ensure: %v", err)
+	}
+	if _, ok := w.gw.Sandboxes[sb.Sandbox]; !ok {
+		t.Error("sandbox deleted")
+	}
+	if row := w.row(t); row.Sandbox != sb.Sandbox || row.State == store.Deleted {
+		t.Errorf("row: %+v", row)
+	}
+}
+
 func TestStoppedSandboxClaimedByReaper(t *testing.T) {
 	w := newWorld(t)
 	ctx := context.Background()

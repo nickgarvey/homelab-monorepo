@@ -10,8 +10,8 @@ import (
 
 // Fake is an in-memory Gateway for tests. Sandboxes change phase at once:
 // Create and Start make them Ready, Stop makes them Stopped. Tests set a
-// sandbox's phase directly to simulate a lost one, and ExecFunc to play the
-// programs inside.
+// sandbox's phase directly to simulate a lost one, Stuck to simulate one that
+// never comes up, and ExecFunc to play the programs inside.
 type Fake struct {
 	mu        sync.Mutex
 	Sandboxes map[string]*FakeSandbox
@@ -22,6 +22,8 @@ type Fake struct {
 	ExecFunc func(name string, argv []string) (ExecResult, error)
 	// Fail, keyed "<method> <name>", makes that call return the error.
 	Fail map[string]error
+	// Stuck: Create and Start leave these sandboxes in phase Starting.
+	Stuck map[string]bool
 }
 
 type FakeSandbox struct {
@@ -30,7 +32,7 @@ type FakeSandbox struct {
 }
 
 func NewFake() *Fake {
-	return &Fake{Sandboxes: map[string]*FakeSandbox{}, Fail: map[string]error{}}
+	return &Fake{Sandboxes: map[string]*FakeSandbox{}, Fail: map[string]error{}, Stuck: map[string]bool{}}
 }
 
 func (f *Fake) call(method, name string) error {
@@ -48,7 +50,7 @@ func (f *Fake) Create(_ context.Context, name string, spec Spec) error {
 		return err
 	}
 	if _, ok := f.Sandboxes[name]; !ok {
-		f.Sandboxes[name] = &FakeSandbox{Spec: spec, Phase: PhaseReady}
+		f.Sandboxes[name] = &FakeSandbox{Spec: spec, Phase: f.started(name)}
 	}
 	return nil
 }
@@ -74,9 +76,17 @@ func (f *Fake) Start(_ context.Context, name string) error {
 		return fmt.Errorf("%s: %w", name, ErrNotFound)
 	}
 	if sb.Phase == PhaseStopped {
-		sb.Phase = PhaseReady
+		sb.Phase = f.started(name)
 	}
 	return nil
+}
+
+// started is the phase a created or started sandbox is in.
+func (f *Fake) started(name string) string {
+	if f.Stuck[name] {
+		return PhaseStarting
+	}
+	return PhaseReady
 }
 
 func (f *Fake) Stop(_ context.Context, name string) error {
