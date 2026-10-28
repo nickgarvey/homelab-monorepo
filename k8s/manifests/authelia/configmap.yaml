@@ -130,6 +130,15 @@ data:
               - policy: two_factor
                 subject:
                   - user:ngarvey
+          # Jellyfin (manifests/jellyfin): give a user the jellyfin-users group
+          # to let them in. The SSO plugin checks the same groups.
+          jellyfin:
+            default_policy: deny
+            rules:
+              - policy: two_factor
+                subject:
+                  - group:jellyfin-users
+                  - group:admins
         lifespans:
           custom:
             # Refresh tokens slide: each refresh issues a new one valid this long
@@ -291,6 +300,29 @@ data:
               - openid
               - profile
               - email
+            response_types:
+              - code
+            grant_types:
+              - authorization_code
+            access_token_signed_response_alg: none
+            userinfo_signed_response_alg: none
+            token_endpoint_auth_method: client_secret_basic
+          # The SSO plugin in Jellyfin (manifests/jellyfin/README.md). It reads
+          # the username and groups from the userinfo endpoint.
+          - client_id: jellyfin
+            client_name: Jellyfin
+            # pbkdf2 digest of the plaintext in manifests/jellyfin/sso-secret.yaml.
+            client_secret: '$pbkdf2-sha512$310000$CdeUXMqwbRIe3kkNu7v7AQ$UfoDP4UxFDODnLNHGjREHopZhg0l9TjQXnNWgU2pK69SNOPiHH28jBQzwiuGiyxavyWfZBrRptC.suRyWTaMoQ'
+            public: false
+            authorization_policy: jellyfin
+            require_pkce: true
+            pkce_challenge_method: S256
+            redirect_uris:
+              - https://jellyfin.garvey.sh/sso/OID/redirect/authelia
+            scopes:
+              - openid
+              - profile
+              - groups
             response_types:
               - code
             grant_types:

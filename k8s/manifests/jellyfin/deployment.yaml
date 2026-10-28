@@ -32,6 +32,8 @@ spec:
         #                  h264/hevc/av1 encode; no vc1). Other
         #                  encoding fields stay UI-editable; these are owned by
         #                  gitops and revert on restart.
+        #   branding.xml - the "Sign in with Authelia" button on the login page.
+        #                  Seed only if absent, like network.xml.
         - name: seed-config
           image: jellyfin/jellyfin:12.0.20260908-012347
           command:
@@ -44,6 +46,12 @@ spec:
                 echo "seeded network.xml"
               else
                 echo "network.xml already present; leaving as-is"
+              fi
+              if [ ! -f /config/config/branding.xml ]; then
+                cp /seed-branding/branding.xml /config/config/branding.xml
+                echo "seeded branding.xml"
+              else
+                echo "branding.xml already present; leaving as-is"
               fi
               if [ ! -f /config/config/encoding.xml ]; then
                 cp /seed-encoding/encoding.xml /config/config/encoding.xml
@@ -89,6 +97,45 @@ spec:
               mountPath: /seed-network
             - name: encoding-seed
               mountPath: /seed-encoding
+            - name: branding-seed
+              mountPath: /seed-branding
+        # The SSO plugin (MaxRink/jellyfin-plugin-sso, a fork for Jellyfin 12 of
+        # the archived 9p4 plugin), pinned by version and sha256. Its settings
+        # live in /config/plugins/configurations/SSO-Auth.xml, set through its
+        # API (README.md). Upgrading: change VERSION and SHA256; the old
+        # directory is removed.
+        - name: install-sso-plugin
+          image: alpine:3.24
+          env:
+            - name: VERSION
+              value: "6.1.0.0"
+            - name: SHA256
+              value: "6311d6b16e89a91e44ce9b5a32c09d28eda292a11b75cd6b942d7bc62664cd00"
+          command:
+            - /bin/sh
+            - -euc
+            - |
+              dir="/config/plugins/SSO-Auth_$VERSION"
+              for old in /config/plugins/SSO-Auth_*; do
+                if [ -e "$old" ] && [ "$old" != "$dir" ]; then
+                  rm -rf "$old"
+                  echo "removed $old"
+                fi
+              done
+              if [ -f "$dir/meta.json" ]; then
+                echo "SSO-Auth $VERSION already installed"
+                exit 0
+              fi
+              wget -qO /tmp/sso.zip "https://github.com/MaxRink/jellyfin-plugin-sso/releases/download/v$VERSION/sso-auth_$VERSION.zip"
+              echo "$SHA256  /tmp/sso.zip" | sha256sum -c -
+              rm -rf "$dir.tmp"
+              mkdir -p "$dir.tmp"
+              unzip -q /tmp/sso.zip -d "$dir.tmp"
+              mv "$dir.tmp" "$dir"
+              echo "installed SSO-Auth $VERSION"
+          volumeMounts:
+            - name: config
+              mountPath: /config
       containers:
         - name: caddy
           image: caddy:2-alpine
@@ -164,6 +211,9 @@ spec:
         - name: encoding-seed
           configMap:
             name: jellyfin-encoding-config
+        - name: branding-seed
+          configMap:
+            name: jellyfin-branding-config
         - name: caddy-config
           configMap:
             name: jellyfin-caddy

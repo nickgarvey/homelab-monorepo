@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jellyfin-branding-config
+  namespace: jellyfin
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+data:
+  # Seeded into /config/config/branding.xml on first boot (only if absent) by the
+  # seed-config initContainer; afterwards it is edited in Dashboard > Branding.
+  # The login disclaimer holds the button that starts the SSO plugin's login
+  # (README.md); the CSS makes it look like Jellyfin's own buttons.
+  branding.xml: |
+    <?xml version="1.0" encoding="utf-8"?>
+    <BrandingOptions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+      <LoginDisclaimer>&lt;a class="raised block emby-button button-submit" href="/sso/OID/start/authelia"&gt;Sign in with Authelia&lt;/a&gt;</LoginDisclaimer>
+      <CustomCss>a.raised.emby-button { padding: 0.9em 1em; color: inherit !important; } .disclaimerContainer { display: block; }</CustomCss>
+      <SplashscreenEnabled>false</SplashscreenEnabled>
+    </BrandingOptions>
