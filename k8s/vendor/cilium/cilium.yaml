@@ -138,7 +138,7 @@ data:
   bpf-lb-external-clusterip: "false"
   bpf-lb-source-range-all-types: "false"
   bpf-lb-algorithm-annotation: "false"
-  bpf-lb-mode-annotation: "false"
+  bpf-lb-mode-annotation: "true"
 
   bpf-distributed-lru: "false"
   bpf-events-drop-enabled: "true"
@@ -215,7 +215,9 @@ data:
   enable-health-check-loadbalancer-ip: "false"
   node-port-bind-protection: "true"
   enable-auto-protect-node-port-range: "true"
+  bpf-lb-mode: "snat"
   bpf-lb-acceleration: "disabled"
+  bpf-lb-dsr-dispatch: "opt"
   enable-service-topology: "false"
   enable-l2-neigh-discovery: "false"
   k8s-require-ipv4-pod-cidr: "false"

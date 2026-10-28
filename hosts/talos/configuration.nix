@@ -8,6 +8,7 @@
     ../../modules/desktop/openscad.nix
     ../../modules/desktop/openbao-ssh-cert.nix
     ../../modules/services/repo-backup.nix
+    ../../modules/services/netconsole.nix
     ../../modules/networking/network-manager.nix
   ];
 

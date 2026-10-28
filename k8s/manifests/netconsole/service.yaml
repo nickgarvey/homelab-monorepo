@@ -1,0 +1,29 @@
+# UDP LoadBalancer that hosts' netconsole sends to (modules/services/netconsole.nix).
+apiVersion: v1
+kind: Service
+metadata:
+  name: netconsole
+  namespace: netconsole
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+  annotations:
+    io.cilium/lb-ipam-ips: "2001:470:482f:2::5015"
+    # Set at creation only (vendor/cilium/values.yaml); changing it breaks the
+    # Service, so delete and re-apply it instead.
+    service.cilium.io/forwarding-mode: dsr
+spec:
+  type: LoadBalancer
+  # Cluster, because Cilium's L2 announcement elects any node, not only nodes
+  # with a netconsole pod, and with Local a node without one drops the
+  # traffic. DSR keeps the sender's address when the announcing node forwards
+  # to another, so network-policy.yaml can admit senders by it.
+  externalTrafficPolicy: Cluster
+  ipFamilies: [IPv6]
+  ipFamilyPolicy: SingleStack
+  selector:
+    app: netconsole
+  ports:
+    - name: netconsole
+      port: 6666
+      targetPort: 6666
+      protocol: UDP

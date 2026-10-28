@@ -1,0 +1,16 @@
+# Daily kernel log files, one directory per sending host. Losing it loses only
+# past logs.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: netconsole-logs
+  namespace: netconsole
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ceph-rbd
+  resources:
+    requests:
+      storage: 1Gi

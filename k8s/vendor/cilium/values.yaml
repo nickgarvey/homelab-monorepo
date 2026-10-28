@@ -27,6 +27,22 @@ nodePort:
     - 2001:470:482f::/48
 devices: enp+
 
+# Services forward to a backend on another node with SNAT unless annotated
+# `service.cilium.io/forwarding-mode: dsr` (set when the Service is created;
+# changing it on a live Service breaks its connections). With DSR the node
+# holding the LB address keeps the client's source and passes the service
+# address in an IPv6 Destination Options header (`opt`); the backend's node
+# replies straight to the client from the LB address. That keeps the client
+# address with externalTrafficPolicy Cluster, which matters because the L2
+# announcement elects any node, not only nodes running a backend.
+# `opt` lowers no MTU: a forwarded packet that no longer fits gets a Packet
+# Too Big back to the client (TCP carries the option on the SYN only).
+loadBalancer:
+  mode: snat
+  dsrDispatch: opt
+bpf:
+  lbModeAnnotation: true
+
 hostFirewall:
   enabled: true
 l2announcements:

@@ -1,0 +1,74 @@
+# Vector config for the netconsole receiver: one UDP datagram per kernel
+# message, in netconsole's extended format
+# ("<facility*8+level>,<seq>,<usec since boot>,<flags>;<text>"). The sequence
+# number makes dropped messages visible as gaps; it restarts at each boot.
+#
+# The sender is taken from the " host=<name>" userdata line netconsole
+# appends (modules/services/netconsole.nix), falling back to the source
+# address.
+#
+# Each message becomes one line, on stdout (kubectl logs) and in a daily file
+# per sender on the PVC:
+#   <received, UTC> <sender> seq=<n> lvl=<0-7> [<seconds since boot>] <text>
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: netconsole
+  namespace: netconsole
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+data:
+  vector.yaml: |
+    data_dir: /var/lib/vector
+
+    api:
+      enabled: true
+      address: "[::]:8686"
+
+    sources:
+      netconsole:
+        type: socket
+        mode: udp
+        address: "[::]:6666"
+        host_key: host
+        # A datagram is one message; extended messages can carry key=value
+        # continuation lines, which newline framing would split off.
+        framing:
+          method: bytes
+
+    transforms:
+      lines:
+        type: remap
+        inputs: [netconsole]
+        drop_on_abort: true
+        source: |
+          raw = strip_whitespace(string(.message) ?? "")
+          if raw == "" { abort }
+          sender, err = parse_regex(raw, r'(?m)^ host=(?P<name>\S+)$')
+          if err == null {
+            .host = sender.name
+            raw = strip_whitespace(replace(raw, r'(?m)^ host=\S+$', ""))
+          }
+          prefix = format_timestamp!(.timestamp, "%Y-%m-%dT%H:%M:%S%.3fZ") + " " + (string(.host) ?? "unknown") + " "
+          parts, err = parse_regex(raw, r'(?s)^(?P<prio>\d+),(?P<seq>\d+),(?P<usec>\d+),[^;]*;(?P<text>.*)$')
+          if err == null {
+            level = mod(to_int!(parts.prio), 8)
+            uptime = to_float!(parts.usec) / 1000000.0
+            .message = prefix + "seq=" + string!(parts.seq) + " lvl=" + to_string(level) +
+              " [" + format_number(uptime, 6) + "] " + string!(parts.text)
+          } else {
+            .message = prefix + raw
+          }
+
+    sinks:
+      stdout:
+        type: console
+        inputs: [lines]
+        encoding:
+          codec: text
+      files:
+        type: file
+        inputs: [lines]
+        path: "/var/log/netconsole/{{ host }}/%Y-%m-%d.log"
+        encoding:
+          codec: text

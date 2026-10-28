@@ -1,0 +1,76 @@
+# Vector receiving netconsole UDP (service.yaml) and writing it to stdout and
+# the PVC (configmap.yaml). Config is reloaded on change by --watch-config.
+# Recreate, because the RWO volume cannot be mounted by two pods at once.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netconsole
+  namespace: netconsole
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: netconsole
+  template:
+    metadata:
+      labels:
+        app: netconsole
+        app.kubernetes.io/managed-by: ngarvey-homelab
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+      containers:
+        - name: vector
+          image: docker.io/timberio/vector:0.59.0-distroless-libc
+          args: ["--config", "/etc/vector/vector.yaml", "--watch-config"]
+          ports:
+            - containerPort: 6666
+              protocol: UDP
+              name: netconsole
+            - containerPort: 8686
+              name: api
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: api
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: api
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/vector
+              readOnly: true
+            - name: data
+              mountPath: /var/lib/vector
+            - name: logs
+              mountPath: /var/log/netconsole
+      volumes:
+        - name: config
+          configMap:
+            name: netconsole
+        - name: data
+          emptyDir: {}
+        - name: logs
+          persistentVolumeClaim:
+            claimName: netconsole-logs

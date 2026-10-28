@@ -1,0 +1,26 @@
+# netconsole has no authentication, so senders are admitted by source address:
+# the static IPv6 of each host that imports modules/services/netconsole.nix
+# (modules/networking/lan-hosts.nix). The Service forwards with DSR, so the
+# address reaches the pod unchanged whichever node announces the LB IP.
+# Allow-only: the deny comes from manifests/cilium/pod-ingress-default-deny.yaml.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: netconsole-lb-ingress
+  namespace: netconsole
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  description: "netconsole UDP from the sending hosts"
+  enableDefaultDeny:
+    ingress: false
+  endpointSelector:
+    matchLabels:
+      app: netconsole
+  ingress:
+    - fromCIDR:
+        - 2001:470:482f::5/128  # talos
+      toPorts:
+        - ports:
+            - port: "6666"
+              protocol: UDP
