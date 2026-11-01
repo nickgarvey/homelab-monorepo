@@ -15,8 +15,8 @@ them (epic nix-psvkl). This directory holds what defines it:
 ## The agent type
 
 `habit-helper` in `agents/declaration.nix`: pi on litellm's `habit-helper`
-model (DeepSeek V4 Flash for now, `k8s/manifests/litellm/configmap.yaml`;
-nix-psvkl.11 moves it to Claude), with the `litellm` and `habit-data`
+model (GPT-6.1 Sol through OpenAI's Responses API,
+`k8s/manifests/litellm/configmap.yaml`), with the `litellm` and `habit-data`
 providers. Its supervisor gets litellm's `habit-helper` key and the PostgREST
 token from agent-token; pi's node may reach only litellm, and the `habit` CLI
 only PostgREST. Wake-ups are on (`session.defaultWakeup` 24h, times in

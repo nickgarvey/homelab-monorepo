@@ -23,13 +23,13 @@ data:
         litellm_params:
           model: deepseek/deepseek-v4-flash
           api_key: os.environ/DEEPSEEK_API_KEY
-      # DeepSeek V4 Flash, for the habit-helper agent. The key comes from the
-      # litellm-deepseek Secret; until the real one is in, calls to it fail
-      # and everything else works.
+      # GPT-6.1 Sol, for the habit-helper agent, with the key from the
+      # litellm-openai Secret. Through OpenAI's Responses API: on Chat
+      # Completions the model refuses function tools while it reasons.
       - model_name: habit-helper
         litellm_params:
-          model: deepseek/deepseek-v4-flash
-          api_key: os.environ/DEEPSEEK_API_KEY
+          model: openai/responses/gpt-6.1-sol
+          api_key: os.environ/OPENAI_API_KEY
       # The same model, for the habit-admin agent, under its own name so either
       # can move on its own.
       - model_name: habit-admin

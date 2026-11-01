@@ -320,13 +320,14 @@ creation_rules:
   # Secrets kept apart from their directory's secret.yaml: the litellm
   # role's Postgres password (postgres), the litellm virtual keys agent-token
   # hands out (agents), agent-token's copy of the habit-data JWT key
-  # (agents; the habit-helper namespace holds the other copy), and the DeepSeek
-  # key behind litellm's habit-helper model (litellm), and the Matrix
+  # (agents; the habit-helper namespace holds the other copy), and litellm's
+  # DeepSeek key (litellm), and the Matrix
   # Authentication Service's keys (matrix), and the Matrix bridge's
   # appservice registration (agents; Synapse's copy is in matrix/secret.yaml),
   # and Habit Admin's keys: the bridge admin API's JWT key and its litellm
-  # virtual key (agents), and litellm's copy of that virtual key (litellm).
-  - path_regex: k8s/manifests/(postgres/litellm-secret|agents/litellm-keys-secret|agents/agent-token-habit-data-secret|litellm/deepseek-secret|matrix/mas-secret|agents/matrix-secret|agents/habit-admin-secret|litellm/habit-admin-key-secret)\.yaml$
+  # virtual key (agents), and litellm's copy of that virtual key (litellm),
+  # and litellm's OpenAI key (litellm).
+  - path_regex: k8s/manifests/(postgres/litellm-secret|agents/litellm-keys-secret|agents/agent-token-habit-data-secret|litellm/deepseek-secret|matrix/mas-secret|agents/matrix-secret|agents/habit-admin-secret|litellm/habit-admin-key-secret|litellm/openai-secret)\.yaml$
     encrypted_regex: "^(data|stringData)$"
     key_groups:
     - age:

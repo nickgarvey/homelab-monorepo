@@ -7,7 +7,7 @@ An OpenAI-compatible proxy in front of the models the cluster uses
 |---|---|
 | `qwen3.8-flash-next` | llama.cpp on wabbajack, currently off (its memory goes to Nix builds; `hosts/wabbajack/configuration.nix`) |
 | `pi` | DeepSeek V4 Flash (`deepseek/deepseek-v4-flash`), with the key in `litellm-deepseek`; the pi agent's default |
-| `habit-helper` | DeepSeek V4 Flash (`deepseek/deepseek-v4-flash`), with the key in `litellm-deepseek` |
+| `habit-helper` | GPT-6.1 Sol through the Responses API (`openai/responses/gpt-6.1-sol`), with the key in `litellm-openai` |
 
 In-cluster clients use `http://litellm.litellm.svc.cluster.local:4000`. The
 LoadBalancer (`service.yaml`, `2001:470:482f:2::4000`, open to all by
@@ -81,9 +81,10 @@ when their cached one expires (agent-token's `expiresIn`, 1h).
 `DEEPSEEK_API_KEY` in the `litellm-deepseek` Secret (`deepseek-secret.yaml`)
 holds the placeholder `REPLACE_WITH_DEEPSEEK_API_KEY` until the real key is put
 in. litellm starts either way (the variable is optional in `deployment.yaml`);
-only calls to `habit-helper` fail without it. The key is the one pi uses on the
-workstations, `deepseek-api-key` in `secrets/llm-api-keys.yaml`, which the
-cluster cannot decrypt, so it is copied across. From the repo root:
+only calls to the `pi` and `habit-admin` models fail without it. The key is
+the one pi uses on the workstations, `deepseek-api-key` in
+`secrets/llm-api-keys.yaml`, which the cluster cannot decrypt, so it is copied
+across. From the repo root:
 
 ```sh
 sops set k8s/manifests/litellm/deepseek-secret.yaml \
@@ -95,6 +96,23 @@ kubectl -n litellm rollout restart deploy/litellm
 
 The `litellm-anthropic` Secret in `secret.yaml` holds only a placeholder and
 nothing reads it.
+
+## OpenAI
+
+`OPENAI_API_KEY` in the `litellm-openai` Secret (`openai-secret.yaml`) is
+litellm's own key: an OpenAI service account key, restricted to model
+capabilities, in a project of its own. It is not the workstations'
+`openai-api-key`. litellm starts without it (the variable is optional in
+`deployment.yaml`). To replace it, write the new key to a file and, from the
+repo root:
+
+```sh
+printf '"%s"' "$(tr -d '\n' < key-file)" | sops set --value-stdin \
+  k8s/manifests/litellm/openai-secret.yaml \
+  '["spec"]["secretTemplates"][0]["stringData"]["OPENAI_API_KEY"]'
+kubectl apply -f k8s/manifests/litellm/openai-secret.yaml
+kubectl -n litellm rollout restart deploy/litellm
+```
 
 ## Apply (from `k8s/`)
 
@@ -115,8 +133,8 @@ Then litellm and its keys. The Job waits for litellm to be ready:
 ```sh
 kubectl apply -f manifests/litellm/namespace.yaml
 kubectl apply -f manifests/litellm/secret.yaml
-kubectl apply -f manifests/litellm/deepseek-secret.yaml
-kubectl -n litellm get secret litellm litellm-virtual-keys litellm-deepseek   # wait for all three
+kubectl apply -f manifests/litellm/deepseek-secret.yaml -f manifests/litellm/openai-secret.yaml
+kubectl -n litellm get secret litellm litellm-virtual-keys litellm-deepseek litellm-openai   # wait for all four
 kubectl apply -f manifests/litellm/postgres-ca.yaml -f manifests/litellm/configmap.yaml
 kubectl apply -f manifests/litellm/deployment.yaml -f manifests/litellm/register-keys-job.yaml
 kubectl apply -f manifests/litellm/service.yaml -f manifests/litellm/network-policy.yaml
