@@ -49,7 +49,7 @@ Everything under `packages/` is built from this repo. Two kinds live there:
 
 - Packages with an `outputs.nix` are flake outputs (`nix build .#<name>`);
   hosts use them as `inputs.self.packages.<system>.<name>`.
-- Packages with a `default.nix` (helium-browser, agent-issue-tracker, agents, bosl2,
+- Packages with a `default.nix` (helium-browser, agent-issue-tracker, agents, bosl2, thinkrail,
   storj-gateway-st) are built by the module that uses them, with
   `pkgs.callPackage ../../packages/<name> { }`.
 
@@ -72,7 +72,7 @@ narrowest matching subdir; create a new one only when you have ≥2 related file
 | `containers/` | systemd-nspawn container definitions. Common networking lives in `common.nix`. |
 | `microvm/` | MicroVM guest definitions. |
 | `virtualisation/` | VM hypervisors and their guests. Currently: `incus`, `incus-vms` (VMs a host owns: project, profile, client cert, creation from the seed image), `incus-guest` (baseline for NixOS guests in Incus VMs), `incus-metrics` (Vector scrapes Incus /1.0/metrics with its JWT-SVID). |
-| `llms/` | LLM tooling. Currently: `hf-to-garage` (pushes HuggingFace repos to the `llm-models` bucket), `pi` (terminal coding agent). |
+| `llms/` | LLM tooling. Currently: `hf-to-garage` (pushes HuggingFace repos to the `llm-models` bucket), `pi` (terminal coding agent), `thinkrail` (JetBrains' pi IDE, CLI served to the browser). |
 | `home/` | home-manager config. Currently: `ngarvey` (imported by `common-workstation`), and the dotfiles it installs in `dotfiles/`. |
 
 ## NixOS: imports

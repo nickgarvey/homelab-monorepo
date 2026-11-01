@@ -7,6 +7,7 @@
     ../../modules/desktop/niri.nix
     ../../modules/desktop/openscad.nix
     ../../modules/desktop/openbao-ssh-cert.nix
+    ../../modules/llms/thinkrail.nix
     ../../modules/services/repo-backup.nix
     ../../modules/services/netconsole.nix
     ../../modules/networking/network-manager.nix
@@ -51,6 +52,9 @@
   # The local ninfer llama server runs here (RTX 5090), so pi is given its
   # provider and can be pointed at it. DeepSeek stays the default model.
   homelab.pi.ninfer.enable = true;
+
+  # ThinkRail (modules/llms/thinkrail.nix), the pi IDE served to the browser.
+  homelab.thinkrail.enable = true;
 
   # ~/local-drive on CephFS (modules/services/cephfs-mount.nix).
   homelab.cephfs.enable = true;
