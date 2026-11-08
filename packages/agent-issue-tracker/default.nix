@@ -4,13 +4,13 @@ buildGoModule rec {
   pname = "agent-issue-tracker";
   # Our fork is untagged; version follows the nixpkgs unstable convention,
   # base version from the last upstream release we forked past.
-  version = "1.15.0-unstable-2026-09-30";
+  version = "1.20.0-unstable-2026-11-08";
 
   src = fetchFromGitHub {
     owner = "nickgarvey";
     repo = "agent-issue-tracker";
-    rev = "1de7c2ff9c072b9cceacbed6f95c9190c69d1c9e";
-    hash = "sha256-dBnGtxa/lG3q13K5Uf4GfuVmZI/rcpbs/IifobJ97Vo=";
+    rev = "886f016822df03c0ee390d4a4391c6eabb293e05";
+    hash = "sha256-c5u9B5lTRsgQkdcUQlmHyA5lnYXe6VSDvEAtCgPyvGw=";
   };
 
   vendorHash = "sha256-+jdz9R40HGu2sS2RCN+Q2qh/8FskscJZz5Jo3NlAxbA=";
