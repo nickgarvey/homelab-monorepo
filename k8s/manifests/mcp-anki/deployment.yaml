@@ -1,0 +1,94 @@
+# The Anki MCP server (packages/anki-mcp): Claude's tools for the Anki
+# collection, full control under the Duet deck and read-only elsewhere.
+#
+# It syncs its own copy of the collection with anki-sync-server as the user in
+# the mcp-anki-sync secret, before every read and after every write, and never
+# does a full sync except one download into an empty volume at first start.
+# If its pre-sync audit finds a change outside Duet, it stops syncing and
+# writes state/quarantine.json; /healthz then returns 503 and every tool call
+# fails with the reasons. A refused full sync fails every call the same way.
+# To resolve either, once the cause is understood, delete the local copy and
+# bootstrap fresh from the sync server (whose copy never received the change):
+#   kubectl -n mcp-anki scale deploy/mcp-anki --replicas=0
+#   (run `anki-mcp reset` in a pod with this image, env and volumes, e.g.
+#    kubectl debug or a copy of this pod spec with args: [reset])
+#   kubectl -n mcp-anki scale deploy/mcp-anki --replicas=1
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-anki
+  namespace: mcp-anki
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  replicas: 1
+  # One process per collection file.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: mcp-anki
+  template:
+    metadata:
+      labels:
+        app: mcp-anki
+        app.kubernetes.io/managed-by: ngarvey-homelab
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: anki-mcp
+          # packages/anki-mcp: the tag is the package's store hash.
+          image: oci.garvey.sh/anki-mcp:i7hdg4hr3w0jm2cl6mgw7i32c6a41v21
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            - name: ANKI_SYNC_ENDPOINT
+              value: https://anki.home.garvey.sh/
+            - name: ANKI_SYNC_CREDENTIAL_FILE
+              value: /run/secrets/anki/credential
+            - name: MCP_ALLOWED_HOSTS
+              value: mcp.home.garvey.sh,localhost:*,127.0.0.1:*
+            # The user's timezone, so the UTC offset Anki stores in the
+            # collection (localOffset) matches the phone's instead of
+            # flipping between UTC and local time on every sync.
+            - name: TZ
+              value: America/Los_Angeles
+          readinessProbe:
+            tcpSocket:
+              port: 8000
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 20m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: credential
+              mountPath: /run/secrets/anki
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: mcp-anki-data
+        - name: credential
+          secret:
+            secretName: mcp-anki-sync
+        - name: tmp
+          emptyDir: {}

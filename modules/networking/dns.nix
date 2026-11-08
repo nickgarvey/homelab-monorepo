@@ -44,8 +44,12 @@ in rec {
     obsidian-livesync = { v4 = []; v6 = [ "2001:470:482f:2::5004" ]; };
     grafana       = { v4 = []; v6 = [ "2001:470:482f:2::5006" ]; };
     # Authelia (OIDC login for Grafana); Caddy sidecar terminates TLS on 443
-    # (k8s/manifests/authelia).
-    auth          = { v4 = []; v6 = [ "2001:470:482f:2::5005" ]; };
+    # (k8s/manifests/authelia). The A record is the WAN front door, which only
+    # Claude's connector range can use (modules/containers/public-mcp-proxy.nix):
+    # it reaches the MCP gateway, which forwards just Authelia's discovery and
+    # token endpoints. LAN clients use the AAAA, as the router rejects LAN
+    # traffic to its own :443.
+    auth          = { v4 = [ wanIPv4 ]; v6 = [ "2001:470:482f:2::5005" ]; };
     # SPIRE's OIDC discovery provider serves the trust domain's JWKS on 443 off
     # this LB IP (k8s/manifests/spire).
     spiffe-oidc   = { v4 = []; v6 = [ "2001:470:482f:2::5007" ]; };
@@ -61,6 +65,9 @@ in rec {
     # Nightscout (CGM data from Loop); Caddy sidecar terminates TLS on 443
     # (k8s/manifests/nightscout).
     nightscout    = { v4 = []; v6 = [ "2001:470:482f:2::5012" ]; };
+    # The MCP gateway: Caddy that checks Authelia tokens in front of the MCP
+    # modules (k8s/manifests/mcp). A record as for auth above.
+    mcp           = { v4 = [ wanIPv4 ]; v6 = [ "2001:470:482f:2::5013" ]; };
     # OpenBao, the private CA's issuing tier, on 8200 (modules/services/openbao.nix).
     # Clients use the shared name; any node serves the whole API (standbys
     # forward to the active node). The per-node names are the Raft peers' API
@@ -70,6 +77,11 @@ in rec {
     openbao-ro    = { v4 = []; v6 = [ (hostV6 "ro") ]; };
     openbao-dah   = { v4 = []; v6 = [ (hostV6 "dah") ]; };
   };
+
+  # The router's DHCP-assigned WAN IPv4: ns1's address, and the public front
+  # door for mcp and auth above. Nothing updates it if the lease
+  # changes; modules/router/wan-dns-drift.nix alerts when it no longer matches.
+  wanIPv4 = "64.186.8.205";
 
   # CNAMEs (targets are FQDNs with trailing dot).
   cnames = { };
@@ -86,7 +98,7 @@ in rec {
   #             where cert-manager writes the TXT (cnameStrategy: Follow).
   certManagerAcme = {
     home = [
-      "anki" "auth" "celler" "grafana" "matrix-auth" "nightscout"
+      "anki" "auth" "celler" "grafana" "matrix-auth" "mcp" "nightscout"
       "obsidian-livesync" "prometheus" "spiffe-oidc"
     ];
     garveySh = [ "jellyfin" "matrix" "oci" "temporal" ];

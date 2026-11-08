@@ -1,0 +1,25 @@
+# Anyone may reach the LoadBalancer Service in service.yaml on its target port:
+# LAN clients over IPv6, and Anthropic's servers through the router's IPv4
+# forward, which is where the source range is restricted.
+# Allow-only: the deny comes from manifests/cilium/pod-ingress-default-deny.yaml.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: mcp-gateway-lb-ingress
+  namespace: mcp
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  description: "LoadBalancer target port open to all"
+  enableDefaultDeny:
+    ingress: false
+  endpointSelector:
+    matchLabels:
+      app: mcp-gateway
+  ingress:
+    - fromEntities:
+        - all
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP

@@ -1,0 +1,94 @@
+# The public gateway's Caddyfile: OAuth discovery and JWT checks for the MCP
+# modules, plus the slice of Authelia that Anthropic's servers must reach.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mcp-gateway
+  namespace: mcp
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+data:
+  Caddyfile: |
+    {
+      auto_https off
+      # For the reload sidecar only (deployment.yaml): the pod's loopback is
+      # not reachable from outside the pod.
+      admin 127.0.0.1:2019
+      order jwtauth before reverse_proxy
+    }
+
+    # One MCP module at https://mcp.home.garvey.sh/<name>/mcp.
+    # args[0]: the module name; args[1]: its in-cluster upstream (host:port),
+    # which serves MCP at /mcp.
+    #
+    # The upstream sees Host mcp.home.garvey.sh, so a module with DNS-rebinding
+    # protection must allow that host. It accepts ingress only from this pod
+    # (its own network-policy.yaml), so it runs without auth of its own.
+    (module) {
+      # RFC 9728 protected resource metadata. `resource` must equal the URL the
+      # connector is added with, exactly; Claude reads only the first
+      # authorization server.
+      handle /.well-known/oauth-protected-resource/{args[0]}/mcp {
+        header Content-Type application/json
+        respond `\{"resource":"https://mcp.home.garvey.sh/{args[0]}/mcp","authorization_servers":["https://auth.home.garvey.sh"],"scopes_supported":["openid"],"bearer_methods_supported":["header"]\}` 200
+      }
+      handle_path /{args[0]}/* {
+        # An Authelia JWT access token issued for this module only: each
+        # module's Authelia client grants exactly its own URL as audience, so
+        # a token for one module is refused by every other. The token comes
+        # from the Authorization header alone (no query or cookie sources).
+        jwtauth {
+          jwk_url https://auth.home.garvey.sh/jwks.json
+          issuer_whitelist https://auth.home.garvey.sh
+          audience_whitelist https://mcp.home.garvey.sh/{args[0]}/mcp
+          user_claims sub
+        }
+        reverse_proxy {args[1]}
+      }
+    }
+
+    https://mcp.home.garvey.sh {
+      tls /certs/tls.crt /certs/tls.key
+
+      import module notes obsidian-sync-mcp.mcp-notes.svc.cluster.local:8787
+      import module anki mcp-anki.mcp-anki.svc.cluster.local:8000
+
+      handle {
+        respond 404
+      }
+
+      # A missing or rejected token. Claude starts sign-in only on a 401 that
+      # points at the module's protected resource metadata.
+      handle_errors 401 {
+        @module path_regexp module ^/([a-z0-9-]+)/
+        header @module WWW-Authenticate "Bearer resource_metadata=\"https://mcp.home.garvey.sh/.well-known/oauth-protected-resource/{re.module.1}/mcp\""
+        respond 401
+      }
+      handle_errors {
+        respond "{err.status_code} {err.status_text}" {err.status_code}
+      }
+    }
+
+    # Anthropic's servers fetch Authelia's discovery documents and call its
+    # token endpoint; nothing else of Authelia is served here. The login
+    # portal and /api/oidc/authorization are opened by the user's browser on
+    # the LAN, through Authelia's own LoadBalancer.
+    https://auth.home.garvey.sh {
+      tls /certs/tls.crt /certs/tls.key
+
+      @authelia path /.well-known/openid-configuration /.well-known/oauth-authorization-server /api/oidc/token
+      handle @authelia {
+        # Authelia derives its issuer from the Host header and rejects any
+        # host but its own. For an HTTPS upstream Caddy sends the upstream's
+        # address as Host, so it is set back to auth.home.garvey.sh here.
+        reverse_proxy https://authelia-https.authelia.svc.cluster.local {
+          header_up Host {host}
+          transport http {
+            tls_server_name auth.home.garvey.sh
+          }
+        }
+      }
+      handle {
+        respond 404
+      }
+    }

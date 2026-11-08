@@ -1,0 +1,105 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-gateway
+  namespace: mcp
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcp-gateway
+  template:
+    metadata:
+      labels:
+        app: mcp-gateway
+        app.kubernetes.io/managed-by: ngarvey-homelab
+      annotations:
+        # Bump to restart by hand. A renewed certificate or a Caddyfile change
+        # needs no restart: the reload container picks it up within a few
+        # minutes.
+        mcp.home.garvey.sh/restarted: "1"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+        # Lets the non-root Caddy bind 443 (the sysctl covers IPv6 too).
+        sysctls:
+          - name: net.ipv4.ip_unprivileged_port_start
+            value: "0"
+      containers:
+        - name: caddy
+          # packages/mcp-gateway: Caddy with the caddy-jwt plugin.
+          image: oci.garvey.sh/mcp-gateway:2.11.7-kbcpl92
+          ports:
+            - containerPort: 443
+              name: https
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/caddy
+              readOnly: true
+            - name: certs
+              mountPath: /certs
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          readinessProbe:
+            tcpSocket:
+              port: 443
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 443
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi
+        # Caddy reads its `tls` files only when it loads a config: this reloads
+        # it through the admin API (127.0.0.1:2019) when cert-manager renews
+        # mcp-gateway-tls or the Caddyfile ConfigMap changes.
+        - name: reload
+          image: oci.garvey.sh/mcp-gateway:2.11.7-kbcpl92
+          command: ["/bin/mcp-gateway-reload"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/caddy
+              readOnly: true
+            - name: certs
+              mountPath: /certs
+              readOnly: true
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+      volumes:
+        - name: config
+          configMap:
+            name: mcp-gateway
+        - name: certs
+          secret:
+            secretName: mcp-gateway-tls
+        - name: tmp
+          emptyDir:
+            sizeLimit: 16Mi

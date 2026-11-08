@@ -50,8 +50,12 @@ spec:
             limits:
               cpu: 200m
               memory: 128Mi
+        # packages/anki-sync-server: nixpkgs' anki-sync-server, the same
+        # version as the `anki` library the Anki MCP server syncs with. The
+        # image sets SYNC_PORT=8080, SYNC_BASE=/anki_data and runs as
+        # 1000:1000, the owner of the existing files on anki-data.
         - name: anki-sync-server
-          image: jeankhawand/anki-sync-server:25.07
+          image: oci.garvey.sh/anki-sync-server:26.09.3-0bm8amr
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
@@ -60,8 +64,17 @@ spec:
             - name: SYNC_HOST
               value: "::"
           envFrom:
+            # SYNC_USER1 is the real collection; SYNC_USER2 (duettest) is a
+            # throwaway account for testing sync clients against.
             - secretRef:
                 name: anki-credentials
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           volumeMounts:
             - name: data
               mountPath: /anki_data

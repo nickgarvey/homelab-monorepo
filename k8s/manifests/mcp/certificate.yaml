@@ -1,0 +1,18 @@
+# One certificate for both names the gateway serves. auth.home.garvey.sh also
+# has its own certificate in the authelia namespace, for Authelia's LAN
+# LoadBalancer.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: mcp-gateway-tls
+  namespace: mcp
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  secretName: mcp-gateway-tls
+  dnsNames:
+    - mcp.home.garvey.sh
+    - auth.home.garvey.sh
+  issuerRef:
+    name: letsencrypt-rfc2136-prod
+    kind: ClusterIssuer

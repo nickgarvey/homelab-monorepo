@@ -1,0 +1,25 @@
+Upstream:      es617/obsidian-sync-mcp, src/main.ts (BASE_INSTRUCTIONS)
+Upstreamable:  yes; READ_ONLY=true hides the write tools but the MCP
+               instructions still say the server can write, move and delete
+How:           Not filed yet. A PR would make BASE_INSTRUCTIONS depend on
+               READ_ONLY, as this patch does.
+Written:       2026-10-27, against 1a4d53f (v0.10.0)
+Last checked:  2026-10-27: upstream main still at 1a4d53f, no issue open
+Remove when:   upstream's instructions reflect READ_ONLY (this patch stops
+               applying once BASE_INSTRUCTIONS changes)
+
+diff --git a/src/main.ts b/src/main.ts
+index 8b11cb9..293d1fc 100644
+--- a/src/main.ts
++++ b/src/main.ts
+@@ -322,7 +322,9 @@ function startCouchDbWatcher() {
+ }
+ 
+ // --- MCP Server ---
+-const BASE_INSTRUCTIONS = "Access and manage an Obsidian vault. You can read, write, list, search, move, and delete markdown notes. Every tool response includes an Obsidian deep link. Always show this link to the user using the format [obsidian://open?vault=...&file=...](obsidian://open?vault=...&file=...) so it is both clickable and visible as a URL.";
++const BASE_INSTRUCTIONS = (READ_ONLY
++    ? "Access an Obsidian vault read-only. You can read, list, and search markdown notes; this server cannot write, move, or delete them."
++    : "Access and manage an Obsidian vault. You can read, write, list, search, move, and delete markdown notes.") + " Every tool response includes an Obsidian deep link. Always show this link to the user using the format [obsidian://open?vault=...&file=...](obsidian://open?vault=...&file=...) so it is both clickable and visible as a URL.";
+ const serverOptions: ConstructorParameters<typeof FastMCP>[0] = {
+     name: "obsidian-sync-mcp",
+     version: process.env.npm_package_version ?? "0.0.0",

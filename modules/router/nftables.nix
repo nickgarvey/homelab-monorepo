@@ -208,6 +208,15 @@ in
             # blocky. Test the proxy at 10.28.0.5 directly.
             iifname "${cfg.wanInterface}" udp dport 53 dnat to 10.28.0.5:53
             iifname "${cfg.wanInterface}" tcp dport 53 dnat to 10.28.0.5:53
+
+            # WAN IPv4 :443 -> public-mcp-proxy container, which relays TLS
+            # untouched to the MCP gateway (modules/containers/public-mcp-proxy.nix).
+            # Only from Anthropic's published egress range: Claude's connector
+            # traffic comes from there and from nowhere else
+            # (https://claude.com/docs/connectors/building/authentication).
+            # Every other source is not DNAT'd, so it reaches the input chain,
+            # which rejects WAN :443.
+            iifname "${cfg.wanInterface}" ip saddr 160.79.104.0/21 tcp dport 443 dnat to 10.28.0.7:443
           }
 
           chain postrouting {

@@ -13,9 +13,13 @@ let
   celler-pkg = import ./celler/outputs.nix { inherit nixpkgs celler system; };
   temporal-server = import ./temporal-server/outputs.nix { inherit nixpkgs system; };
   ceph-backup-worker = import ./ceph-backup-worker/outputs.nix { inherit nixpkgs system; };
+  anki-sync-server-image = import ./anki-sync-server/outputs.nix { inherit nixpkgs system; };
   longhorn-backup-pruner = import ./longhorn-backup-pruner/outputs.nix { inherit nixpkgs system; };
   matrix-synapse = import ./matrix-synapse/outputs.nix { inherit nixpkgs system; };
   matrix-authentication-service = import ./matrix-authentication-service/outputs.nix { inherit nixpkgs system; };
+  mcp-gateway = import ./mcp-gateway/outputs.nix { inherit nixpkgs system; };
+  obsidian-sync-mcp = import ./obsidian-sync-mcp/outputs.nix { inherit nixpkgs system; };
+  anki-mcp = import ./anki-mcp/outputs.nix { inherit nixpkgs system; };
 
   # The deploy binary, built from ./deploy. buildGoModule runs `go test`
   # as part of the build, so this derivation is also the test check.
@@ -115,12 +119,20 @@ in
     matrix-synapse-image = matrix-synapse.image;
     matrix-authentication-service = matrix-authentication-service.package;
     matrix-authentication-service-image = matrix-authentication-service.image;
+    inherit anki-sync-server-image;
+    mcp-gateway = mcp-gateway.package;
+    mcp-gateway-image = mcp-gateway.image;
+    obsidian-sync-mcp = obsidian-sync-mcp.package;
+    obsidian-sync-mcp-image = obsidian-sync-mcp.image;
+    anki-mcp = anki-mcp.package;
+    anki-mcp-image = anki-mcp.image;
   };
 
   checks.${system} = {
     deploy-tests = deploy;
     temporal-server-tests = temporal-server.package;
     ceph-backup-worker-tests = ceph-backup-worker.package;
+    anki-mcp-tests = anki-mcp.package;
     openshell-images-test = openshell.images-test;
   };
 }

@@ -1,0 +1,16 @@
+# obsidian-sync-mcp's search index and _changes position. A cache: losing it
+# means one full catch-up from CouchDB on the next start.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: obsidian-sync-mcp-data
+  namespace: mcp-notes
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ceph-rbd
+  resources:
+    requests:
+      storage: 1Gi

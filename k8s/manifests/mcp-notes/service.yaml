@@ -1,0 +1,18 @@
+# ClusterIP only: the public Caddy in namespace mcp (ait nix-xcFoC.4) is the
+# one client, and network-policy.yaml admits nothing else.
+apiVersion: v1
+kind: Service
+metadata:
+  name: obsidian-sync-mcp
+  namespace: mcp-notes
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  type: ClusterIP
+  selector:
+    app: obsidian-sync-mcp
+  ports:
+    - name: http
+      port: 8787
+      targetPort: 8787
+      protocol: TCP

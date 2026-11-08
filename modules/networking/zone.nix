@@ -47,7 +47,7 @@ in ''
   ; Apex nameserver. ns1 is the public IPv4 front door (router DNAT -> dnsdist),
   ; not this container's LAN address -- see modules/containers/public-dns-proxy.nix.
   @	IN	NS	ns1.${domain}.
-  ns1	IN	A	64.186.8.205
+  ns1	IN	A	${dns.wanIPv4}
 
   ; Delegation to k8s_gateway, which auto-discovers LoadBalancer Services.
   ; The NS target is in-zone (no glue needed -- resolvers already hold ns1's A

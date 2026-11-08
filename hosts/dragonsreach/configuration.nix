@@ -9,6 +9,7 @@
     ../../modules/containers/storj-gateway.nix
     ../../modules/containers/unifi.nix
     ../../modules/containers/public-dns-proxy.nix
+    ../../modules/containers/public-mcp-proxy.nix
     ../../modules/containers/knot-auth.nix
     ../../modules/services/storj-usage.nix
   ];

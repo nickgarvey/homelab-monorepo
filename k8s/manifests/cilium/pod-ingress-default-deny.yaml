@@ -23,6 +23,9 @@
 # - longhorn-system: manifests/longhorn/network-policy.yaml
 # - OpenShell sandbox pods (label openshell.ai/managed-by): the chart's
 #   NetworkPolicies in the openshell namespace
+# - mcp-notes: manifests/mcp-notes/network-policy.yaml (auth-less MCP server,
+#   reachable from the mcp gateway only)
+# - mcp-anki: manifests/mcp-anki/network-policy.yaml (likewise)
 #
 # Rollback: kubectl delete ciliumclusterwidenetworkpolicy pod-ingress-default-deny
 apiVersion: cilium.io/v2
@@ -39,6 +42,8 @@ spec:
         operator: NotIn
         values:
           - longhorn-system
+          - mcp-notes
+          - mcp-anki
       - key: k8s:openshell.ai/managed-by
         operator: DoesNotExist
   ingress:

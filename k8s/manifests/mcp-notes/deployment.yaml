@@ -1,0 +1,108 @@
+# obsidian-sync-mcp (packages/obsidian-sync-mcp): read-only MCP tools over the
+# Obsidian LiveSync vault in CouchDB. It has no auth of its own; the public
+# Caddy in namespace mcp checks the Authelia token and is the only client
+# network-policy.yaml admits.
+#
+# Read-only twice over: READ_ONLY=true keeps the write tools unregistered, and
+# CouchDB rejects every write by review-notes (validate_doc_update in
+# obsidian/_design/review-notes-readonly).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: obsidian-sync-mcp
+  namespace: mcp-notes
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate # RWO volume
+  selector:
+    matchLabels:
+      app: obsidian-sync-mcp
+  template:
+    metadata:
+      labels:
+        app: obsidian-sync-mcp
+        app.kubernetes.io/managed-by: ngarvey-homelab
+    spec:
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: obsidian-sync-mcp
+          image: oci.garvey.sh/obsidian-sync-mcp:0.10.0-v6bjc2n
+          ports:
+            - containerPort: 8787
+              name: http
+          env:
+            - name: COUCHDB_URL
+              value: http://couchdb.couchdb.svc.cluster.local:5984
+            - name: COUCHDB_DATABASE
+              value: obsidian
+            # Must match the vault's name for the obsidian:// deep links.
+            - name: VAULT_NAME
+              value: Obsidian
+            - name: READ_ONLY
+              value: "true"
+            - name: PORT
+              value: "8787"
+            # The default, 0.0.0.0, is IPv4 only and pod addresses are IPv6,
+            # but "::" breaks fastmcp, which builds request URLs as
+            # http://${HOST} without brackets. The pod's name resolves to its
+            # IPv6 address through /etc/hosts. So the server listens on the
+            # pod IP only: kubectl port-forward (which dials localhost) does
+            # not reach it.
+            - name: HOST
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            # Requests arrive from Caddy with the public Host. Without auth
+            # the server rejects any Host not on this list (403).
+            - name: MCP_ALLOWED_HOSTS
+              value: mcp.home.garvey.sh
+            - name: DATA_DIR
+              value: /data
+            - name: DISPLAY_TIMEZONE
+              value: America/Los_Angeles
+          envFrom:
+            - secretRef:
+                name: mcp-notes-couchdb
+          # Not /ready: fastmcp answers 503 there until an MCP session exists.
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8787
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8787
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 20m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: obsidian-sync-mcp-data
+        - name: tmp
+          emptyDir: {}

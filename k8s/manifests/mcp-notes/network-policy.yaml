@@ -1,0 +1,53 @@
+# obsidian-sync-mcp serves the vault with no auth of its own, so ingress is the
+# public Caddy in namespace mcp only, plus the kubelet's probes. This namespace
+# is excluded from manifests/cilium/pod-ingress-default-deny.yaml, whose
+# "from the cluster" allow would otherwise be unioned with this one.
+#
+# Egress is CouchDB and cluster DNS only: the server holds the vault's text and
+# has no reason to reach anything else.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: obsidian-sync-mcp
+  namespace: mcp-notes
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  description: "Ingress from the mcp gateway only; egress to CouchDB and DNS only"
+  endpointSelector:
+    matchLabels:
+      app: obsidian-sync-mcp
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: mcp
+            app: mcp-gateway
+      toPorts:
+        - ports:
+            - port: "8787"
+              protocol: TCP
+    - fromEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "8787"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: couchdb
+            app: couchdb
+      toPorts:
+        - ports:
+            - port: "5984"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP

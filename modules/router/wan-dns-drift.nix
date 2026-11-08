@@ -3,7 +3,7 @@
 # Every self-hosted zone is delegated to ns1 -> our WAN address, which also
 # answers Let's Encrypt's DNS-01 challenges (Knot). That address is
 # DHCP-assigned and hardcoded in two places with no DDNS automation: Cloudflare
-# glue for home.garvey.sh, and modules/networking/zone.nix. If the lease ever
+# glue for home.garvey.sh, and wanIPv4 in modules/networking/dns.nix. If the lease ever
 # changes, Let's Encrypt can no longer reach our authoritative DNS and every
 # renewal fails -- silently, for ~30 days, until certificates start expiring and
 # TLS-verifying clients (the ESP32 devices pinned to Home Assistant) break.
@@ -17,7 +17,7 @@ let
   cfg = config.routerConfig;
 
   # The records that publish this router's WAN IPv4 to the public internet.
-  publishedRecords = [ "ns1.home.garvey.sh" ];
+  publishedRecords = [ "ns1.home.garvey.sh" "mcp.home.garvey.sh" "auth.home.garvey.sh" ];
 
   wanDnsCheck = pkgs.writeShellScript "wan-dns-check" ''
     set -u

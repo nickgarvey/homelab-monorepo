@@ -1,0 +1,16 @@
+# The server's own copy of the collection, plus its sync snapshot and any
+# quarantine record (state/). A copy only: the sync server holds the real one.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mcp-anki-data
+  namespace: mcp-anki
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ceph-rbd
+  resources:
+    requests:
+      storage: 2Gi
