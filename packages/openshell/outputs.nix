@@ -1,4 +1,4 @@
-# OpenShell v0.1.3 built from source with the IPv6 policy-DNS patch
+# OpenShell v0.1.8 built from source with the IPv6 policy-DNS patch
 # (patches/openshell-ipv6-policy-dns.patch) and the supervisor template-labels
 # patch (patches/openshell-supervisor-template-labels.patch): the CLI, and the
 # gateway, supervisor and sandbox-runtime images that k8s/vendor/openshell runs.
@@ -9,11 +9,11 @@ let
   pkgs = import nixpkgs { inherit system; };
   inherit (pkgs) lib;
 
-  version = "0.1.3";
+  version = "0.1.8";
 
-  # Upstream's v0.1.3 policy DNS answers every AAAA query with NODATA, so no
-  # sandbox in this IPv6-only cluster could resolve a name (NVIDIA/OpenShell#3702,
-  # rebased; see the patch header). agents/outputs.nix checks it is
+  # Upstream's policy DNS (still at v0.1.8) answers every AAAA query with
+  # NODATA, so no sandbox in this IPv6-only cluster could resolve a name
+  # (NVIDIA/OpenShell#3702, rebased; see the patch header). agents/outputs.nix checks it is
   # applied.
   patch = ../../patches/openshell-ipv6-policy-dns.patch;
 
@@ -31,7 +31,7 @@ let
       owner = "NVIDIA";
       repo = "OpenShell";
       tag = "v${version}";
-      hash = "sha256-7cIJ6YbBWev+C4uo2wxGer+nEpE3hxPEejC+BSo/VDc=";
+      hash = "sha256-+3AYKxzdyAcqFUx0roWNRIYCrqeIfGHFjmHB0Eaurkg=";
     };
     patches = [ patch labelsPatch ];
     # The workspace's crates are versioned 0.0.0; release builds stamp it.
@@ -44,7 +44,7 @@ let
   cargoDeps = pkgs.rustPlatform.fetchCargoVendor {
     inherit src;
     name = "openshell-${version}";
-    hash = "sha256-V1EB2O31opEYm01BC2yYGejgDrVAzTDJEEbZOy9fUVI=";
+    hash = "sha256-8vSVZ693nrVw+G1oHKDApi8j/evkK0ipn/wlfTlQ138=";
   };
 
   common = {
@@ -72,6 +72,10 @@ let
     pname = "openshell";
     nativeBuildInputs = [ pkgs.pkg-config pkgs.rustPlatform.bindgenHook ];
     buildInputs = [ pkgs.z3 pkgs.aws-lc pkgs.sqlite ];
+    # cargo-auditable's `cargo metadata` call asks openshell-driver-vm for a
+    # `clap` feature, which that crate only has as `dep:clap`, and fails the
+    # build. This loses only the dependency list embedded in the binaries.
+    auditable = false;
     # --bin applies to every -p, so this builds only these two binaries.
     cargoBuildFlags = [
       "-p" "openshell-gateway" "--bin" "openshell-gateway"
@@ -82,6 +86,9 @@ let
       "-p" "openshell-core" "-p" "openshell-supervisor-network"
       "-p" "openshell-driver-kubernetes"
     ];
+    # The Kubernetes driver's client tests build a rustls client, which needs a
+    # root store even for plain HTTP; the build sandbox has none of its own.
+    nativeCheckInputs = [ pkgs.cacert ];
     # Tests the build sandbox cannot run: the filesystem preflight ones exec
     # /bin/sleep and the like, and two proxy ones resolve dns.google.
     checkFlags = [

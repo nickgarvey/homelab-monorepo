@@ -19,10 +19,10 @@ metadata:
   name: openshell-sandbox-ssh
   namespace: openshell
   labels:
-    helm.sh/chart: helm-chart-0.1.3
+    helm.sh/chart: helm-chart-0.1.8
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.3"
+    app.kubernetes.io/version: "0.1.8"
     app.kubernetes.io/managed-by: Helm
 spec:
   podSelector:
@@ -52,10 +52,10 @@ kind: ServiceAccount
 metadata:
   name: openshell
   labels:
-    helm.sh/chart: helm-chart-0.1.3
+    helm.sh/chart: helm-chart-0.1.8
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.3"
+    app.kubernetes.io/version: "0.1.8"
     app.kubernetes.io/managed-by: Helm
 
 ---
@@ -66,10 +66,10 @@ metadata:
   name: openshell-sandbox
   namespace: openshell
   labels:
-    helm.sh/chart: helm-chart-0.1.3
+    helm.sh/chart: helm-chart-0.1.8
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.3"
+    app.kubernetes.io/version: "0.1.8"
     app.kubernetes.io/managed-by: Helm
 
 ---
@@ -82,10 +82,10 @@ kind: ConfigMap
 metadata:
   name: openshell-config
   labels:
-    helm.sh/chart: helm-chart-0.1.3
+    helm.sh/chart: helm-chart-0.1.8
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.3"
+    app.kubernetes.io/version: "0.1.8"
     app.kubernetes.io/managed-by: Helm
 data:
   gateway.toml: |
@@ -94,6 +94,7 @@ data:
     version = 2
     [openshell.drivers.kubernetes]
     allow_driver_config = false
+    allowed_pod_labels = ["agents.garvey.sh/type"]
     client_tls_secret_name = "openshell-client-tls"
     default_image = "nvcr.io/nvidia/base/ubuntu:24.04"
     gateway_id = "openshell"
@@ -102,10 +103,10 @@ data:
     provider_spiffe_workload_api_socket_path = "/spiffe-workload-api/spire-agent.sock"
     sa_token_ttl_secs = 3600
     sandbox_runtime = { boundary_port = 5500 }
-    sandbox_runtime_image = "oci.garvey.sh/openshell/sandbox@sha256:8de191a0853b9db05f041aedcde5aff3c781e3649a3f2613a5c90c9f4c806a21"
+    sandbox_runtime_image = "oci.garvey.sh/openshell/sandbox@sha256:dea86afd467c9e7e23e614e3e6b7344942599fd702e658992a8742071ccab2ca"
     sandbox_runtime_image_pull_policy = "if_not_present"
     service_account_name = "openshell-sandbox"
-    supervisor_image = "oci.garvey.sh/openshell/supervisor@sha256:0828c872c3201ffa38559d7535c0a57a3c479656ad3deac25f7ef673a3b37829"
+    supervisor_image = "oci.garvey.sh/openshell/supervisor@sha256:d844d1fb2a60d1c5f8a35aa1a3a90021f2144b77aac4d71d0d76c0a5d8baf923"
     supervisor_image_pull_policy = "if_not_present"
     workspace_mode = "shared"
     [openshell.drivers.kubernetes.managed_ssh_ingress]
@@ -159,10 +160,10 @@ kind: ClusterRole
 metadata:
   name: openshell-node-reader-openshell
   labels:
-    helm.sh/chart: helm-chart-0.1.3
+    helm.sh/chart: helm-chart-0.1.8
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.3"
+    app.kubernetes.io/version: "0.1.8"
     app.kubernetes.io/managed-by: Helm
 rules:
   - apiGroups: ["node.k8s.io"]
@@ -208,10 +209,10 @@ kind: ClusterRoleBinding
 metadata:
   name: openshell-node-reader-openshell
   labels:
-    helm.sh/chart: helm-chart-0.1.3
+    helm.sh/chart: helm-chart-0.1.8
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.3"
+    app.kubernetes.io/version: "0.1.8"
     app.kubernetes.io/managed-by: Helm
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -232,10 +233,10 @@ metadata:
   name: openshell-peer
   namespace: openshell
   labels:
-    helm.sh/chart: helm-chart-0.1.3
+    helm.sh/chart: helm-chart-0.1.8
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.3"
+    app.kubernetes.io/version: "0.1.8"
     app.kubernetes.io/managed-by: Helm
 rules:
   # Gateway peer identity: TokenReview authenticates the projected token, then
@@ -258,10 +259,10 @@ metadata:
   name: openshell-sandbox
   namespace: openshell
   labels:
-    helm.sh/chart: helm-chart-0.1.3
+    helm.sh/chart: helm-chart-0.1.8
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.3"
+    app.kubernetes.io/version: "0.1.8"
     app.kubernetes.io/managed-by: Helm
 rules:
   - apiGroups:
@@ -322,10 +323,10 @@ metadata:
   name: openshell-peer
   namespace: openshell
   labels:
-    helm.sh/chart: helm-chart-0.1.3
+    helm.sh/chart: helm-chart-0.1.8
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.3"
+    app.kubernetes.io/version: "0.1.8"
     app.kubernetes.io/managed-by: Helm
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -346,10 +347,10 @@ metadata:
   name: openshell-sandbox
   namespace: openshell
   labels:
-    helm.sh/chart: helm-chart-0.1.3
+    helm.sh/chart: helm-chart-0.1.8
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.3"
+    app.kubernetes.io/version: "0.1.8"
     app.kubernetes.io/managed-by: Helm
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -369,10 +370,10 @@ kind: Service
 metadata:
   name: openshell-peer
   labels:
-    helm.sh/chart: helm-chart-0.1.3
+    helm.sh/chart: helm-chart-0.1.8
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.3"
+    app.kubernetes.io/version: "0.1.8"
     app.kubernetes.io/managed-by: Helm
 spec:
   clusterIP: None
@@ -397,10 +398,10 @@ kind: Service
 metadata:
   name: openshell
   labels:
-    helm.sh/chart: helm-chart-0.1.3
+    helm.sh/chart: helm-chart-0.1.8
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.3"
+    app.kubernetes.io/version: "0.1.8"
     app.kubernetes.io/managed-by: Helm
 spec:
   type: ClusterIP
@@ -427,10 +428,10 @@ kind: Deployment
 metadata:
   name: openshell
   labels:
-    helm.sh/chart: helm-chart-0.1.3
+    helm.sh/chart: helm-chart-0.1.8
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.3"
+    app.kubernetes.io/version: "0.1.8"
     app.kubernetes.io/managed-by: Helm
 spec:
   replicas: 1
@@ -444,13 +445,14 @@ spec:
         # Roll the gateway workload when the rendered gateway TOML changes - the
         # gateway only reads /etc/openshell/gateway.toml at startup, so without
         # this annotation a `helm upgrade` that only mutates the ConfigMap would
-        # leave pods running with stale config.
-        checksum/gateway-config: e3ee56f7f08c1a4a7bfe9f118439f81557376a628c98e69100bbbca91a5dab13
+        # leave pods running with stale config. The operator-owned additional-CA
+        # ConfigMap is not checksummed; restart the gateway after changing its data.
+        checksum/gateway-config: 1f21322f962aa2edfa81ba7787de552898b2f607c0f46bf0ebc976e1a3792be5
       labels:
-        helm.sh/chart: helm-chart-0.1.3
+        helm.sh/chart: helm-chart-0.1.8
         app.kubernetes.io/name: openshell
         app.kubernetes.io/instance: openshell
-        app.kubernetes.io/version: "0.1.3"
+        app.kubernetes.io/version: "0.1.8"
         app.kubernetes.io/managed-by: Helm
     spec:
       terminationGracePeriodSeconds: 30
@@ -466,7 +468,9 @@ spec:
               - ALL
             runAsNonRoot: true
             runAsUser: 1000
-          image: "oci.garvey.sh/openshell/gateway@sha256:e33e85e4916333111b7ee19c062f6acbdb9a62e0c48858c7e1214faa2ab30629"
+            seccompProfile:
+              type: RuntimeDefault
+          image: "oci.garvey.sh/openshell/gateway@sha256:12ddebc95037705d4c52a12d6e75bc3b5840e978de111dcb9ae3f6ce66adbfe1"
           imagePullPolicy: IfNotPresent
           args:
             - --config
@@ -522,6 +526,11 @@ spec:
             # mounted at /etc/openshell/gateway.toml. Secret-bearing settings use
             # env vars that the TOML references by name. Some process-level
             # settings consumed by libraries outside gateway code also remain here.
+            # The gateway stages normalized, content-addressed supervisor trust
+            # artifacts under its XDG state directory. Keep that state on a
+            # dedicated writable volume for both StatefulSet and Deployment modes.
+            - name: XDG_STATE_HOME
+              value: /var/lib/openshell-state
             - name: OPENSHELL_TELEMETRY_ENABLED
               value: "true"
             - name: OPENSHELL_GATEWAY_SPIFFE_WORKLOAD_API_SOCKET
@@ -552,6 +561,8 @@ spec:
             - name: spiffe-workload-api
               mountPath: "/spiffe-workload-api"
               readOnly: true
+            - name: gateway-state
+              mountPath: /var/lib/openshell-state
           ports:
             - name: grpc
               containerPort: 8080
@@ -619,6 +630,8 @@ spec:
           csi:
             driver: csi.spiffe.io
             readOnly: true
+        - name: gateway-state
+          emptyDir: {}
 
 ---
 # Source: helm-chart/templates/backend-tls-policy.yaml
@@ -651,6 +664,31 @@ spec:
 # SPDX-License-Identifier: Apache-2.0
 
 ---
+# Source: helm-chart/templates/supervisor-hpa.yaml
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+---
+# Source: helm-chart/templates/supervisor-networkpolicy.yaml
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+---
+# Source: helm-chart/templates/supervisor-pdb.yaml
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+---
+# Source: helm-chart/templates/supervisor-service.yaml
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+---
+# Source: helm-chart/templates/supervisor-token-secret.yaml
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+---
 # Source: helm-chart/templates/cert-manager-pki.yaml
 apiVersion: cert-manager.io/v1
 kind: Certificate
@@ -658,10 +696,10 @@ metadata:
   name: openshell-ca
   namespace: openshell
   labels:
-    helm.sh/chart: helm-chart-0.1.3
+    helm.sh/chart: helm-chart-0.1.8
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.3"
+    app.kubernetes.io/version: "0.1.8"
     app.kubernetes.io/managed-by: Helm
 spec:
   isCA: true
@@ -686,10 +724,10 @@ metadata:
   name: openshell-server
   namespace: openshell
   labels:
-    helm.sh/chart: helm-chart-0.1.3
+    helm.sh/chart: helm-chart-0.1.8
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.3"
+    app.kubernetes.io/version: "0.1.8"
     app.kubernetes.io/managed-by: Helm
 spec:
   secretName: "openshell-server-tls"
@@ -735,10 +773,10 @@ metadata:
   name: openshell-client
   namespace: openshell
   labels:
-    helm.sh/chart: helm-chart-0.1.3
+    helm.sh/chart: helm-chart-0.1.8
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.3"
+    app.kubernetes.io/version: "0.1.8"
     app.kubernetes.io/managed-by: Helm
 spec:
   secretName: "openshell-client-tls"
@@ -767,10 +805,10 @@ metadata:
   name: openshell-selfsigned
   namespace: openshell
   labels:
-    helm.sh/chart: helm-chart-0.1.3
+    helm.sh/chart: helm-chart-0.1.8
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.3"
+    app.kubernetes.io/version: "0.1.8"
     app.kubernetes.io/managed-by: Helm
 spec:
   selfSigned: {}
@@ -783,10 +821,10 @@ metadata:
   name: openshell-ca-issuer
   namespace: openshell
   labels:
-    helm.sh/chart: helm-chart-0.1.3
+    helm.sh/chart: helm-chart-0.1.8
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.3"
+    app.kubernetes.io/version: "0.1.8"
     app.kubernetes.io/managed-by: Helm
 spec:
   ca:

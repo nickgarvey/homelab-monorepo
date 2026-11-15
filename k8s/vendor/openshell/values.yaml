@@ -68,9 +68,16 @@ server:
 # is the openshell-sandboxes ClusterSPIFFEID in vendor/spire/values.yaml. The
 # chart also mounts the socket into the gateway pod (identity
 # ns/openshell/sa/openshell), which only token_exchange grants use.
+#
+# The gateway rejects a sandbox template that sets a pod label not listed in
+# allowed_pod_labels. The agents worker labels each sandbox with its agent
+# type (packages/agents/internal/session/), which the template-labels patch
+# copies onto the supervisor pod for that SPIFFE ID.
 gatewayConfig:
   openshell.drivers.kubernetes:
     provider_spiffe_workload_api_socket_path: /spiffe-workload-api/spire-agent.sock
+    allowed_pod_labels:
+      - agents.garvey.sh/type
 
 # The gateway, supervisor and sandbox runtime are our own builds of the chart's
 # version with two patches: packages/openshell, pushed to
@@ -90,10 +97,10 @@ global:
     registry: oci.garvey.sh
 gateway:
   image:
-    digest: sha256:e33e85e4916333111b7ee19c062f6acbdb9a62e0c48858c7e1214faa2ab30629
+    digest: sha256:12ddebc95037705d4c52a12d6e75bc3b5840e978de111dcb9ae3f6ce66adbfe1
 supervisor:
   image:
-    digest: sha256:0828c872c3201ffa38559d7535c0a57a3c479656ad3deac25f7ef673a3b37829
+    digest: sha256:d844d1fb2a60d1c5f8a35aa1a3a90021f2144b77aac4d71d0d76c0a5d8baf923
 sandboxRuntime:
   image:
-    digest: sha256:8de191a0853b9db05f041aedcde5aff3c781e3649a3f2613a5c90c9f4c806a21
+    digest: sha256:dea86afd467c9e7e23e614e3e6b7344942599fd702e658992a8742071ccab2ca

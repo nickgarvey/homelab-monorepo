@@ -1,11 +1,11 @@
 Upstream:      OpenShell (github.com/NVIDIA/OpenShell):
                crates/openshell-supervisor-network/src/policy_dns/runtime.rs
 Upstreamable:  yes; this is NVIDIA/OpenShell#3702, rebased
-How:           #3702 ("IPv6 policy DNS egress", head 9ab8076a) is open. In
-               October the maintainers asked whether it is still needed; answer
-               on the PR that it is (IPv6-only Kubernetes) and offer this rebase.
-Written:       2026-10-08, against OpenShell v0.1.3
-Last checked:  2026-10-25: v0.1.5 still calls handle_udp_query_with_ipv6(.., false);
+How:           #3702 ("IPv6 policy DNS egress", head 99f3c7f0) is open, conflicts
+               with main, and was marked stale on 2026-11-10. Answer on the PR that
+               IPv6-only Kubernetes still needs it and offer this rebase (nix-8bBR0).
+Written:       2026-11-15, against OpenShell v0.1.8
+Last checked:  2026-11-15: v0.1.8 still calls handle_udp_query_with_ipv6(.., false);
                #3702 is open
 Remove when:   a release includes #3702 (nix-lNoiG)
 Applied by:    packages/openshell/outputs.nix; agents/outputs.nix fails the
@@ -19,18 +19,21 @@ answers AAAA when the supervisor's namespace has an IPv6 default route and no
 IPv4 one), NAT64-aware SSRF checks, and driver settings to pass both to the
 supervisor.
 
-Rebase notes: architecture/sandbox.md was deleted upstream and is dropped; the
-docker and podman drivers keep both v0.1.3's proxy CA bundle and the PR's
-ipv6_egress settings; v0.1.3 moved run_sandbox's arguments into
-SandboxRunConfig, so the PR's two new ones are carried there too; the
-Kubernetes driver's supervisor_pod tests pass both v0.1.3's
-tracing_environment and the PR's ipv6_egress_args.
+Rebase notes: this is the PR head merged into v0.1.8. The Podman driver
+dropped its additional_ca_cli_args, and the Docker and VM drivers gained
+network-trust arguments; the PR's ipv6_egress settings sit beside them. The
+Kubernetes supervisor_pod takes ipv6_egress_args before the SPIFFE socket and
+v0.1.8's destination-trust ConfigMap. In supervisor-network, the PR's events
+use egress_emit! (v0.1.8, #4789) instead of ocsf_emit!, its tests use
+pinned_addresses_for (#5004), and preauthorize_transparent_open's new reserved
+argument is None in them. IPv4-mapped destinations (#5101) are normalized
+before the NAT64 classification, which checks the mapped form first.
 
 diff --git a/crates/openshell-core/src/config.rs b/crates/openshell-core/src/config.rs
-index 56e314127..ee2b81cd5 100644
+index 1c2a8724..30403dd4 100644
 --- a/crates/openshell-core/src/config.rs
 +++ b/crates/openshell-core/src/config.rs
-@@ -813,6 +813,105 @@ impl UpstreamProxyConfig {
+@@ -973,6 +973,105 @@ impl UpstreamProxyConfig {
      }
  }
  
@@ -136,19 +139,19 @@ index 56e314127..ee2b81cd5 100644
  /// Gateway-minted sandbox JWT configuration.
  ///
  /// Points the gateway at the Ed25519 signing key (produced by `certgen`)
-@@ -1147,8 +1246,9 @@ mod tests {
-     use super::{
-         AppArmorProfile, Config, DEFAULT_SERVICE_ROUTING_DOMAIN, GatewayInterceptorBindingPolicy,
-         GatewayInterceptorConfig, GatewayInterceptorFailurePolicy, GatewayJwtConfig,
--        GatewayProviderProfileSourceConfig, ImagePullPolicy, PolicyValidationFailureMode,
--        UpstreamProxyConfig, default_sandbox_pids_limit, normalize_compute_driver_name,
-+        GatewayProviderProfileSourceConfig, ImagePullPolicy, PolicyDnsIpv6Egress,
-+        PolicyValidationFailureMode, SupervisorIpv6EgressConfig, UpstreamProxyConfig,
-+        default_sandbox_pids_limit, normalize_compute_driver_name,
+@@ -1375,8 +1474,9 @@ mod tests {
+         AppArmorProfile, Config, ConfigDeliveryMode, DEFAULT_SERVICE_ROUTING_DOMAIN,
+         GatewayInterceptorBindingPolicy, GatewayInterceptorConfig, GatewayInterceptorFailurePolicy,
+         GatewayJwtConfig, GatewayProviderProfileSourceConfig, ImagePullPolicy, MetricsTlsConfig,
+-        PolicyValidationFailureMode, ServiceHostnameFormat, UpstreamProxyConfig,
+-        default_sandbox_pids_limit, normalize_compute_driver_name,
++        PolicyDnsIpv6Egress, PolicyValidationFailureMode, ServiceHostnameFormat,
++        SupervisorIpv6EgressConfig, UpstreamProxyConfig, default_sandbox_pids_limit,
++        normalize_compute_driver_name,
      };
-     use std::net::SocketAddr;
      use std::time::Duration;
-@@ -1376,6 +1476,45 @@ mod tests {
+     use std::{net::SocketAddr, path::PathBuf};
+@@ -1617,6 +1717,45 @@ mod tests {
          }
      }
  
@@ -195,22 +198,21 @@ index 56e314127..ee2b81cd5 100644
      fn upstream_proxy_validation_enforces_cross_field_contract() {
          let auth_file = Some("/run/secrets/proxy-auth".into());
 diff --git a/crates/openshell-core/src/lib.rs b/crates/openshell-core/src/lib.rs
-index 84d4f8ccf..ec5634a5a 100644
+index 12d6cd26..ca46afcb 100644
 --- a/crates/openshell-core/src/lib.rs
 +++ b/crates/openshell-core/src/lib.rs
-@@ -67,8 +67,8 @@ pub use config::{
-     AppArmorProfile, Config, GatewayAuthConfig, GatewayInterceptorBindingOverride,
-     GatewayInterceptorBindingPolicy, GatewayInterceptorConfig, GatewayInterceptorFailurePolicy,
-     GatewayInterceptorPhaseConfig, GatewayJwtConfig, GatewayProviderProfileSourceConfig,
--    ImagePullPolicy, MtlsAuthConfig, OidcConfig, PolicyValidationFailureMode, TlsConfig,
--    UpstreamProxyConfig,
-+    ImagePullPolicy, MtlsAuthConfig, OidcConfig, PolicyDnsIpv6Egress, PolicyValidationFailureMode,
-+    SupervisorIpv6EgressConfig, TlsConfig, UpstreamProxyConfig,
+@@ -76,7 +76,8 @@ pub use config::{
+     GatewayInterceptorBindingOverride, GatewayInterceptorBindingPolicy, GatewayInterceptorConfig,
+     GatewayInterceptorFailurePolicy, GatewayInterceptorPhaseConfig, GatewayJwtConfig,
+     GatewayProviderProfileSourceConfig, ImagePullPolicy, MetricsTlsConfig, MtlsAuthConfig,
+-    OidcConfig, PolicyValidationFailureMode, TlsConfig, UpstreamProxyConfig,
++    OidcConfig, PolicyDnsIpv6Egress, PolicyValidationFailureMode, SupervisorIpv6EgressConfig,
++    TlsConfig, UpstreamProxyConfig,
  };
  pub use dynamic_string_allowlist::DynamicStringAllowlist;
  pub use error::{ComputeDriverError, Error, Result};
 diff --git a/crates/openshell-core/src/net.rs b/crates/openshell-core/src/net.rs
-index a9bbc2321..da8d08633 100644
+index a9bbc232..da8d0863 100644
 --- a/crates/openshell-core/src/net.rs
 +++ b/crates/openshell-core/src/net.rs
 @@ -19,6 +19,8 @@ use ipnet::{IpNet, Ipv4Net, Ipv6Net};
@@ -442,7 +444,7 @@ index a9bbc2321..da8d08633 100644
  }
 diff --git a/crates/openshell-core/src/net/nat64.rs b/crates/openshell-core/src/net/nat64.rs
 new file mode 100644
-index 000000000..3b8d135fc
+index 00000000..3b8d135f
 --- /dev/null
 +++ b/crates/openshell-core/src/net/nat64.rs
 @@ -0,0 +1,288 @@
@@ -735,20 +737,19 @@ index 000000000..3b8d135fc
 +    }
 +}
 diff --git a/crates/openshell-driver-docker/src/lib.rs b/crates/openshell-driver-docker/src/lib.rs
-index 7a8935ff2..b2d3ffbb6 100644
+index e5421431..8763582d 100644
 --- a/crates/openshell-driver-docker/src/lib.rs
 +++ b/crates/openshell-driver-docker/src/lib.rs
-@@ -56,7 +56,8 @@ use openshell_core::proto_struct::{
-     deserialize_optional_non_empty_string_list, struct_to_json_value,
+@@ -59,7 +59,7 @@ use openshell_core::proto_struct::{
  };
  use openshell_core::{
--    AppArmorProfile, Error, ImagePullPolicy, Result as CoreResult, UpstreamProxyConfig,
-+    AppArmorProfile, Error, ImagePullPolicy, Result as CoreResult, SupervisorIpv6EgressConfig,
-+    UpstreamProxyConfig,
+     AppArmorProfile, Error, ImagePullPolicy, NetworkSupervisorTrustBundle, Result as CoreResult,
+-    UpstreamProxyConfig,
++    SupervisorIpv6EgressConfig, UpstreamProxyConfig,
  };
  use openshell_isolation_interface::contract::ResolvedWorkloadIdentity;
  use openshell_sandbox_backend::boundary_protocol::{
-@@ -231,6 +232,10 @@ pub struct DockerComputeConfig {
+@@ -265,6 +265,10 @@ pub struct DockerComputeConfig {
      /// Gateway-host PEM CA bundle trusted for the corporate proxy and for
      /// server certificates re-signed by a TLS-intercepting proxy.
      pub proxy_ca_bundle: Option<PathBuf>,
@@ -759,7 +760,7 @@ index 7a8935ff2..b2d3ffbb6 100644
  
      /// Host UNIX socket projected into the supervisor for provider identity.
      pub provider_spiffe_workload_api_socket: Option<PathBuf>,
-@@ -257,6 +262,7 @@ impl DockerComputeConfig {
+@@ -291,6 +295,7 @@ impl DockerComputeConfig {
          self.upstream_proxy.validate().map_err(Error::config)?;
          validate_docker_proxy_auth_file(&self.upstream_proxy)?;
          validate_docker_proxy_ca_bundle(self)?;
@@ -767,7 +768,7 @@ index 7a8935ff2..b2d3ffbb6 100644
          if let Some(socket) = self.provider_spiffe_workload_api_socket.as_deref() {
              openshell_core::driver_utils::validate_provider_spiffe_unix_socket(socket)
                  .map_err(Error::config)?;
-@@ -293,6 +299,7 @@ impl Default for DockerComputeConfig {
+@@ -330,6 +335,7 @@ impl Default for DockerComputeConfig {
              enable_bind_mounts: false,
              upstream_proxy: UpstreamProxyConfig::default(),
              proxy_ca_bundle: None,
@@ -775,15 +776,15 @@ index 7a8935ff2..b2d3ffbb6 100644
              provider_spiffe_workload_api_socket: None,
              app_armor_profile: None,
          }
-@@ -324,6 +331,7 @@ struct DockerDriverRuntimeConfig {
+@@ -366,6 +372,7 @@ struct DockerDriverRuntimeConfig {
      enable_bind_mounts: bool,
      upstream_proxy: UpstreamProxyConfig,
      proxy_ca_bundle: Option<PathBuf>,
 +    ipv6_egress: SupervisorIpv6EgressConfig,
      provider_spiffe_workload_api_socket: Option<PathBuf>,
      app_armor_profile: Option<AppArmorProfile>,
- }
-@@ -956,6 +964,7 @@ impl DockerComputeDriver {
+     /// Immutable gateway-normalized additional destination trust. This is
+@@ -1032,6 +1039,7 @@ impl DockerComputeDriver {
                  resource_admission: docker_config.resource_admission.clone(),
                  upstream_proxy: docker_config.upstream_proxy.clone(),
                  proxy_ca_bundle: docker_config.proxy_ca_bundle.clone(),
@@ -791,27 +792,27 @@ index 7a8935ff2..b2d3ffbb6 100644
                  provider_spiffe_workload_api_socket: docker_config
                      .provider_spiffe_workload_api_socket
                      .clone(),
-@@ -5144,6 +5153,7 @@ async fn spawn_docker_control_process(
+@@ -5483,6 +5491,7 @@ async fn spawn_docker_control_process(
          &config.upstream_proxy,
          config.proxy_ca_bundle.is_some(),
      ));
 +    command.extend(config.ipv6_egress.supervisor_args());
-     let mut supervisor_mounts = vec![
-         Mount {
-             target: Some(BOUNDARY_MOUNT_PATH.to_string()),
+     let runtime_initiated = read_docker_runtime_descriptor(&sandbox.id, config).await?
+         .is_some_and(|descriptor| matches!(descriptor.transport, openshell_sandbox_backend::boundary_protocol::SandboxTransport::RuntimeInitiatedUnix { .. }));
+     command.extend(docker_network_trust_supervisor_args(
 diff --git a/crates/openshell-driver-docker/src/tests.rs b/crates/openshell-driver-docker/src/tests.rs
-index 3d8968f2d..4bcedbbe1 100644
+index c022adc9..ce90bc1b 100644
 --- a/crates/openshell-driver-docker/src/tests.rs
 +++ b/crates/openshell-driver-docker/src/tests.rs
-@@ -224,6 +224,7 @@ fn runtime_config() -> DockerDriverRuntimeConfig {
+@@ -363,6 +363,7 @@ fn runtime_config() -> DockerDriverRuntimeConfig {
          enable_bind_mounts: false,
          upstream_proxy: UpstreamProxyConfig::default(),
          proxy_ca_bundle: None,
 +        ipv6_egress: SupervisorIpv6EgressConfig::default(),
          provider_spiffe_workload_api_socket: None,
          app_armor_profile: Some(AppArmorProfile::Unconfined),
-     }
-@@ -1355,6 +1356,37 @@ fn repository_e2e_docker_configuration_uses_the_supported_schema() {
+         network_trust: None,
+@@ -1497,6 +1498,37 @@ fn repository_e2e_docker_configuration_uses_the_supported_schema() {
      assert_eq!(config.sandbox_label, "openshell-e2e");
  }
  
@@ -850,10 +851,10 @@ index 3d8968f2d..4bcedbbe1 100644
  fn container_create_body_sets_driver_owned_pids_limit() {
      let body = build_container_create_body(&test_sandbox(), &runtime_config()).unwrap();
 diff --git a/crates/openshell-driver-kubernetes/src/config.rs b/crates/openshell-driver-kubernetes/src/config.rs
-index 6bd7d93af..c0a23585f 100644
+index 7a32f301..3fdd2715 100644
 --- a/crates/openshell-driver-kubernetes/src/config.rs
 +++ b/crates/openshell-driver-kubernetes/src/config.rs
-@@ -243,6 +243,12 @@ pub struct KubernetesComputeConfig {
+@@ -384,6 +384,12 @@ pub struct KubernetesComputeConfig {
      /// Only meaningful with `https_proxy` set; the bundle must exist and
      /// contain at least one usable trust anchor.
      pub proxy_ca_bundle: Option<String>,
@@ -864,26 +865,31 @@ index 6bd7d93af..c0a23585f 100644
 +    /// classifies addresses inside them by their embedded IPv4 address.
 +    pub nat64_prefixes: Vec<String>,
      pub grpc_endpoint: String,
-     /// OTLP/gRPC collector endpoint passed to supervisor pods. The gateway
-     /// supplies its own export endpoint; driver TOML cannot set it.
-@@ -355,6 +361,8 @@ impl Default for KubernetesComputeConfig {
+     /// OTLP exports passed to supervisor pods. The gateway supplies them
+     /// from `[otlp]`; driver TOML cannot set them.
+@@ -520,6 +526,8 @@ impl Default for KubernetesComputeConfig {
              proxy_auth_allow_insecure: None,
              proxy_connect_by_hostname: None,
              proxy_ca_bundle: None,
 +            policy_dns_ipv6_egress: None,
 +            nat64_prefixes: Vec::new(),
              grpc_endpoint: String::new(),
-             supervisor_otlp_endpoint: None,
-             ssh_socket_path: openshell_core::container_paths::SSH_SOCKET_PATH.to_string(),
-@@ -379,7 +387,17 @@ impl KubernetesComputeConfig {
-         self.validate_provider_spiffe_workload_api_socket_path()?;
-         self.validate_sandbox_identity_config()?;
+             supervisor_otlp: openshell_core::sandbox_env::SupervisorOtlp::default(),
+             supervisor_gateway_name: None,
+@@ -551,7 +559,8 @@ impl KubernetesComputeConfig {
          self.validate_proxy_uid()?;
--        self.validate_upstream_proxy_config()
-+        self.validate_upstream_proxy_config()?;
+         self.validate_upstream_proxy_config()?;
+         self.validate_allowed_pod_annotations()?;
+-        self.validate_allowed_pod_labels()
++        self.validate_allowed_pod_labels()?;
 +        self.ipv6_egress_config().validate()
-+    }
-+
+     }
+ 
+     /// The shared supervisor serves only sandbox instances it can isolate: it
+@@ -615,6 +624,15 @@ impl KubernetesComputeConfig {
+         pod_metadata_key_allowed(&self.allowed_pod_labels, key)
+     }
+ 
 +    /// Supervisor IPv6 egress settings in their shared form.
 +    #[must_use]
 +    pub fn ipv6_egress_config(&self) -> openshell_core::SupervisorIpv6EgressConfig {
@@ -891,10 +897,12 @@ index 6bd7d93af..c0a23585f 100644
 +            policy_dns_ipv6_egress: self.policy_dns_ipv6_egress,
 +            nat64_prefixes: self.nat64_prefixes.clone(),
 +        }
-     }
- 
++    }
++
      /// Clamp `sa_token_ttl_secs` into the `[MIN_SA_TOKEN_TTL_SECS,
-@@ -1211,6 +1229,32 @@ mod tests {
+     /// MAX_SA_TOKEN_TTL_SECS]` range used by the projected-volume spec.
+     /// Invalid (≤0) values fall back to the default 3600.
+@@ -1693,6 +1711,32 @@ mod tests {
          assert!(cfg.validate_upstream_proxy_config().is_ok());
      }
  
@@ -928,30 +936,22 @@ index 6bd7d93af..c0a23585f 100644
      fn toml_deserializes_upstream_proxy_settings() {
          let cfg: KubernetesComputeConfig = toml::from_str(
 diff --git a/crates/openshell-driver-kubernetes/src/driver.rs b/crates/openshell-driver-kubernetes/src/driver.rs
-index 42f75abaa..551d408ad 100644
+index bc525cb7..e3d228da 100644
 --- a/crates/openshell-driver-kubernetes/src/driver.rs
 +++ b/crates/openshell-driver-kubernetes/src/driver.rs
-@@ -2449,6 +2449,7 @@ impl KubernetesComputeDriver {
+@@ -3572,6 +3572,7 @@ impl KubernetesComputeDriver {
                      self.config.proxy_auth_allow_insecure == Some(true),
                      self.config.proxy_connect_by_hostname == Some(true),
-                     upstream_proxy_ca_bundle.is_some(),
-+                    &self.config.ipv6_egress_config().supervisor_args(),
-                     self.config.provider_spiffe_enabled().then_some(
-                         self.config
-                             .provider_spiffe_workload_api_socket_path
-@@ -3251,6 +3252,7 @@ impl KubernetesComputeDriver {
-                     self.config.proxy_auth_allow_insecure == Some(true),
-                     self.config.proxy_connect_by_hostname == Some(true),
-                     upstream_proxy_ca_bundle.is_some(),
+                     upstream_proxy_ca_bundle_staged,
 +                    &self.config.ipv6_egress_config().supervisor_args(),
                      self.config.provider_spiffe_enabled().then_some(
                          self.config
                              .provider_spiffe_workload_api_socket_path
 diff --git a/crates/openshell-driver-kubernetes/src/main.rs b/crates/openshell-driver-kubernetes/src/main.rs
-index d70f706f5..c3aac1dd7 100644
+index d498b19a..7cd8b928 100644
 --- a/crates/openshell-driver-kubernetes/src/main.rs
 +++ b/crates/openshell-driver-kubernetes/src/main.rs
-@@ -166,6 +166,15 @@ struct Args {
+@@ -177,6 +177,15 @@ struct Args {
      #[arg(long, env = "OPENSHELL_UPSTREAM_PROXY_CA_BUNDLE")]
      proxy_ca_bundle: Option<String>,
  
@@ -967,68 +967,76 @@ index d70f706f5..c3aac1dd7 100644
      #[arg(long, env = "OPENSHELL_ENABLE_USER_NAMESPACES")]
      enable_user_namespaces: bool,
  
-@@ -272,6 +281,8 @@ async fn main() -> Result<()> {
+@@ -293,6 +302,8 @@ async fn main() -> Result<()> {
              proxy_auth_allow_insecure: args.proxy_auth_allow_insecure.then_some(true),
              proxy_connect_by_hostname: args.proxy_connect_by_hostname.then_some(true),
              proxy_ca_bundle: args.proxy_ca_bundle,
 +            policy_dns_ipv6_egress: args.policy_dns_ipv6_egress,
 +            nat64_prefixes: args.nat64_prefixes,
              grpc_endpoint: args.grpc_endpoint.unwrap_or_default(),
-             supervisor_otlp_endpoint: args.otlp_endpoint.clone(),
-             ssh_socket_path: args.sandbox_ssh_socket_path,
+             supervisor_otlp,
+             supervisor_gateway_name: args.gateway_name.clone(),
 diff --git a/crates/openshell-driver-kubernetes/src/sandbox_runtime.rs b/crates/openshell-driver-kubernetes/src/sandbox_runtime.rs
-index d3bc1b27e..aa0abf2b4 100644
+index acd4320f..f8a324e6 100644
 --- a/crates/openshell-driver-kubernetes/src/sandbox_runtime.rs
 +++ b/crates/openshell-driver-kubernetes/src/sandbox_runtime.rs
-@@ -231,6 +231,7 @@ pub fn supervisor_pod(
+@@ -356,6 +356,7 @@ pub fn supervisor_pod(
      proxy_auth_allow_insecure: bool,
      proxy_connect_by_hostname: bool,
      upstream_proxy_ca_bundle_staged: bool,
 +    ipv6_egress_args: &[String],
      provider_spiffe_socket_path: Option<&str>,
-     owner: OwnerReference,
-     tracing_environment: &[(&str, String)],
-@@ -372,6 +373,7 @@ pub fn supervisor_pod(
-             UPSTREAM_PROXY_CA_BUNDLE_PATH.to_string(),
-         ]);
+     // Name and expected full digest of a gateway-normalized destination trust
+     // generation. The ConfigMap is mounted only in this dedicated control Pod;
+@@ -517,6 +518,7 @@ pub fn supervisor_pod(
+             ADDITIONAL_CA_KEY,
+         ));
      }
 +    command.extend(ipv6_egress_args.iter().cloned());
      if let Some((secret_name, secret_key)) = proxy_auth_secret {
          let auth_path = Path::new(openshell_core::container_paths::UPSTREAM_PROXY_AUTH_MOUNT_PATH);
          let mount_path = auth_path
-@@ -833,6 +835,7 @@ mod tests {
+@@ -1051,6 +1053,7 @@ mod tests {
              false,
              false,
              false,
 +            &[],
              None,
+             None,
              owner(),
-             &[],
-@@ -892,6 +895,7 @@ mod tests {
+@@ -1130,6 +1133,7 @@ mod tests {
              false,
              false,
              false,
 +            &[],
              None,
+             None,
              owner(),
-             &[
-@@ -1018,6 +1022,7 @@ mod tests {
+@@ -1257,6 +1261,7 @@ mod tests {
              false,
              false,
              false,
 +            &[],
              None,
+             None,
              owner(),
-             &[],
-@@ -1276,6 +1281,7 @@ mod tests {
+@@ -1426,6 +1431,7 @@ mod tests {
+                 false,
+                 false,
+                 false,
++                &[],
+                 None,
+                 Some(("openshell-additional-ca-gateway-generation", digest)),
+                 owner(),
+@@ -1618,6 +1624,7 @@ mod tests {
              false,
              false,
              staged,
 +            &[],
              None,
+             None,
              owner(),
-             &[],
-@@ -1283,6 +1289,60 @@ mod tests {
+@@ -1626,6 +1633,61 @@ mod tests {
          .expect("render supervisor Pod")
      }
  
@@ -1064,6 +1072,7 @@ index d3bc1b27e..aa0abf2b4 100644
 +            false,
 +            &args,
 +            None,
++            None,
 +            owner(),
 +            &[],
 +        )
@@ -1090,13 +1099,13 @@ index d3bc1b27e..aa0abf2b4 100644
      fn supervisor_pod_passes_upstream_proxy_ca_bundle_argument() {
          let pod = supervisor_pod_with_staged_proxy_ca(true);
 diff --git a/crates/openshell-driver-podman/src/config.rs b/crates/openshell-driver-podman/src/config.rs
-index 9e4e9b571..2ef08142c 100644
+index a7a22ca6..7653e344 100644
 --- a/crates/openshell-driver-podman/src/config.rs
 +++ b/crates/openshell-driver-podman/src/config.rs
-@@ -178,6 +178,13 @@ pub struct PodmanComputeConfig {
-     /// and upstream verification. Only meaningful with `https_proxy` set; the
-     /// bundle must exist and contain at least one certificate.
-     pub proxy_ca_bundle: Option<String>,
+@@ -209,6 +209,13 @@ pub struct PodmanComputeConfig {
+     /// JSON is rejected instead of silently diverging from it.
+     #[serde(skip)]
+     pub additional_ca_bundle: Option<String>,
 +    /// AAAA handling for the supervisor's mediated policy DNS (`auto`,
 +    /// `enabled` or `disabled`). Unset means the supervisor default, `auto`.
 +    pub policy_dns_ipv6_egress: Option<openshell_core::PolicyDnsIpv6Egress>,
@@ -1107,7 +1116,7 @@ index 9e4e9b571..2ef08142c 100644
      /// User namespace mode for sandbox containers (e.g. `auto`, `private`).
      /// When unset, containers use the default user namespace.
      pub userns: Option<String>,
-@@ -237,6 +244,9 @@ impl PodmanComputeConfig {
+@@ -268,6 +275,9 @@ impl PodmanComputeConfig {
          self.validate_runtime_limits()?;
          self.validate_host_gateway_ip()?;
          self.validate_proxy_config()?;
@@ -1117,7 +1126,7 @@ index 9e4e9b571..2ef08142c 100644
          self.validate_app_armor_profile()?;
          if let Some(socket) = self.provider_spiffe_workload_api_socket.as_deref() {
              let raw = socket.to_str().ok_or_else(|| {
-@@ -255,6 +265,15 @@ impl PodmanComputeConfig {
+@@ -286,6 +296,15 @@ impl PodmanComputeConfig {
          self.validate_userns_mappings()
      }
  
@@ -1133,16 +1142,16 @@ index 9e4e9b571..2ef08142c 100644
      /// Returns `true` when the gateway CA is configured.
      #[must_use]
      pub fn tls_enabled(&self) -> bool {
-@@ -519,6 +538,8 @@ impl Default for PodmanComputeConfig {
-             proxy_auth_allow_insecure: None,
+@@ -567,6 +586,8 @@ impl Default for PodmanComputeConfig {
              proxy_connect_by_hostname: None,
              proxy_ca_bundle: None,
+             additional_ca_bundle: None,
 +            policy_dns_ipv6_egress: None,
 +            nat64_prefixes: Vec::new(),
              userns: None,
              uidmap: Vec::new(),
              gidmap: Vec::new(),
-@@ -561,6 +582,8 @@ impl std::fmt::Debug for PodmanComputeConfig {
+@@ -609,6 +630,8 @@ impl std::fmt::Debug for PodmanComputeConfig {
              .field("proxy_auth_allow_insecure", &self.proxy_auth_allow_insecure)
              .field("proxy_connect_by_hostname", &self.proxy_connect_by_hostname)
              .field("proxy_ca_bundle", &self.proxy_ca_bundle)
@@ -1151,7 +1160,7 @@ index 9e4e9b571..2ef08142c 100644
              .field("userns", &self.userns)
              .field("uidmap", &self.uidmap)
              .field("gidmap", &self.gidmap)
-@@ -1004,6 +1027,22 @@ mod tests {
+@@ -1122,6 +1145,22 @@ mod tests {
          }
      }
  
@@ -1175,10 +1184,10 @@ index 9e4e9b571..2ef08142c 100644
      fn validate_proxy_config_rejects_auth_file_without_proxy() {
          let cfg = PodmanComputeConfig {
 diff --git a/crates/openshell-driver-podman/src/container.rs b/crates/openshell-driver-podman/src/container.rs
-index 3091ac978..d7d5fd844 100644
+index 9943d7a0..06f31c74 100644
 --- a/crates/openshell-driver-podman/src/container.rs
 +++ b/crates/openshell-driver-podman/src/container.rs
-@@ -1272,6 +1272,7 @@ fn build_base_spec(
+@@ -1335,6 +1335,7 @@ fn build_base_spec(
      image_volumes.extend(user_mounts.image_volumes);
      let mut command = vec!["--workdir".to_string(), image.workspace_root.clone()];
      command.extend(upstream_proxy_cli_args(config));
@@ -1186,7 +1195,7 @@ index 3091ac978..d7d5fd844 100644
  
      let container_spec = ContainerSpec {
          name,
-@@ -2803,6 +2804,36 @@ mod tests {
+@@ -3122,6 +3123,36 @@ mod tests {
          }
      }
  
@@ -1224,13 +1233,13 @@ index 3091ac978..d7d5fd844 100644
      fn container_spec_omits_proxy_argv_when_unconfigured() {
          let sandbox = test_sandbox("test-id", "test-name");
 diff --git a/crates/openshell-driver-podman/src/main.rs b/crates/openshell-driver-podman/src/main.rs
-index 4fe83e0c8..bf0a45791 100644
+index cc0ebe1a..1bd7e43e 100644
 --- a/crates/openshell-driver-podman/src/main.rs
 +++ b/crates/openshell-driver-podman/src/main.rs
-@@ -174,6 +174,15 @@ struct Args {
-     #[arg(long, env = "OPENSHELL_SANDBOX_PROXY_CA_BUNDLE")]
-     sandbox_proxy_ca_bundle: Option<String>,
- 
+@@ -182,6 +182,14 @@ struct Args {
+     /// read-only into the supervisor container.
+     #[arg(long, env = "OPENSHELL_SANDBOX_ADDITIONAL_CA_BUNDLE")]
+     sandbox_additional_ca_bundle: Option<String>,
 +    /// AAAA handling for the supervisor's mediated policy DNS: `auto`,
 +    /// `enabled` or `disabled`.
 +    #[arg(long, env = "OPENSHELL_SANDBOX_POLICY_DNS_IPV6_EGRESS")]
@@ -1239,25 +1248,24 @@ index 4fe83e0c8..bf0a45791 100644
 +    /// NAT64 prefixes (RFC 6052 CIDRs) of the sandbox network.
 +    #[arg(long, env = "OPENSHELL_SANDBOX_NAT64_PREFIXES", value_delimiter = ',')]
 +    sandbox_nat64_prefixes: Vec<String>,
-+
+ 
      /// User namespace mode for sandbox containers (e.g. `auto`).
      /// When unset, containers use the default user namespace.
-     #[arg(long, env = "OPENSHELL_PODMAN_USERNS")]
-@@ -241,6 +250,8 @@ async fn main() -> Result<()> {
-         proxy_auth_allow_insecure: args.sandbox_proxy_auth_allow_insecure,
-         proxy_connect_by_hostname: args.sandbox_proxy_connect_by_hostname,
-         proxy_ca_bundle: args.sandbox_proxy_ca_bundle,
-+        policy_dns_ipv6_egress: args.sandbox_policy_dns_ipv6_egress,
-+        nat64_prefixes: args.sandbox_nat64_prefixes,
-         userns: args.userns,
-         uidmap: args.uidmap,
-         gidmap: args.gidmap,
+@@ -261,6 +269,8 @@ async fn main() -> Result<()> {
+             proxy_connect_by_hostname: args.sandbox_proxy_connect_by_hostname,
+             proxy_ca_bundle: args.sandbox_proxy_ca_bundle,
+             additional_ca_bundle: args.sandbox_additional_ca_bundle,
++            policy_dns_ipv6_egress: args.sandbox_policy_dns_ipv6_egress,
++            nat64_prefixes: args.sandbox_nat64_prefixes,
+             userns: args.userns,
+             uidmap: args.uidmap,
+             gidmap: args.gidmap,
 diff --git a/crates/openshell-driver-vm/src/driver.rs b/crates/openshell-driver-vm/src/driver.rs
-index ab1aca902..9a4a83035 100644
+index f7946c34..2dfc969e 100644
 --- a/crates/openshell-driver-vm/src/driver.rs
 +++ b/crates/openshell-driver-vm/src/driver.rs
-@@ -273,6 +273,9 @@ pub struct VmDriverConfig {
-     /// Corporate forward proxy settings delivered to the guest init script.
+@@ -384,6 +384,9 @@ pub struct VmDriverConfig {
+     /// Corporate forward proxy settings delivered to the host supervisor.
      #[serde(flatten)]
      pub upstream_proxy: UpstreamProxyConfig,
 +    /// Policy DNS IPv6 egress mode and NAT64 prefixes for host control.
@@ -1266,7 +1274,7 @@ index ab1aca902..9a4a83035 100644
      /// Gateway-host PEM CA bundle staged into the guest overlay for the
      /// corporate proxy and TLS-intercepted server certificates.
      pub proxy_ca_bundle: Option<PathBuf>,
-@@ -353,6 +356,7 @@ impl std::fmt::Debug for VmDriverConfig {
+@@ -472,6 +475,7 @@ impl std::fmt::Debug for VmDriverConfig {
                  "proxy_ca_bundle_configured",
                  &self.proxy_ca_bundle.is_some(),
              )
@@ -1274,15 +1282,15 @@ index ab1aca902..9a4a83035 100644
              .field(
                  "provider_spiffe_workload_api_tcp_endpoint_configured",
                  &self.provider_spiffe_workload_api_tcp_endpoint.is_some(),
-@@ -392,6 +396,7 @@ impl Default for VmDriverConfig {
-             guest_tls_cert: None,
-             guest_tls_key: None,
+@@ -517,6 +521,7 @@ impl Default for VmDriverConfig {
+             additional_ca_certificate_count: None,
+             additional_ca_snapshot: None,
              upstream_proxy: UpstreamProxyConfig::default(),
 +            ipv6_egress: openshell_core::SupervisorIpv6EgressConfig::default(),
              proxy_ca_bundle: None,
              provider_spiffe_workload_api_tcp_endpoint: None,
              provider_spiffe_allow_guest_tcp: false,
-@@ -419,6 +424,7 @@ impl VmDriverConfig {
+@@ -545,6 +550,7 @@ impl VmDriverConfig {
  
      pub fn validate_runtime_security_config(&self) -> Result<(), String> {
          self.upstream_proxy.validate()?;
@@ -1290,15 +1298,15 @@ index ab1aca902..9a4a83035 100644
          if let Some(path) = self.proxy_ca_bundle.as_ref() {
              if path.as_os_str().is_empty() {
                  return Err("proxy_ca_bundle must not be empty when set".to_string());
-@@ -942,6 +948,7 @@ impl VmDriver {
-             .arg("--workdir")
+@@ -1444,6 +1450,7 @@ impl VmDriver {
              .arg("/sandbox")
              .args(upstream_proxy_args)
+             .args(network_trust_args)
 +            .args(self.config.ipv6_egress.supervisor_args())
              .env(
                  openshell_core::sandbox_env::ADMITTED_ISOLATION_BACKEND,
                  DRIVER_ADMITTED_BACKEND,
-@@ -12425,6 +12432,33 @@ mod tests {
+@@ -13912,6 +13919,33 @@ while :; do sleep 0.05; done"#,
          );
      }
  
@@ -1333,10 +1341,10 @@ index ab1aca902..9a4a83035 100644
      fn upstream_proxy_args_are_empty_without_a_configured_proxy() {
          assert!(
 diff --git a/crates/openshell-driver-vm/src/main.rs b/crates/openshell-driver-vm/src/main.rs
-index 0fbaf7b2f..593543fe9 100644
+index 90b4c1cb..c4daba53 100644
 --- a/crates/openshell-driver-vm/src/main.rs
 +++ b/crates/openshell-driver-vm/src/main.rs
-@@ -161,6 +161,19 @@ struct Args {
+@@ -178,6 +178,19 @@ struct Args {
      #[arg(long, env = "OPENSHELL_VM_UPSTREAM_PROXY_CA_BUNDLE")]
      upstream_proxy_ca_bundle: Option<PathBuf>,
  
@@ -1356,7 +1364,7 @@ index 0fbaf7b2f..593543fe9 100644
      /// Guest-reachable SPIFFE Workload API endpoint (`tcp:IP:port`).
      #[arg(
          long = "provider-spiffe-workload-api-tcp-endpoint",
-@@ -318,6 +331,10 @@ async fn main() -> Result<()> {
+@@ -355,6 +368,10 @@ async fn main() -> Result<()> {
              proxy_connect_by_hostname: args.upstream_proxy_connect_by_hostname.then_some(true),
          },
          proxy_ca_bundle: args.upstream_proxy_ca_bundle.clone(),
@@ -1367,7 +1375,7 @@ index 0fbaf7b2f..593543fe9 100644
          provider_spiffe_workload_api_tcp_endpoint: args
              .provider_spiffe_workload_api_tcp_endpoint
              .clone(),
-@@ -751,6 +768,29 @@ mod tests {
+@@ -825,6 +842,29 @@ mod tests {
          );
      }
  
@@ -1398,10 +1406,10 @@ index 0fbaf7b2f..593543fe9 100644
      fn corporate_proxy_settings_default_to_unset() {
          let args = Args::parse_from(["openshell-driver-vm"]);
 diff --git a/crates/openshell-gateway/src/vm.rs b/crates/openshell-gateway/src/vm.rs
-index d0c00cd78..a271012a2 100644
+index d1330a29..ba8c551b 100644
 --- a/crates/openshell-gateway/src/vm.rs
 +++ b/crates/openshell-gateway/src/vm.rs
-@@ -113,6 +113,11 @@ pub struct VmComputeConfig {
+@@ -114,6 +114,11 @@ pub struct VmComputeConfig {
      #[serde(flatten)]
      pub upstream_proxy: UpstreamProxyConfig,
  
@@ -1413,7 +1421,7 @@ index d0c00cd78..a271012a2 100644
      /// Path on the gateway host to a PEM CA bundle trusted for the corporate
      /// proxy and for server certificates re-signed by a TLS-intercepting proxy.
      pub proxy_ca_bundle: Option<PathBuf>,
-@@ -204,6 +209,7 @@ impl VmComputeConfig {
+@@ -209,6 +214,7 @@ impl VmComputeConfig {
  
      fn validate_proxy_config(&self) -> Result<()> {
          self.upstream_proxy.validate().map_err(Error::config)?;
@@ -1421,7 +1429,7 @@ index d0c00cd78..a271012a2 100644
          if let Some(path) = self.proxy_ca_bundle.as_ref() {
              if path.as_os_str().is_empty() {
                  return Err(Error::config("proxy_ca_bundle must not be empty when set"));
-@@ -251,6 +257,7 @@ impl Default for VmComputeConfig {
+@@ -256,6 +262,7 @@ impl Default for VmComputeConfig {
              rootfs_tar_max_bytes: None,
              guest_tls_ca: None,
              upstream_proxy: UpstreamProxyConfig::default(),
@@ -1429,7 +1437,7 @@ index d0c00cd78..a271012a2 100644
              proxy_ca_bundle: None,
              provider_spiffe_workload_api_tcp_endpoint: None,
              provider_spiffe_allow_guest_tcp: false,
-@@ -651,6 +658,8 @@ fn append_vm_proxy_and_spiffe_args(command: &mut Command, config: &VmComputeConf
+@@ -681,6 +688,8 @@ fn append_vm_proxy_and_spiffe_args(command: &mut Command, config: &VmComputeConf
      if let Some(path) = config.proxy_ca_bundle.as_ref() {
          command.arg("--upstream-proxy-ca-bundle").arg(path);
      }
@@ -1438,7 +1446,7 @@ index d0c00cd78..a271012a2 100644
      if let Some(endpoint) = config.provider_spiffe_workload_api_tcp_endpoint.as_ref() {
          command
              .arg("--provider-spiffe-workload-api-tcp-endpoint")
-@@ -830,6 +839,33 @@ mod tests {
+@@ -1109,6 +1118,33 @@ mod tests {
          );
      }
  
@@ -1474,7 +1482,7 @@ index d0c00cd78..a271012a2 100644
          let mut command = tokio::process::Command::new("openshell-driver-vm");
 diff --git a/crates/openshell-supervisor-network/src/policy_dns/egress.rs b/crates/openshell-supervisor-network/src/policy_dns/egress.rs
 new file mode 100644
-index 000000000..95d440362
+index 00000000..95d44036
 --- /dev/null
 +++ b/crates/openshell-supervisor-network/src/policy_dns/egress.rs
 @@ -0,0 +1,551 @@
@@ -2030,7 +2038,7 @@ index 000000000..95d440362
 +    }
 +}
 diff --git a/crates/openshell-supervisor-network/src/policy_dns/mod.rs b/crates/openshell-supervisor-network/src/policy_dns/mod.rs
-index ee1a5cc12..35cb6aa91 100644
+index 4d5b6189..2d6bdd69 100644
 --- a/crates/openshell-supervisor-network/src/policy_dns/mod.rs
 +++ b/crates/openshell-supervisor-network/src/policy_dns/mod.rs
 @@ -17,15 +17,19 @@
@@ -2055,10 +2063,10 @@ index ee1a5cc12..35cb6aa91 100644
      MappingLookup, MappingLookupError, PolicyEndpointId, PublishError, PublishRequest,
      ResolvedEndpointRecord, ResolvedEndpointStore, ResolvedPortContract, StoreConfig,
 diff --git a/crates/openshell-supervisor-network/src/policy_dns/runtime.rs b/crates/openshell-supervisor-network/src/policy_dns/runtime.rs
-index 6463792a1..f4fda0ad5 100644
+index d7888f99..f172deb8 100644
 --- a/crates/openshell-supervisor-network/src/policy_dns/runtime.rs
 +++ b/crates/openshell-supervisor-network/src/policy_dns/runtime.rs
-@@ -47,6 +47,8 @@ pub(crate) struct PolicyDnsRuntimeConfig {
+@@ -49,6 +49,8 @@ pub(crate) struct PolicyDnsRuntimeConfig {
      pub(crate) ipv4_cidr: ipnet::Ipv4Net,
      pub(crate) ipv6_cidr: ipnet::Ipv6Net,
      pools: SyntheticPools,
@@ -2067,7 +2075,7 @@ index 6463792a1..f4fda0ad5 100644
  }
  
  impl PolicyDnsRuntimeConfig {
-@@ -80,8 +82,30 @@ impl PolicyDnsRuntimeConfig {
+@@ -82,8 +84,30 @@ impl PolicyDnsRuntimeConfig {
              ipv4_cidr,
              ipv6_cidr,
              pools,
@@ -2098,7 +2106,7 @@ index 6463792a1..f4fda0ad5 100644
  }
  
  pub(crate) struct PolicyDnsRuntime {
-@@ -99,7 +123,8 @@ impl PolicyDnsRuntime {
+@@ -101,7 +125,8 @@ impl PolicyDnsRuntime {
          config: PolicyDnsRuntimeConfig,
          mut engine_ready: tokio::sync::watch::Receiver<bool>,
      ) -> Result<Self> {
@@ -2108,7 +2116,7 @@ index 6463792a1..f4fda0ad5 100644
          let store = Arc::new(ResolvedEndpointStore::new(
              StoreConfig::new(config.pools, MAX_MAPPINGS)
                  .map_err(|error| miette::miette!(error.to_string()))?,
-@@ -130,10 +155,12 @@ impl PolicyDnsRuntime {
+@@ -132,10 +157,12 @@ impl PolicyDnsRuntime {
                      let timing = query.timing.clone();
                      let response = match query.transport {
                          DnsTransport::Udp => {
@@ -2123,7 +2131,7 @@ index 6463792a1..f4fda0ad5 100644
                          }
                      }
                      .map_err(|error| {
-@@ -172,7 +199,11 @@ impl PolicyDnsRuntime {
+@@ -174,7 +201,11 @@ impl PolicyDnsRuntime {
                  .severity(SeverityId::Informational)
                  .status(StatusId::Success)
                  .state(StateId::Enabled, "ready")
@@ -2136,7 +2144,7 @@ index 6463792a1..f4fda0ad5 100644
                  .build()
          );
          Ok(Self {
-@@ -189,7 +220,8 @@ impl PolicyDnsRuntime {
+@@ -191,7 +222,8 @@ impl PolicyDnsRuntime {
          config: PolicyDnsRuntimeConfig,
          engine_ready: tokio::sync::watch::Receiver<bool>,
      ) -> Result<Self> {
@@ -2146,7 +2154,7 @@ index 6463792a1..f4fda0ad5 100644
          let store = Arc::new(ResolvedEndpointStore::new(
              StoreConfig::new(config.pools, MAX_MAPPINGS)
                  .map_err(|error| miette::miette!(error.to_string()))?,
-@@ -223,11 +255,10 @@ impl PolicyDnsRuntime {
+@@ -225,11 +257,10 @@ impl PolicyDnsRuntime {
                  let udp = udp.clone();
                  tokio::spawn(async move {
                      let _permit = permit;
@@ -2161,7 +2169,7 @@ index 6463792a1..f4fda0ad5 100644
                      {
                          let _ = udp.send_to(&response, peer).await;
                      }
-@@ -262,7 +293,7 @@ impl PolicyDnsRuntime {
+@@ -264,7 +295,7 @@ impl PolicyDnsRuntime {
                              return;
                          }
                          let Ok(response) =
@@ -2170,7 +2178,7 @@ index 6463792a1..f4fda0ad5 100644
                          else {
                              return;
                          };
-@@ -287,6 +318,7 @@ impl PolicyDnsRuntime {
+@@ -289,6 +320,7 @@ impl PolicyDnsRuntime {
                  .severity(SeverityId::Informational)
                  .status(StatusId::Success)
                  .state(StateId::Enabled, "ready")
@@ -2178,7 +2186,7 @@ index 6463792a1..f4fda0ad5 100644
                  .message(format!("Policy DNS listening on {address}"))
                  .build()
          );
-@@ -305,7 +337,7 @@ impl Drop for PolicyDnsRuntime {
+@@ -307,7 +339,7 @@ impl Drop for PolicyDnsRuntime {
      }
  }
  
@@ -2187,7 +2195,7 @@ index 6463792a1..f4fda0ad5 100644
      let contents = std::fs::read_to_string("/etc/resolv.conf")
          .into_diagnostic()
          .wrap_err("failed to read trusted supervisor resolver configuration")?;
-@@ -405,6 +437,13 @@ mod tests {
+@@ -413,6 +445,13 @@ mod tests {
          }
      }
  
@@ -2202,10 +2210,10 @@ index 6463792a1..f4fda0ad5 100644
      fn production_pools_and_store_capacity_expand_together() {
          let config = PolicyDnsRuntimeConfig::for_epoch(7).unwrap();
 diff --git a/crates/openshell-supervisor-network/src/policy_dns/store.rs b/crates/openshell-supervisor-network/src/policy_dns/store.rs
-index eeb5d4b85..d688376b2 100644
+index 62fe1c19..54f96cd1 100644
 --- a/crates/openshell-supervisor-network/src/policy_dns/store.rs
 +++ b/crates/openshell-supervisor-network/src/policy_dns/store.rs
-@@ -816,6 +816,57 @@ mod tests {
+@@ -819,6 +819,58 @@ mod tests {
          ));
      }
  
@@ -2218,11 +2226,12 @@ index eeb5d4b85..d688376b2 100644
 +        ipv6.contracts[0].pinned_addresses = vec!["2001:db8::8".parse().unwrap()];
 +        let record = store.publish(ipv6, 4, now).unwrap();
 +        assert!(record.synthetic_address.is_ipv6());
++        let lookup = store
++            .lookup(record.synthetic_address, 5432, 4, now)
++            .unwrap();
++        let endpoint_ids = lookup.endpoint_ids().cloned().collect::<Vec<_>>();
 +        assert_eq!(
-+            store
-+                .lookup(record.synthetic_address, 5432, 4, now)
-+                .unwrap()
-+                .pinned_addresses(),
++            lookup.pinned_addresses_for(&endpoint_ids).unwrap(),
 +            ["2001:db8::8".parse::<IpAddr>().unwrap()]
 +        );
 +        assert!(matches!(
@@ -2264,10 +2273,10 @@ index eeb5d4b85..d688376b2 100644
      fn expiry_never_reassigns_synthetic_address_to_another_name() {
          let store = store(2);
 diff --git a/crates/openshell-supervisor-network/src/policy_dns/wire.rs b/crates/openshell-supervisor-network/src/policy_dns/wire.rs
-index fe6a01c3a..1fb15a115 100644
+index fe6a01c3..e56fe3b9 100644
 --- a/crates/openshell-supervisor-network/src/policy_dns/wire.rs
 +++ b/crates/openshell-supervisor-network/src/policy_dns/wire.rs
-@@ -340,6 +340,47 @@ process: { run_as_user: sandbox, run_as_group: sandbox }
+@@ -340,6 +340,48 @@ process: { run_as_user: sandbox, run_as_group: sandbox }
          assert_eq!(service.resolver.calls.load(Ordering::SeqCst), 0);
      }
  
@@ -2304,8 +2313,9 @@ index fe6a01c3a..1fb15a115 100644
 +                    Instant::now(),
 +                )
 +                .unwrap();
++            let endpoint_ids = mapping.endpoint_ids().cloned().collect::<Vec<_>>();
 +            assert_eq!(
-+                mapping.pinned_addresses(),
++                mapping.pinned_addresses_for(&endpoint_ids).unwrap(),
 +                ["2001:4860:4860::8888".parse::<IpAddr>().unwrap()]
 +            );
 +        }
@@ -2316,10 +2326,10 @@ index fe6a01c3a..1fb15a115 100644
      async fn unsupported_type_is_not_implemented_and_malformed_tcp_is_rejected() {
          let service = service();
 diff --git a/crates/openshell-supervisor-network/src/proxy.rs b/crates/openshell-supervisor-network/src/proxy.rs
-index d44e04497..553d26559 100644
+index 96c0b8f5..c89892aa 100644
 --- a/crates/openshell-supervisor-network/src/proxy.rs
 +++ b/crates/openshell-supervisor-network/src/proxy.rs
-@@ -4105,14 +4105,16 @@ pub(crate) fn is_host_gateway_alias(host: &str) -> bool {
+@@ -4283,14 +4283,16 @@ pub(crate) fn is_host_gateway_alias(host: &str) -> bool {
  /// Returns `true` if `ip` is a known cloud instance metadata endpoint that
  /// must never be exempted from SSRF blocking.
  ///
@@ -2339,7 +2349,7 @@ index d44e04497..553d26559 100644
              .is_some_and(|v4| CLOUD_METADATA_IPS.contains(&IpAddr::V4(v4))),
      }
  }
-@@ -4404,7 +4406,9 @@ fn validate_allowed_ips_for_resolved_addrs(
+@@ -4616,7 +4618,9 @@ fn validate_allowed_ips_for_resolved_addrs(
          }
  
          // Check resolved IP against the allowlist
@@ -2350,7 +2360,7 @@ index d44e04497..553d26559 100644
          if !ip_allowed {
              return Err(format!(
                  "{host} resolves to {} which is not in allowed_ips, connection rejected",
-@@ -8206,6 +8210,567 @@ network_policies:
+@@ -8701,6 +8705,574 @@ network_policies:
          }
      }
  
@@ -2431,11 +2441,13 @@ index d44e04497..553d26559 100644
 +                cmdline_paths: Vec::new(),
 +            }),
 +            destination: SocketAddr::new(record.synthetic_address, 443),
-+            socket: openshell_isolation_interface::contract::NetworkSocketMetadata {
-+                socket_cookie: 7,
-+                nonblocking: false,
-+                process_generation: 1,
-+            },
++            socket: Some(
++                openshell_isolation_interface::contract::NetworkSocketMetadata {
++                    socket_cookie: 7,
++                    nonblocking: false,
++                    process_generation: 1,
++                },
++            ),
 +            policy_generation: engine.current_generation(),
 +            timing: MediationTiming::default(),
 +            decision,
@@ -2449,6 +2461,7 @@ index d44e04497..553d26559 100644
 +            None,
 +            None,
 +            false,
++            None,
 +            None,
 +        )
 +        .await
@@ -2499,7 +2512,7 @@ index d44e04497..553d26559 100644
 +    }
 +
 +    #[async_trait::async_trait]
-+    impl NetworkMediationSource for ChannelMediationSource {
++    impl rpc_test::NetworkMediationSource for ChannelMediationSource {
 +        async fn accept_tcp(
 +            &self,
 +        ) -> std::result::Result<
@@ -2616,9 +2629,9 @@ index d44e04497..553d26559 100644
 +        );
 +        let upstream = spawn_dns64_upstream().await;
 +        let (dns_tx, dns_rx) = mpsc::unbounded_channel();
-+        let source = Arc::new(ChannelMediationSource {
++        let source = rpc_test::network(Arc::new(ChannelMediationSource {
 +            dns: tokio::sync::Mutex::new(dns_rx),
-+        });
++        }));
 +        let (ready_tx, ready_rx) = tokio::sync::watch::channel(true);
 +        let runtime = PolicyDnsRuntime::start_mediated(
 +            engine.clone(),
@@ -2690,11 +2703,13 @@ index d44e04497..553d26559 100644
 +                    stream: Box::new(stream),
 +                    binary_identity,
 +                    destination,
-+                    socket: openshell_isolation_interface::contract::NetworkSocketMetadata {
-+                        socket_cookie: 11,
-+                        nonblocking: false,
-+                        process_generation: 1,
-+                    },
++                    socket: Some(
++                        openshell_isolation_interface::contract::NetworkSocketMetadata {
++                            socket_cookie: 11,
++                            nonblocking: false,
++                            process_generation: 1,
++                        },
++                    ),
 +                    policy_generation: engine.current_generation(),
 +                    timing: MediationTiming::default(),
 +                    decision,
@@ -2711,6 +2726,7 @@ index d44e04497..553d26559 100644
 +            None,
 +            None,
 +            false,
++            None,
 +            None,
 +        )
 +        .await
@@ -2849,6 +2865,7 @@ index d44e04497..553d26559 100644
 +                None,
 +                false,
 +                None,
++                None,
 +            )
 +            .await
 +            .is_none(),
@@ -2882,9 +2899,9 @@ index d44e04497..553d26559 100644
 +        let (ready_tx, ready_rx) = tokio::sync::watch::channel(true);
 +        let _runtime = PolicyDnsRuntime::start_mediated(
 +            engine,
-+            Arc::new(ChannelMediationSource {
++            rpc_test::network(Arc::new(ChannelMediationSource {
 +                dns: tokio::sync::Mutex::new(dns_rx),
-+            }),
++            })),
 +            None,
 +            PolicyDnsRuntimeConfig::for_epoch(9)
 +                .unwrap()
@@ -2918,7 +2935,7 @@ index d44e04497..553d26559 100644
      #[tokio::test]
      async fn staged_transparent_open_reports_invalid_identity_as_unavailable() {
          let engine = OpaEngine::from_strings(
-@@ -11950,6 +12515,63 @@ network_policies:
+@@ -12828,6 +13400,63 @@ network_policies:
          );
      }
  
@@ -2983,7 +3000,7 @@ index d44e04497..553d26559 100644
      fn test_is_cloud_metadata_ip_allows_other_ipv4_mapped_link_local() {
          // Other IPv4-mapped link-local addresses are NOT metadata.
 diff --git a/crates/openshell-supervisor-network/src/proxy/destination.rs b/crates/openshell-supervisor-network/src/proxy/destination.rs
-index 9b53fe154..ef4bef7c7 100644
+index ae1c5f91..e397945f 100644
 --- a/crates/openshell-supervisor-network/src/proxy/destination.rs
 +++ b/crates/openshell-supervisor-network/src/proxy/destination.rs
 @@ -189,7 +189,10 @@ pub(crate) fn filter_resolved_addresses(
@@ -2998,7 +3015,7 @@ index 9b53fe154..ef4bef7c7 100644
                      Some(format!(
                          "{host} resolves to {ip} which is not in allowed_ips, connection rejected"
                      ))
-@@ -517,6 +520,47 @@ mod tests {
+@@ -513,6 +516,47 @@ mod tests {
          assert_eq!(allowed, vec![public]);
      }
  
@@ -3047,12 +3064,12 @@ index 9b53fe154..ef4bef7c7 100644
      fn address_filter_exact_host_allows_private_but_not_always_blocked() {
          let plan = DestinationValidationPlan {
 diff --git a/crates/openshell-supervisor-network/src/run.rs b/crates/openshell-supervisor-network/src/run.rs
-index 1eba8a074..2e281fac8 100644
+index 0c342c6b..19a2896f 100644
 --- a/crates/openshell-supervisor-network/src/run.rs
 +++ b/crates/openshell-supervisor-network/src/run.rs
-@@ -40,6 +40,9 @@ use crate::proxy::ProxyHandle;
- use openshell_core::endpoint_status::EndpointObservationSender;
- use openshell_isolation_interface::contract::NetworkMediationSource;
+@@ -62,6 +62,9 @@ impl std::fmt::Debug for ProxyListenerConfig {
+     }
+ }
  
 +pub use openshell_core::PolicyDnsIpv6Egress;
 +pub use openshell_core::net::nat64::Nat64Prefix;
@@ -3060,16 +3077,16 @@ index 1eba8a074..2e281fac8 100644
  #[cfg(target_os = "linux")]
  pub struct TransparentRuntimeSetup {
      pub listeners: Vec<tokio::net::TcpListener>,
-@@ -197,6 +200,8 @@ pub async fn run_networking(
-     agent_proposals: AgentProposals,
+@@ -292,6 +295,8 @@ pub async fn run_networking(
      workspace_rx: tokio::sync::watch::Receiver<String>,
      upstream_proxy_args: &crate::upstream_proxy::UpstreamProxyArgs,
+     additional_ca_bundle: Option<&str>,
 +    policy_dns_ipv6_egress: PolicyDnsIpv6Egress,
 +    nat64_prefixes: Vec<Nat64Prefix>,
-     proxy_tls_dir: Option<&std::path::Path>,
      host_gateway_ip: Option<IpAddr>,
      #[cfg(target_os = "linux")] transparent_runtime: Option<TransparentRuntimeSetup>,
-@@ -434,6 +439,23 @@ pub async fn run_networking(
+     network_mediation_source: Option<Arc<NetworkMediationSource>>,
+@@ -546,6 +551,23 @@ pub async fn run_networking(
          (None, None)
      };
  
@@ -3087,13 +3104,13 @@ index 1eba8a074..2e281fac8 100644
 +    #[cfg(not(target_os = "linux"))]
 +    let policy_dns_active = network_mediation_source.is_some();
 +    if policy_dns_active {
-+        ocsf_emit!(ipv6_egress.event());
++        crate::telemetry::egress_emit!(ipv6_egress.event());
 +    }
 +
      let mediated_policy_dns = if let Some(source) = network_mediation_source.clone() {
          let engine = opa_engine
              .cloned()
-@@ -442,7 +464,8 @@ pub async fn run_networking(
+@@ -554,7 +576,8 @@ pub async fn run_networking(
              engine,
              source,
              host_gateway_ip,
@@ -3103,7 +3120,7 @@ index 1eba8a074..2e281fac8 100644
              engine_ready_rx.clone(),
          )?)
      } else {
-@@ -513,7 +536,7 @@ pub async fn run_networking(
+@@ -636,7 +659,7 @@ pub async fn run_networking(
              runtime.dns_udp,
              runtime.dns_tcp,
              trusted_gateway,
@@ -3112,8 +3129,8 @@ index 1eba8a074..2e281fac8 100644
              policy_dns_engine_ready_rx,
          )?;
          let transparent = crate::proxy::TransparentTcpHandle::start(
-@@ -567,3 +590,28 @@ mod transparent_runtime_tests {
-         assert!(error.to_string().contains("allocation epoch is invalid"));
+@@ -756,3 +779,28 @@ mod transparent_runtime_tests {
+         SandboxCa::generate().unwrap().cert_pem().to_string()
      }
  }
 +
@@ -3139,102 +3156,109 @@ index 1eba8a074..2e281fac8 100644
 +            }
 +        }
 +    };
-+    ocsf_emit!(setup.event());
++    crate::telemetry::egress_emit!(setup.event());
 +}
 diff --git a/crates/openshell-supervisor/src/backend_setup/tests.rs b/crates/openshell-supervisor/src/backend_setup/tests.rs
-index 52bf73e15..9863c46ba 100644
+index 42626fbe..71667517 100644
 --- a/crates/openshell-supervisor/src/backend_setup/tests.rs
 +++ b/crates/openshell-supervisor/src/backend_setup/tests.rs
-@@ -694,6 +694,8 @@ async fn shared_startup_uses_selected_backend_through_readiness_and_shutdown() {
-                 ocsf_enabled: Arc::new(AtomicBool::new(false)),
-                 ocsf_schema_version: Arc::new(Mutex::new(String::new())),
-                 upstream_proxy_args: UpstreamProxyArgs::default(),
-+                policy_dns_ipv6_egress: Default::default(),
-+                nat64_prefixes: Vec::new(),
-                 backend_descriptor: TestSetup::descriptor(),
-                 auth_bundle: setup.auth.clone(),
-                 admitted_isolation_backend: Some(TEST_BACKEND.into()),
+@@ -849,6 +849,9 @@ async fn shared_startup_uses_selected_backend_through_readiness_and_shutdown() {
+             shared_ssh_socket: false,
+             upstream_proxy_args: UpstreamProxyArgs::default(),
+             additional_ca_bundle: None,
++            policy_dns_ipv6_egress:
++                openshell_supervisor_network::run::PolicyDnsIpv6Egress::Disabled,
++            nat64_prefixes: Vec::new(),
+             backend_descriptor: TestSetup::descriptor(),
+             auth_bundle: setup.auth.clone(),
+             admitted_isolation_backend: Some(TEST_BACKEND.into()),
+@@ -1057,6 +1060,9 @@ async fn suspend_signal_exits_without_terminating_boundary() {
+             shared_ssh_socket: false,
+             upstream_proxy_args: UpstreamProxyArgs::default(),
+             additional_ca_bundle: None,
++            policy_dns_ipv6_egress:
++                openshell_supervisor_network::run::PolicyDnsIpv6Egress::Disabled,
++            nat64_prefixes: Vec::new(),
+             backend_descriptor: TestSetup::descriptor(),
+             auth_bundle: setup.auth.clone(),
+             admitted_isolation_backend: Some(TEST_BACKEND.into()),
+diff --git a/crates/openshell-supervisor/src/legacy_startup_regression_tests.rs b/crates/openshell-supervisor/src/legacy_startup_regression_tests.rs
+index a9dd93b5..a60938ea 100644
+--- a/crates/openshell-supervisor/src/legacy_startup_regression_tests.rs
++++ b/crates/openshell-supervisor/src/legacy_startup_regression_tests.rs
+@@ -303,6 +303,8 @@ async fn config_push_regression_legacy_gateway_never_observes_ready_before_workl
+         upstream_proxy_args:
+             openshell_supervisor_network::upstream_proxy::UpstreamProxyArgs::default(),
+         additional_ca_bundle: None,
++        policy_dns_ipv6_egress: openshell_supervisor_network::run::PolicyDnsIpv6Egress::Disabled,
++        nat64_prefixes: Vec::new(),
+         backend_descriptor: openshell_isolation_interface::contract::BackendDescriptor {
+             backend_name: "test-held".into(),
+             payload: Vec::new(),
 diff --git a/crates/openshell-supervisor/src/lib.rs b/crates/openshell-supervisor/src/lib.rs
-index 8d498e162..9382276ca 100644
+index b9a5546b..f74561ac 100644
 --- a/crates/openshell-supervisor/src/lib.rs
 +++ b/crates/openshell-supervisor/src/lib.rs
-@@ -501,6 +501,7 @@ pub async fn run_network_proxy(
-     policy_data: String,
+@@ -671,6 +671,7 @@ pub async fn run_network_proxy(
      tls_dir: Option<std::path::PathBuf>,
      upstream_proxy_args: openshell_supervisor_network::upstream_proxy::UpstreamProxyArgs,
+     additional_ca_bundle: Option<String>,
 +    nat64_prefixes: Vec<openshell_supervisor_network::run::Nat64Prefix>,
  ) -> Result<i32> {
      if !listen.ip().is_loopback() {
          return Err(miette::miette!(
-@@ -568,6 +569,9 @@ pub async fn run_network_proxy(
-         AgentProposals::new(initial_agent_proposals_enabled),
+@@ -744,6 +745,9 @@ pub async fn run_network_proxy(
          workspace_rx,
          &upstream_proxy_args,
+         additional_ca_bundle.as_deref(),
 +        // No isolation boundary is attached, so mediated policy DNS is off.
 +        openshell_supervisor_network::run::PolicyDnsIpv6Egress::Disabled,
 +        nat64_prefixes,
-         Some(&tls_dir.path),
          None,
          #[cfg(target_os = "linux")]
-@@ -633,6 +637,8 @@ pub async fn run_sandbox(
-     ocsf_enabled: Arc<AtomicBool>,
-     ocsf_schema_version: Arc<std::sync::Mutex<String>>,
-     upstream_proxy_args: openshell_supervisor_network::upstream_proxy::UpstreamProxyArgs,
-+    policy_dns_ipv6_egress: openshell_supervisor_network::run::PolicyDnsIpv6Egress,
-+    nat64_prefixes: Vec<openshell_supervisor_network::run::Nat64Prefix>,
-     backend_descriptor: openshell_isolation_interface::contract::BackendDescriptor,
-     auth_bundle: openshell_core::jwt::SupervisorAuthBundle,
-     admitted_isolation_backend: Option<String>,
-@@ -658,6 +664,8 @@ pub async fn run_sandbox(
-             ocsf_enabled,
-             ocsf_schema_version,
-             upstream_proxy_args,
-+            policy_dns_ipv6_egress,
-+            nat64_prefixes,
-             backend_descriptor,
-             auth_bundle,
-             admitted_isolation_backend,
-@@ -684,6 +692,8 @@ struct SandboxRunConfig {
-     ocsf_enabled: Arc<AtomicBool>,
-     ocsf_schema_version: Arc<std::sync::Mutex<String>>,
-     upstream_proxy_args: openshell_supervisor_network::upstream_proxy::UpstreamProxyArgs,
-+    policy_dns_ipv6_egress: openshell_supervisor_network::run::PolicyDnsIpv6Egress,
-+    nat64_prefixes: Vec<openshell_supervisor_network::run::Nat64Prefix>,
-     backend_descriptor: openshell_isolation_interface::contract::BackendDescriptor,
-     auth_bundle: openshell_core::jwt::SupervisorAuthBundle,
-     admitted_isolation_backend: Option<String>,
-@@ -714,6 +724,8 @@ async fn run_sandbox_with_backend(
-         ocsf_enabled,
-         ocsf_schema_version,
+         None,
+@@ -916,6 +920,8 @@ pub struct SandboxInstanceConfig {
+     pub shared_ssh_socket: bool,
+     pub upstream_proxy_args: openshell_supervisor_network::upstream_proxy::UpstreamProxyArgs,
+     pub additional_ca_bundle: Option<String>,
++    pub policy_dns_ipv6_egress: openshell_supervisor_network::run::PolicyDnsIpv6Egress,
++    pub nat64_prefixes: Vec<openshell_supervisor_network::run::Nat64Prefix>,
+     pub backend_descriptor: openshell_isolation_interface::contract::BackendDescriptor,
+     pub auth_bundle: openshell_core::jwt::SupervisorAuthBundle,
+     pub admitted_isolation_backend: Option<String>,
+@@ -1088,6 +1094,8 @@ pub async fn run_sandbox_instance(
+         shared_ssh_socket,
          upstream_proxy_args,
+         additional_ca_bundle,
 +        policy_dns_ipv6_egress,
 +        nat64_prefixes,
          backend_descriptor,
          auth_bundle,
          admitted_isolation_backend,
-@@ -1039,6 +1051,8 @@ async fn run_sandbox_with_backend(
-             agent_proposals.clone(),
+@@ -1466,6 +1474,8 @@ pub async fn run_sandbox_instance(
              workspace_rx.clone(),
              &upstream_proxy_args,
+             additional_ca_bundle.as_deref(),
 +            policy_dns_ipv6_egress,
 +            nat64_prefixes,
-             None,
              remote_host_gateway_ip,
              #[cfg(target_os = "linux")]
-@@ -5121,6 +5135,8 @@ mod tests {
-             Arc::new(AtomicBool::new(false)),
-             Arc::new(std::sync::Mutex::new(String::new())),
-             openshell_supervisor_network::upstream_proxy::UpstreamProxyArgs::default(),
-+            openshell_supervisor_network::run::PolicyDnsIpv6Egress::default(),
-+            Vec::new(),
-             openshell_isolation_interface::contract::BackendDescriptor {
+             None,
+@@ -4700,6 +4710,9 @@ mod tests {
+             upstream_proxy_args:
+                 openshell_supervisor_network::upstream_proxy::UpstreamProxyArgs::default(),
+             additional_ca_bundle: None,
++            policy_dns_ipv6_egress:
++                openshell_supervisor_network::run::PolicyDnsIpv6Egress::Disabled,
++            nat64_prefixes: Vec::new(),
+             backend_descriptor: openshell_isolation_interface::contract::BackendDescriptor {
                  backend_name: "in-process-test".to_string(),
                  payload: b"in-process-only-launch-data".to_vec(),
 diff --git a/crates/openshell-supervisor/src/main.rs b/crates/openshell-supervisor/src/main.rs
-index 0d8696482..c8bc1192a 100644
+index 4c1bcac7..dde50009 100644
 --- a/crates/openshell-supervisor/src/main.rs
 +++ b/crates/openshell-supervisor/src/main.rs
-@@ -30,6 +30,33 @@ enum SupervisorRole {
+@@ -48,6 +48,33 @@ enum SupervisorRole {
      NetworkProxy,
  }
  
@@ -3268,9 +3292,9 @@ index 0d8696482..c8bc1192a 100644
  #[derive(Parser, Debug)]
  #[command(name = "openshell-supervisor health")]
  struct HealthArgs {
-@@ -116,6 +143,17 @@ struct Args {
+@@ -208,6 +235,17 @@ struct Args {
      #[arg(long)]
-     upstream_proxy_ca_bundle: Option<String>,
+     additional_ca_bundle: Option<String>,
  
 +    /// Driver-selected AAAA handling for mediated policy DNS.
 +    #[arg(long, value_enum, default_value_t)]
@@ -3286,24 +3310,24 @@ index 0d8696482..c8bc1192a 100644
      #[arg(long)]
      backend_descriptor_file: Option<PathBuf>,
  
-@@ -440,6 +478,8 @@ fn main() -> Result<()> {
-                     ocsf_enabled,
-                     ocsf_schema_version,
+@@ -656,6 +694,8 @@ fn main() -> Result<()> {
+                     shared_ssh_socket: openshell_supervisor::shared_ssh_socket_from_env(),
                      upstream_proxy_args,
-+                    args.policy_dns_ipv6_egress.into(),
-+                    args.nat64_prefixes,
+                     additional_ca_bundle: args.additional_ca_bundle,
++                    policy_dns_ipv6_egress: args.policy_dns_ipv6_egress.into(),
++                    nat64_prefixes: args.nat64_prefixes,
                      backend_descriptor,
                      auth_bundle,
-                     admitted_isolation_backend,
-@@ -461,6 +501,7 @@ fn main() -> Result<()> {
-                     policy_data,
+                     admitted_isolation_backend: Some(admitted_backend),
+@@ -706,6 +746,7 @@ fn main() -> Result<()> {
                      args.tls_dir,
                      upstream_proxy_args,
+                     args.additional_ca_bundle,
 +                    args.nat64_prefixes,
                  )
                  .await
              }
-@@ -548,6 +589,67 @@ mod tests {
+@@ -1335,6 +1376,67 @@ mod tests {
          assert!(validate_role_arguments(&args).is_ok());
      }
  
@@ -3371,11 +3395,26 @@ index 0d8696482..c8bc1192a 100644
      #[test]
      fn network_proxy_rejects_isolation_inputs() {
          let args = Args::try_parse_from([
+diff --git a/crates/openshell-supervisor/src/shared_host.rs b/crates/openshell-supervisor/src/shared_host.rs
+index 9e6ae7d2..8610136d 100644
+--- a/crates/openshell-supervisor/src/shared_host.rs
++++ b/crates/openshell-supervisor/src/shared_host.rs
+@@ -812,6 +812,10 @@ impl SharedHost {
+             upstream_proxy_args:
+                 openshell_supervisor_network::upstream_proxy::UpstreamProxyArgs::default(),
+             additional_ca_bundle: None,
++            // Shared supervisors keep the supervisor default; the driver setting
++            // only reaches dedicated supervisors through their launch flags.
++            policy_dns_ipv6_egress: openshell_supervisor_network::run::PolicyDnsIpv6Egress::Auto,
++            nat64_prefixes: Vec::new(),
+             backend_descriptor: descriptor,
+             auth_bundle: registration.auth,
+             admitted_isolation_backend: Some(openshell_sandbox_backend::BACKEND_NAME.to_string()),
 diff --git a/docs/how-it-works/gateways/configuration.mdx b/docs/how-it-works/gateways/configuration.mdx
-index f7f1df8b5..62c41f460 100644
+index 342a74b3..cdecaf6e 100644
 --- a/docs/how-it-works/gateways/configuration.mdx
 +++ b/docs/how-it-works/gateways/configuration.mdx
-@@ -746,6 +746,20 @@ Each example is a complete TOML file for one compute driver. The examples repeat
+@@ -1241,6 +1241,20 @@ Each example is a complete TOML file for one compute driver. The examples repeat
  
  Kubernetes configurations set `namespace`, `service_account_name`, and `enable_user_namespaces` in `[openshell.drivers.kubernetes]`. Docker configurations use `sandbox_label`; the legacy `sandbox_namespace` key is rejected.
  
@@ -3396,7 +3435,7 @@ index f7f1df8b5..62c41f460 100644
  ### Kubernetes
  
  The gateway runs as a Pod and creates paired workload and supervisor Pods in another namespace. The gateway CA is projected from a Kubernetes Secret into supervisor Pods; user client certificate and key entries in that Secret are not exposed to either Pod.
-@@ -832,6 +846,9 @@ supervisor_image_pull_policy   = "if_not_present"
+@@ -1327,6 +1341,9 @@ supervisor_image_pull_policy   = "if_not_present"
  # and its TLS stack, so a full merged trust bundle wastes the sandbox
  # boundary's control-frame budget on duplicated roots.
  # proxy_ca_bundle              = "/etc/openshell-tls/proxy-ca/ca.crt"
@@ -3406,7 +3445,7 @@ index f7f1df8b5..62c41f460 100644
  # Required in raw gateway TOML because `namespace` identifies sandbox
  # placement, not the gateway Service. Helm renders this from the release's
  # gateway Service name and namespace.
-@@ -984,6 +1001,9 @@ proxy_connect_by_hostname = false
+@@ -1496,6 +1513,9 @@ proxy_connect_by_hostname = false
  # Operator-owned gateway-host PEM bundle trusted for an HTTPS proxy and for
  # destination certificates re-signed by a TLS-intercepting proxy.
  proxy_ca_bundle = "/etc/openshell/tls/proxy-ca.pem"
@@ -3416,7 +3455,7 @@ index f7f1df8b5..62c41f460 100644
  # Project a host Unix Workload API socket into the supervisor for provider
  # token exchange. The socket parent must be a dedicated absolute directory.
  provider_spiffe_workload_api_socket = "/run/spire/agent.sock"
-@@ -1156,6 +1176,9 @@ health_check_interval_secs = 10
+@@ -1681,6 +1701,9 @@ health_check_interval_secs = 10
  # proxy_connect_by_hostname = true
  # Corporate CA trusted for an https:// proxy and TLS-intercepting proxies.
  # proxy_ca_bundle           = "/etc/openshell/tls/proxy-ca.pem"
@@ -3426,7 +3465,7 @@ index f7f1df8b5..62c41f460 100644
  # Project a host Workload API Unix socket into the supervisor, or use an
  # explicit container-reachable TCP endpoint, for provider token exchange.
  # provider_spiffe_workload_api_socket = "/run/spire/agent.sock"
-@@ -1249,6 +1272,10 @@ overlay_disk_mib = 4096
+@@ -1774,6 +1797,10 @@ overlay_disk_mib = 4096
  # Gateway-host PEM bundle trusted for an https:// proxy and for server
  # certificates re-signed by a TLS-intercepting proxy. Requires https_proxy.
  # proxy_ca_bundle           = "/etc/openshell/tls/proxy-ca.pem"
@@ -3438,10 +3477,10 @@ index f7f1df8b5..62c41f460 100644
  # separately operated guest-reachable TCP listener and explicitly acknowledge
  # the exposure; host-only sockets are never exposed automatically.
 diff --git a/docs/how-it-works/policies/network-rules.mdx b/docs/how-it-works/policies/network-rules.mdx
-index 811d92092..32053ed46 100644
+index 119818a3..29bbbb86 100644
 --- a/docs/how-it-works/policies/network-rules.mdx
 +++ b/docs/how-it-works/policies/network-rules.mdx
-@@ -652,9 +652,20 @@ addresses whose TTL is at most 30 seconds. This applies to every endpoint, not
+@@ -665,9 +665,20 @@ addresses whose TTL is at most 30 seconds. This applies to every endpoint, not
  only `protocol: tcp`. The sandbox applies no DNS search domains, so request each
  hostname exactly as your rules name it. Clients must resolve the hostname again
  before reconnecting. A client that caches an address indefinitely can fail
@@ -3467,7 +3506,7 @@ index 811d92092..32053ed46 100644
  
 diff --git a/e2e/rust/tests/policy_dns_ipv6_egress.rs b/e2e/rust/tests/policy_dns_ipv6_egress.rs
 new file mode 100644
-index 000000000..10526f8ee
+index 00000000..10526f8e
 --- /dev/null
 +++ b/e2e/rust/tests/policy_dns_ipv6_egress.rs
 @@ -0,0 +1,128 @@

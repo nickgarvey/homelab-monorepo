@@ -156,7 +156,7 @@ The supervisor's identity is
 `spiffe://home.garvey.sh/agent/<type>/<sandbox-id>`, from the
 `openshell-sandboxes` ClusterSPIFFEID (`vendor/spire/values.yaml`). `<type>` is
 the supervisor pod's `agents.garvey.sh/type` label. The agents worker sets that
-label on the sandbox template. Upstream OpenShell 0.1.3 puts template labels on
+label on the sandbox template. Upstream OpenShell (as of 0.1.8) puts template labels on
 the workload pod only; our build copies them onto the supervisor pod as well
 (`patches/openshell-supervisor-template-labels.patch`, nix-q7Q31), except
 `openshell.ai/*` ones, and never over a label the driver sets. A sandbox

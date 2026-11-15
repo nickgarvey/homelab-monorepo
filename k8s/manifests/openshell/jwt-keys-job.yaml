@@ -58,7 +58,7 @@ spec:
       containers:
         - name: generate
           # The gateway image in vendor/openshell/values.yaml; keep them in step.
-          image: oci.garvey.sh/openshell/gateway@sha256:e33e85e4916333111b7ee19c062f6acbdb9a62e0c48858c7e1214faa2ab30629
+          image: oci.garvey.sh/openshell/gateway@sha256:12ddebc95037705d4c52a12d6e75bc3b5840e978de111dcb9ae3f6ce66adbfe1
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:

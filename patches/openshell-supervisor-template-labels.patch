@@ -1,19 +1,20 @@
 Upstream:      OpenShell (github.com/NVIDIA/OpenShell):
                crates/openshell-driver-kubernetes/src/sandbox_runtime.rs, driver.rs
 Upstreamable:  yes
-How:           A PR against main, rebased off #3702 (this patch applies on top of
-               it). Mention in the PR that a Service or policy selecting on a
-               template label now matches supervisor pods too. Tracked in
-               nix-q7Q31.
-Written:       2026-10-12, against OpenShell v0.1.3 plus #3702
-Last checked:  2026-10-25: v0.1.5's supervisor pod still gets only control_labels
+How:           A PR against main, cut on its own (it does not depend on #3702).
+               Mention in the PR that a Service or policy selecting on a
+               template label now matches supervisor pods too, and that only
+               labels admitted by allowed_pod_labels (#4497) reach it. Tracked in
+               nix-q7Q31 and nix-8bBR0.
+Written:       2026-11-15, against OpenShell v0.1.8 plus #3702
+Last checked:  2026-11-15: v0.1.8's supervisor pod still gets only control_labels
 Remove when:   a release copies template labels onto the supervisor pod
 Applied by:    packages/openshell/outputs.nix, after openshell-ipv6-policy-dns.patch;
                agents/outputs.nix fails the build after 2026-12-01 while it is
                carried
 
 Kubernetes driver: copy the sandbox template's labels onto the supervisor pod.
-With the sandbox runtime, v0.1.3 puts template labels only on the workload
+With the sandbox runtime, upstream puts template labels only on the workload
 pod. The supervisor pod (os-supervisor-<sandbox-id>) makes every upstream
 connection and alone holds the SPIFFE Workload API socket, but carries only
 fixed openshell.ai labels. So a SPIRE ClusterSPIFFEID cannot build an ID from
@@ -22,32 +23,48 @@ selector can tell supervisors apart.
 
 The patch reads the labels from the Sandbox resource's pod template, so the
 create and restart paths agree. Template labels under openshell.ai or a
-subdomain of it are dropped, and the control labels are applied last, so
-boundary-role, boundary-pair, component and sandbox-id, which the driver's
-identity checks and NetworkPolicies select on, cannot be replaced. Unit tests
-cover both.
+subdomain of it are dropped, and the control labels (now including the
+boundary-pair labels) are applied last, so boundary-role, boundary-pair,
+component and sandbox-id, which the driver's identity checks and
+NetworkPolicies select on, cannot be replaced. Unit tests cover both.
 
 diff --git a/crates/openshell-driver-kubernetes/src/driver.rs b/crates/openshell-driver-kubernetes/src/driver.rs
-index 551d408..1609c2a 100644
+index e3d228da..4d82e5cd 100644
 --- a/crates/openshell-driver-kubernetes/src/driver.rs
 +++ b/crates/openshell-driver-kubernetes/src/driver.rs
-@@ -2457,6 +2457,7 @@ impl KubernetesComputeDriver {
-                     ),
-                     dependent_owner.clone(),
-                     &self.supervisor_tracing_environment(),
-+                    &sandbox_pod_template_labels(sandbox_cr),
+@@ -3381,6 +3381,7 @@ impl KubernetesComputeDriver {
+                         main_process_spec,
+                         log_level,
+                         staged.upstream_proxy_ca_bundle.is_some(),
++                        &sandbox_pod_template_labels(sandbox_cr),
+                     )
+                     .await?;
+                 GenerationSupervisor::Dedicated {
+@@ -3536,6 +3537,7 @@ impl KubernetesComputeDriver {
+         main_process_spec: &str,
+         log_level: &str,
+         upstream_proxy_ca_bundle_staged: bool,
++        template_labels: &BTreeMap<String, String>,
+     ) -> Result<String, KubernetesDriverError> {
+         // Validate or create the immutable trust generation before creating
+         // the dedicated supervisor Pod. A same-name delete/recreate with
+@@ -3583,6 +3585,7 @@ impl KubernetesComputeDriver {
+                         .map(|generation| (generation.name.as_str(), generation.digest.as_str())),
+                     owner,
+                     &self.supervisor_otlp_environment(),
++                    template_labels,
                  )
                  .map_err(KubernetesDriverError::Message)?,
-             )
-@@ -3265,6 +3266,7 @@ impl KubernetesComputeDriver {
-                         false,
-                     ),
-                     &self.supervisor_tracing_environment(),
-+                    &sandbox_pod_template_labels(&object),
-                 )
-                 .map_err(KubernetesDriverError::Message)?,
-             )
-@@ -6772,6 +6774,19 @@ fn child_environment_from_sandbox_object(
+                 &self.config.sandbox_runtime.app_listener,
+@@ -4474,6 +4477,7 @@ impl KubernetesComputeDriver {
+                         &main_process_spec,
+                         &log_level,
+                         staged.upstream_proxy_ca_bundle.is_some(),
++                        &sandbox_pod_template_labels(&object),
+                     )
+                     .await?,
+                 connection: control_connection,
+@@ -8468,6 +8472,19 @@ fn child_environment_from_sandbox_object(
          .collect()
  }
  
@@ -67,8 +84,8 @@ index 551d408..1609c2a 100644
  fn required_sandbox_annotation(
      object: &DynamicObject,
      name: &str,
-@@ -9583,6 +9598,38 @@ mod tests {
-         );
+@@ -9960,6 +9977,38 @@ mod tests {
+         sandbox_to_k8s_spec(spec, params).expect("test Kubernetes driver_config should be valid")
      }
  
 +    #[test]
@@ -103,15 +120,15 @@ index 551d408..1609c2a 100644
 +        assert!(sandbox_pod_template_labels(&empty).is_empty());
 +    }
 +
-     #[test]
-     fn sandbox_runtime_renders_credential_free_boundary_workload() {
-         let params = SandboxPodParams {
+     fn kube_api_error(code: u16, message: &str) -> KubeError {
+         KubeError::Api(kube::core::ErrorResponse {
+             status: if code == 404 {
 diff --git a/crates/openshell-driver-kubernetes/src/sandbox_runtime.rs b/crates/openshell-driver-kubernetes/src/sandbox_runtime.rs
-index 0b458b1..b534fe7 100644
+index f8a324e6..e9cb1ae8 100644
 --- a/crates/openshell-driver-kubernetes/src/sandbox_runtime.rs
 +++ b/crates/openshell-driver-kubernetes/src/sandbox_runtime.rs
-@@ -235,8 +235,9 @@ pub fn supervisor_pod(
-     provider_spiffe_socket_path: Option<&str>,
+@@ -364,8 +364,9 @@ pub fn supervisor_pod(
+     network_additional_ca: Option<(&str, &str)>,
      owner: OwnerReference,
      tracing_environment: &[(&str, String)],
 +    template_labels: &BTreeMap<String, String>,
@@ -121,7 +138,7 @@ index 0b458b1..b534fe7 100644
      let mut environment = vec![
          env_var(
              "OPENSHELL_ADMITTED_ISOLATION_BACKEND",
-@@ -667,6 +668,32 @@ fn control_labels(sandbox_id: &str, gateway_id: &str) -> BTreeMap<String, String
+@@ -837,6 +838,31 @@ fn control_labels(sandbox_id: &str, gateway_id: &str) -> BTreeMap<String, String
      labels
  }
  
@@ -146,15 +163,14 @@ index 0b458b1..b534fe7 100644
 +
 +/// Whether a label key's prefix is `openshell.ai` or one of its subdomains.
 +fn is_openshell_label(key: &str) -> bool {
-+    key.split_once('/').is_some_and(|(prefix, _)| {
-+        prefix == "openshell.ai" || prefix.ends_with(".openshell.ai")
-+    })
++    key.split_once('/')
++        .is_some_and(|(prefix, _)| prefix == "openshell.ai" || prefix.ends_with(".openshell.ai"))
 +}
 +
  /// The gateway may redirect the supervisor to a specific replica by pod
  /// address, which the server certificate does not name. Verifying every dial
  /// against the configured endpoint's host keeps those redirects valid.
-@@ -839,6 +866,7 @@ mod tests {
+@@ -1058,6 +1084,7 @@ mod tests {
              None,
              owner(),
              &[],
@@ -162,7 +178,7 @@ index 0b458b1..b534fe7 100644
          )
          .expect("render supervisor Pod")
      }
-@@ -905,6 +933,7 @@ mod tests {
+@@ -1144,6 +1171,7 @@ mod tests {
                  ),
                  ("TRACEPARENT", TRACEPARENT.to_string()),
              ],
@@ -170,7 +186,7 @@ index 0b458b1..b534fe7 100644
          )
          .expect("render supervisor Pod");
          let environment = pod.spec.expect("Pod spec").containers[0]
-@@ -996,6 +1025,30 @@ mod tests {
+@@ -1235,6 +1263,33 @@ mod tests {
          assert_eq!(owner().block_owner_deletion, Some(false));
      }
  
@@ -180,7 +196,10 @@ index 0b458b1..b534fe7 100644
 +            ("example.com/type".to_string(), "chat".to_string()),
 +            ("team".to_string(), "a".to_string()),
 +            (BOUNDARY_ROLE_LABEL.to_string(), "workload".to_string()),
-+            (BOUNDARY_PAIR_LABEL.to_string(), "other".to_string()),
++            (
++                crate::isolation::BOUNDARY_PAIR_LABEL.to_string(),
++                "other".to_string(),
++            ),
 +            ("openshell.ai/component".to_string(), "other".to_string()),
 +            ("openshell.ai/extra".to_string(), "x".to_string()),
 +            ("sub.openshell.ai/extra".to_string(), "x".to_string()),
@@ -201,7 +220,7 @@ index 0b458b1..b534fe7 100644
      #[test]
      fn supervisor_pod_is_gated_non_restarting_and_unprivileged() {
          let names = SandboxRuntimeNames::new("pair");
-@@ -1026,6 +1079,7 @@ mod tests {
+@@ -1266,6 +1321,7 @@ mod tests {
              None,
              owner(),
              &[],
@@ -209,7 +228,15 @@ index 0b458b1..b534fe7 100644
          )
          .expect("render supervisor Pod");
          let pod_spec = pod.spec.as_ref().expect("Pod spec");
-@@ -1285,6 +1339,7 @@ mod tests {
+@@ -1436,6 +1492,7 @@ mod tests {
+                 Some(("openshell-additional-ca-gateway-generation", digest)),
+                 owner(),
+                 &[],
++                &BTreeMap::new(),
+             )
+             .expect("render supervisor Pod with destination trust");
+             let pod = crate::app_listener::configure_supervisor_pod(
+@@ -1629,6 +1686,7 @@ mod tests {
              None,
              owner(),
              &[],
@@ -217,7 +244,7 @@ index 0b458b1..b534fe7 100644
          )
          .expect("render supervisor Pod")
      }
-@@ -1323,6 +1378,7 @@ mod tests {
+@@ -1668,6 +1726,7 @@ mod tests {
              None,
              owner(),
              &[],
