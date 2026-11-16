@@ -1,0 +1,555 @@
+diff --git a/client/mainmenu/CPrologEpilogVideo.cpp b/client/mainmenu/CPrologEpilogVideo.cpp
+index 075dac8..d22813c 100644
+--- a/client/mainmenu/CPrologEpilogVideo.cpp
++++ b/client/mainmenu/CPrologEpilogVideo.cpp
+@@ -67,6 +67,7 @@ CPrologEpilogVideo::CPrologEpilogVideo(CampaignScenarioPrologEpilog _spe, std::f
+ 		return;
+ 
+ 	text = std::make_shared<CMultiLineLabel>(Rect(100, 500, 600, 100), EFonts::FONT_BIG, ETextAlignment::CENTER, Colors::METALLIC_GOLD, spe.prologText.toString());
++	text->setShrinkToFit(false); // scrolls through the text
+ 	if(text->getLines().size() == 3)
+ 		text->scrollTextTo(-25); // beginning of text in the vertical middle of black area
+ 	else if(text->getLines().size() > 3)
+diff --git a/client/mainmenu/CreditsScreen.cpp b/client/mainmenu/CreditsScreen.cpp
+index 13b7bb8..86f53f1 100644
+--- a/client/mainmenu/CreditsScreen.cpp
++++ b/client/mainmenu/CreditsScreen.cpp
+@@ -80,6 +80,7 @@ CreditsScreen::CreditsScreen(Rect rect)
+ 
+ 	text = "{- " + LIBRARY->generaltexth->translate("vcmi.credits.vcmi") + " -}\r\n" + contributorsText + "\r\n\r\n{" + LIBRARY->generaltexth->translate("vcmi.credits.website") + ":}\r\nhttps://vcmi.eu\r\n\r\n\r\n\r\n\r\n{- " + LIBRARY->generaltexth->translate("vcmi.credits.heroes") + " -}\r\n\r\n\r\n" + text;
+ 	credits = std::make_shared<CMultiLineLabel>(Rect(pos.w - 350, 0, 350, 600), FONT_CREDITS, ETextAlignment::CENTER, Colors::WHITE, text);
++	credits->setShrinkToFit(false); // scrolls through the text
+ 	credits->scrollTextTo(-600); // move all text below the screen
+ }
+ 
+diff --git a/client/render/Canvas.cpp b/client/render/Canvas.cpp
+index e238cec..f3a6d52 100644
+--- a/client/render/Canvas.cpp
++++ b/client/render/Canvas.cpp
+@@ -182,13 +182,17 @@ void Canvas::drawBorderDashed(const Rect & target, const ColorRGBA & color)
+ void Canvas::drawText(const Point & position, const EFonts & font, const ColorRGBA & colorDest, ETextAlignment alignment, const std::string & text )
+ {
+ 	const auto & fontPtr = ENGINE->renderHandler().loadFont(font);
++	drawText(position, *fontPtr, colorDest, alignment, text);
++}
+ 
++void Canvas::drawText(const Point & position, const IFont & font, const ColorRGBA & colorDest, ETextAlignment alignment, const std::string & text )
++{
+ 	switch (alignment)
+ 	{
+-	case ETextAlignment::TOPLEFT:      return fontPtr->renderTextLeft  (surface, text, colorDest, transformPos(position));
+-	case ETextAlignment::TOPCENTER:    return fontPtr->renderTextCenter(surface, text, colorDest, transformPos(position));
+-	case ETextAlignment::CENTER:       return fontPtr->renderTextCenter(surface, text, colorDest, transformPos(position));
+-	case ETextAlignment::BOTTOMRIGHT:  return fontPtr->renderTextRight (surface, text, colorDest, transformPos(position));
++	case ETextAlignment::TOPLEFT:      return font.renderTextLeft  (surface, text, colorDest, transformPos(position));
++	case ETextAlignment::TOPCENTER:    return font.renderTextCenter(surface, text, colorDest, transformPos(position));
++	case ETextAlignment::CENTER:       return font.renderTextCenter(surface, text, colorDest, transformPos(position));
++	case ETextAlignment::BOTTOMRIGHT:  return font.renderTextRight (surface, text, colorDest, transformPos(position));
+ 	}
+ }
+ 
+diff --git a/client/render/Canvas.h b/client/render/Canvas.h
+index 37d2f0f..4c0a9f1 100644
+--- a/client/render/Canvas.h
++++ b/client/render/Canvas.h
+@@ -16,6 +16,7 @@
+ struct SDL_Surface;
+ class IImage;
+ class IVideoInstance;
++class IFont;
+ enum EFonts : int8_t;
+ 
+ enum class CanvasScalingPolicy
+@@ -106,6 +107,9 @@ public:
+ 	/// renders single line of text with specified parameters
+ 	void drawText(const Point & position, const EFonts & font, const ColorRGBA & colorDest, ETextAlignment alignment, const std::string & text );
+ 
++	/// renders single line of text with given font object, e.g. one from IRenderHandler::loadFont(font, scalePercent)
++	void drawText(const Point & position, const IFont & font, const ColorRGBA & colorDest, ETextAlignment alignment, const std::string & text );
++
+ 	/// renders multiple lines of text with specified parameters
+ 	void drawText(const Point & position, const EFonts & font, const ColorRGBA & colorDest, ETextAlignment alignment, const std::vector<std::string> & text );
+ 
+diff --git a/client/render/IRenderHandler.h b/client/render/IRenderHandler.h
+index 8806ef3..ea52c92 100644
+--- a/client/render/IRenderHandler.h
++++ b/client/render/IRenderHandler.h
+@@ -52,6 +52,10 @@ public:
+ 	/// Returns font with specified identifer
+ 	virtual std::shared_ptr<const IFont> loadFont(EFonts font) = 0;
+ 
++	/// Returns font with specified identifer, with its size multiplied by scalePercent / 100.
++	/// Returns the unscaled font if this font cannot be resized (original bitmap fonts in use).
++	virtual std::shared_ptr<const IFont> loadFont(EFonts font, int scalePercent) = 0;
++
+ 	virtual void exportGeneratedAssets() = 0;
+ 
+ 	virtual std::shared_ptr<AssetGenerator> getAssetGenerator() = 0;
+diff --git a/client/renderSDL/CTrueTypeFont.cpp b/client/renderSDL/CTrueTypeFont.cpp
+index d82f6d5..39cb025 100644
+--- a/client/renderSDL/CTrueTypeFont.cpp
++++ b/client/renderSDL/CTrueTypeFont.cpp
+@@ -32,9 +32,9 @@ int CTrueTypeFont::getPointSize(const JsonNode & config) const
+ 	int scalingFactor = getScalingFactor();
+ 
+ 	if (config.isNumber())
+-		return std::round(config.Integer() * scalingFactor * fontScale);
++		return std::round(config.Integer() * scalingFactor * fontScale * extraScale);
+ 	else
+-		return std::round(config[scalingFactor-1].Integer() * fontScale);
++		return std::round(config[scalingFactor-1].Integer() * fontScale * extraScale);
+ }
+ 
+ TTF_Font * CTrueTypeFont::loadFont(const JsonNode &config)
+@@ -59,7 +59,8 @@ int CTrueTypeFont::getFontStyle(const JsonNode &config) const
+ 	return ret;
+ }
+ 
+-CTrueTypeFont::CTrueTypeFont(const JsonNode & fontConfig):
++CTrueTypeFont::CTrueTypeFont(const JsonNode & fontConfig, double extraScale):
++	extraScale(extraScale),
+ 	data(loadData(fontConfig)),
+ 	font(loadFont(fontConfig), TTF_CloseFont),
+ 	blended(true),
+diff --git a/client/renderSDL/CTrueTypeFont.h b/client/renderSDL/CTrueTypeFont.h
+index 333c647..3d0539c 100644
+--- a/client/renderSDL/CTrueTypeFont.h
++++ b/client/renderSDL/CTrueTypeFont.h
+@@ -21,6 +21,7 @@ class CBitmapFont;
+ 
+ class CTrueTypeFont final : public IFont
+ {
++	const double extraScale;
+ 	const std::pair<std::unique_ptr<ui8[]>, ui64> data;
+ 
+ 	const std::unique_ptr<TTF_Font, void (*)(TTF_Font*)> font;
+@@ -37,7 +38,7 @@ class CTrueTypeFont final : public IFont
+ 	void renderTextImpl(SDL_Surface * surface, const std::string & data, const ColorRGBA & color, const Point & pos) const;
+ 	size_t getFontAscentScaled() const override;
+ public:
+-	CTrueTypeFont(const JsonNode & fontConfig);
++	CTrueTypeFont(const JsonNode & fontConfig, double extraScale = 1.0);
+ 	~CTrueTypeFont();
+ 
+ 	bool canRepresentCharacter(const char * data) const override;
+diff --git a/client/renderSDL/FontChain.cpp b/client/renderSDL/FontChain.cpp
+index 4f35a74..259ab07 100644
+--- a/client/renderSDL/FontChain.cpp
++++ b/client/renderSDL/FontChain.cpp
+@@ -73,17 +73,18 @@ bool FontChain::bitmapFontsPrioritized(const std::string & bitmapFontName) const
+ 	return true; // else - use original bitmap fonts
+ }
+ 
+-void FontChain::addTrueTypeFont(const JsonNode & trueTypeConfig, bool begin)
++void FontChain::addTrueTypeFont(const JsonNode & trueTypeConfig, bool begin, double extraScale)
+ {
+ 	if(begin)
+-		chain.insert(chain.begin(), std::make_unique<CTrueTypeFont>(trueTypeConfig));
++		chain.insert(chain.begin(), std::make_unique<CTrueTypeFont>(trueTypeConfig, extraScale));
+ 	else
+-		chain.push_back(std::make_unique<CTrueTypeFont>(trueTypeConfig));
++		chain.push_back(std::make_unique<CTrueTypeFont>(trueTypeConfig, extraScale));
+ }
+ 
+ void FontChain::addBitmapFont(const std::string & bitmapFilename)
+ {
+-	if (bitmapFontsPrioritized(bitmapFilename))
++	bitmapFirst = bitmapFontsPrioritized(bitmapFilename);
++	if (bitmapFirst)
+ 		chain.insert(chain.begin(), std::make_unique<CBitmapFont>(bitmapFilename));
+ 	else
+ 		chain.push_back(std::make_unique<CBitmapFont>(bitmapFilename));
+@@ -160,3 +161,8 @@ size_t FontChain::getStringWidthScaled(const std::string & data) const
+ 
+ 	return result;
+ }
++
++bool FontChain::isBitmapFirst() const
++{
++	return bitmapFirst;
++}
+diff --git a/client/renderSDL/FontChain.h b/client/renderSDL/FontChain.h
+index 4fda2cf..67302d2 100644
+--- a/client/renderSDL/FontChain.h
++++ b/client/renderSDL/FontChain.h
+@@ -26,6 +26,7 @@ class FontChain final : public IFont
+ 	std::vector<TextChunk> splitTextToChunks(const std::string & data) const;
+ 
+ 	std::vector<std::unique_ptr<IFont>> chain;
++	bool bitmapFirst = false;
+ 
+ 	void renderText(SDL_Surface * surface, const std::string & data, const ColorRGBA & color, const Point & pos) const override;
+ 	size_t getFontAscentScaled() const override;
+@@ -33,9 +34,12 @@ class FontChain final : public IFont
+ public:
+ 	FontChain() = default;
+ 
+-	void addTrueTypeFont(const JsonNode & trueTypeConfig, bool begin);
++	void addTrueTypeFont(const JsonNode & trueTypeConfig, bool begin, double extraScale = 1.0);
+ 	void addBitmapFont(const std::string & bitmapFilename);
+ 
++	/// True if the original bitmap font is used before any TrueType font, so the font cannot be resized
++	bool isBitmapFirst() const;
++
+ 	size_t getLineHeightScaled() const override;
+ 	size_t getGlyphWidthScaled(const char * data) const override;
+ 	size_t getStringWidthScaled(const std::string & data) const override;
+diff --git a/client/renderSDL/RenderHandler.cpp b/client/renderSDL/RenderHandler.cpp
+index 72c9d58..250969d 100644
+--- a/client/renderSDL/RenderHandler.cpp
++++ b/client/renderSDL/RenderHandler.cpp
+@@ -598,6 +598,29 @@ std::shared_ptr<const IFont> RenderHandler::loadFont(EFonts font)
+ 	if (fonts.count(font))
+ 		return fonts.at(font);
+ 
++	fonts[font] = createFont(font, 100);
++	return fonts.at(font);
++}
++
++std::shared_ptr<const IFont> RenderHandler::loadFont(EFonts font, int scalePercent)
++{
++	if (scalePercent == 100)
++		return loadFont(font);
++
++	auto key = std::make_pair(font, scalePercent);
++	if (scaledFonts.count(key))
++		return scaledFonts.at(key);
++
++	auto base = std::dynamic_pointer_cast<const FontChain>(loadFont(font));
++	if (base && base->isBitmapFirst())
++		scaledFonts[key] = loadFont(font);
++	else
++		scaledFonts[key] = createFont(font, scalePercent);
++	return scaledFonts.at(key);
++}
++
++std::shared_ptr<const IFont> RenderHandler::createFont(EFonts font, int scalePercent)
++{
+ 	const int8_t index = static_cast<int8_t>(font);
+ 	logGlobal->debug("Loading font %d", static_cast<int>(index));
+ 
+@@ -616,7 +639,7 @@ std::shared_ptr<const IFont> RenderHandler::loadFont(EFonts font)
+ 
+ 		bitmapPath = bmpConf[index].String();
+ 		if (!ttfConf[bitmapPath].isNull())
+-			loadedFont->addTrueTypeFont(ttfConf[bitmapPath], !config["lowPriority"].Bool());
++			loadedFont->addTrueTypeFont(ttfConf[bitmapPath], !config["lowPriority"].Bool(), scalePercent / 100.0);
+ 	}
+ 	// bitmap font may be corrupt or unreadable; fall back to already-added TrueType fonts rather than aborting
+ 	try
+@@ -628,7 +651,6 @@ std::shared_ptr<const IFont> RenderHandler::loadFont(EFonts font)
+ 		logGlobal->error("Failed to load bitmap font '%s': %s", bitmapPath, e.what());
+ 	}
+ 
+-	fonts[font] = loadedFont;
+ 	return loadedFont;
+ }
+ 
+diff --git a/client/renderSDL/RenderHandler.h b/client/renderSDL/RenderHandler.h
+index 15c4291..8f9990a 100644
+--- a/client/renderSDL/RenderHandler.h
++++ b/client/renderSDL/RenderHandler.h
+@@ -31,6 +31,8 @@ class RenderHandler final : public IRenderHandler
+ 	std::map<AnimationPath, AnimationLayoutMap> animationLayouts;
+ 	std::map<SharedImageLocator, std::weak_ptr<ScalableImageShared>> imageFiles;
+ 	std::map<EFonts, std::shared_ptr<const IFont>> fonts;
++	std::map<std::pair<EFonts, int>, std::shared_ptr<const IFont>> scaledFonts;
++	std::shared_ptr<const IFont> createFont(EFonts font, int scalePercent);
+ 	std::shared_ptr<AssetGenerator> assetGenerator;
+ 	std::shared_ptr<HdImageLoader> hdImageLoader;
+ 	
+@@ -73,6 +75,7 @@ public:
+ 
+ 	/// Returns font with specified identifer
+ 	std::shared_ptr<const IFont> loadFont(EFonts font) override;
++	std::shared_ptr<const IFont> loadFont(EFonts font, int scalePercent) override;
+ 
+ 	void exportGeneratedAssets() override;
+ 
+diff --git a/client/widgets/TextControls.cpp b/client/widgets/TextControls.cpp
+index 0386a42..48c9a2a 100644
+--- a/client/widgets/TextControls.cpp
++++ b/client/widgets/TextControls.cpp
+@@ -40,9 +40,20 @@ void CLabel::showAll(Canvas & to)
+ {
+ 	CIntObject::showAll(to);
+ 
+-	if(!visibleText().empty())
+-		blitLine(to, pos, visibleText());
++	if(visibleText().empty())
++		return;
+ 
++	// keep shrunk text vertically centered on the line it was laid out for
++	Rect where = pos;
++	if(fontScale != 100)
++	{
++		int offset = (static_cast<int>(ENGINE->renderHandler().loadFont(font)->getLineHeight()) - static_cast<int>(getFont()->getLineHeight())) / 2;
++		if(alignment == ETextAlignment::TOPLEFT || alignment == ETextAlignment::TOPCENTER || alignment == ETextAlignment::TOPRIGHT)
++			where.y += offset;
++		if(alignment == ETextAlignment::BOTTOMLEFT || alignment == ETextAlignment::BOTTOMCENTER || alignment == ETextAlignment::BOTTOMRIGHT)
++			where.y -= offset;
++	}
++	blitLine(to, where, visibleText());
+ }
+ 
+ CLabel::CLabel(int x, int y, EFonts Font, ETextAlignment Align, const ColorRGBA & Color, const std::string & Text, int maxWidth)
+@@ -58,9 +69,8 @@ CLabel::CLabel(int x, int y, EFonts Font, ETextAlignment Align, const ColorRGBA
+ 
+ 	if(alignment == ETextAlignment::TOPLEFT) // causes issues for MIDDLE
+ 	{
+-		const auto & fontPtr = ENGINE->renderHandler().loadFont(font);
+-		pos.w = fontPtr->getStringWidth(visibleText().c_str());
+-		pos.h = fontPtr->getLineHeight();
++		pos.w = getFont()->getStringWidth(visibleText().c_str());
++		pos.h = ENGINE->renderHandler().loadFont(font)->getLineHeight();
+ 	}
+ }
+ 
+@@ -116,13 +126,22 @@ void CLabel::setMaxWidth(int width)
+ 
+ void CLabel::trimText()
+ {
+-	if(maxWidth > 0)
+-	{
+-		const auto & fontPtr = ENGINE->renderHandler().loadFont(font);
++	if(maxWidth <= 0)
++		return;
+ 
+-		while (fontPtr->getStringWidth(visibleText().c_str()) > maxWidth)
+-			TextOperations::trimRightUnicode(text);
++	// shrink the font until the text fits, and cut text off only if it still does not fit at the smallest size
++	fontScale = 100;
++	const auto & baseFont = ENGINE->renderHandler().loadFont(font);
++	while (getFont()->getStringWidth(visibleText().c_str()) > maxWidth && fontScale > minFontScale)
++	{
++		if (ENGINE->renderHandler().loadFont(font, fontScale - fontScaleStep) == baseFont)
++			break; // font can not be resized
++		fontScale -= fontScaleStep;
+ 	}
++
++	const auto & fontPtr = getFont();
++	while (fontPtr->getStringWidth(visibleText().c_str()) > maxWidth)
++		TextOperations::trimRightUnicode(text);
+ }
+ 
+ void CLabel::setColor(const ColorRGBA & Color)
+@@ -139,8 +158,7 @@ void CLabel::setColor(const ColorRGBA & Color)
+ 
+ size_t CLabel::getWidth()
+ {
+-	const auto & fontPtr = ENGINE->renderHandler().loadFont(font);
+-	return fontPtr->getStringWidth(visibleText());
++	return getFont()->getStringWidth(visibleText());
+ }
+ 
+ CMultiLineLabel::CMultiLineLabel(Rect position, EFonts Font, ETextAlignment Align, const ColorRGBA & Color, const std::string & Text) :
+@@ -152,6 +170,12 @@ CMultiLineLabel::CMultiLineLabel(Rect position, EFonts Font, ETextAlignment Alig
+ 	splitText(Text, true);
+ }
+ 
++void CMultiLineLabel::setShrinkToFit(bool value)
++{
++	shrinkToFit = value;
++	splitText(text, false);
++}
++
+ void CMultiLineLabel::setVisibleSize(Rect visibleSize, bool redrawElement)
+ {
+ 	this->visibleSize = visibleSize;
+@@ -186,7 +210,17 @@ const std::string delimiters = "{}";
+ 
+ int CTextContainer::getDelimitersWidth(EFonts font, std::string text)
+ {
+-	const auto f = ENGINE->renderHandler().loadFont(font);
++	return getDelimitersWidth(*ENGINE->renderHandler().loadFont(font), std::move(text));
++}
++
++std::shared_ptr<const IFont> CTextContainer::getFont() const
++{
++	return ENGINE->renderHandler().loadFont(font, fontScale);
++}
++
++int CTextContainer::getDelimitersWidth(const IFont & fontRef, std::string text)
++{
++	const IFont * f = &fontRef;
+ 	auto delimitersWidth = std::count_if(text.cbegin(), text.cend(), [](char c)
+ 	{
+ 		return delimiters.find(c) != std::string::npos;
+@@ -210,10 +244,10 @@ int CTextContainer::getDelimitersWidth(EFonts font, std::string text)
+ 
+ void CTextContainer::blitLine(Canvas & to, Rect destRect, std::string what)
+ {
+-	const auto f = ENGINE->renderHandler().loadFont(font);
++	const auto f = getFont();
+ 	Point where = destRect.topLeft();
+ 
+-	int delimitersWidth = getDelimitersWidth(font, what);
++	int delimitersWidth = getDelimitersWidth(*f, what);
+ 
+ 	// input is rect in which given text should be placed
+ 	// calculate proper position for top-left corner of the text
+@@ -257,16 +291,16 @@ void CTextContainer::blitLine(Canvas & to, Rect destRect, std::string what)
+ 					if(auto color = Colors::parseColor(colorText))
+ 					{
+ 						toPrint = toPrint.substr(colorText.length() + 1, toPrint.length() - colorText.length());
+-						to.drawText(where, font, *color, ETextAlignment::TOPLEFT, toPrint);
++						to.drawText(where, *f, *color, ETextAlignment::TOPLEFT, toPrint);
+ 					}
+ 					else
+-						to.drawText(where, font, Colors::YELLOW, ETextAlignment::TOPLEFT, toPrint);
++						to.drawText(where, *f, Colors::YELLOW, ETextAlignment::TOPLEFT, toPrint);
+ 				}
+ 				else
+-					to.drawText(where, font, Colors::YELLOW, ETextAlignment::TOPLEFT, toPrint);
++					to.drawText(where, *f, Colors::YELLOW, ETextAlignment::TOPLEFT, toPrint);
+ 			}
+ 			else // Non-enclosed text, use default color
+-				to.drawText(where, font, color, ETextAlignment::TOPLEFT, toPrint);
++				to.drawText(where, *f, color, ETextAlignment::TOPLEFT, toPrint);
+ 
+ 			begin = end;
+ 
+@@ -287,7 +321,7 @@ void CMultiLineLabel::showAll(Canvas & to)
+ {
+ 	CIntObject::showAll(to);
+ 
+-	const auto & fontPtr = ENGINE->renderHandler().loadFont(font);
++	const auto & fontPtr = getFont();
+ 
+ 	// calculate which lines should be visible
+ 	int totalLines = static_cast<int>(lines.size());
+@@ -324,10 +358,23 @@ void CMultiLineLabel::splitText(const std::string & Txt, bool redrawAfter)
+ {
+ 	lines.clear();
+ 
+-	const auto & fontPtr = ENGINE->renderHandler().loadFont(font);
+-	int lineHeight = fontPtr->getLineHeight();
++	// shrink the font until all lines fit the widget height, unless this label scrolls its text
++	fontScale = 100;
++	const auto & baseFont = ENGINE->renderHandler().loadFont(font);
++	for(;;)
++	{
++		const auto & scaledFont = getFont();
++		lines = CMessage::breakText(Txt, pos.w, *scaledFont);
++		bool fits = static_cast<int>(scaledFont->getLineHeight() * lines.size()) <= pos.h;
++		if(!shrinkToFit || pos.h <= 0 || fits || fontScale <= minFontScale)
++			break;
++		if(ENGINE->renderHandler().loadFont(font, fontScale - fontScaleStep) == baseFont)
++			break; // font can not be resized
++		fontScale -= fontScaleStep;
++	}
+ 
+-	lines = CMessage::breakText(Txt, pos.w, font);
++	const auto & fontPtr = getFont();
++	int lineHeight = fontPtr->getLineHeight();
+ 
+ 	textSize.y = lineHeight * (int)lines.size();
+ 	textSize.x = 0;
+@@ -345,7 +392,7 @@ Rect CMultiLineLabel::getTextLocation()
+ 	if(pos.h <= textSize.y)
+ 		return pos;
+ 
+-	const auto & fontPtr = ENGINE->renderHandler().loadFont(font);
++	const auto & fontPtr = getFont();
+ 	Point textSizeComputed(pos.w, fontPtr->getLineHeight() * lines.size()); //FIXME: how is this different from textSize member?
+ 	Point textOffset(pos.w - textSizeComputed.x, pos.h - textSizeComputed.y);
+ 
+@@ -387,6 +434,7 @@ CTextBox::CTextBox(std::string Text, const Rect & rect, int SliderStyle, EFonts
+ {
+ 	OBJECT_CONSTRUCTION;
+ 	label = std::make_shared<CMultiLineLabel>(rect, Font, Align, Color);
++	label->setShrinkToFit(false); // text that does not fit gets a slider instead
+ 
+ 	setRedrawParent(true);
+ 	pos.x += rect.x;
+diff --git a/client/widgets/TextControls.h b/client/widgets/TextControls.h
+index b190279..18db136 100644
+--- a/client/widgets/TextControls.h
++++ b/client/widgets/TextControls.h
+@@ -17,6 +17,7 @@
+ 
+ class IImage;
+ class CSlider;
++class IFont;
+ 
+ /// Base class for all text-related widgets.
+ /// Controls text blitting-related options
+@@ -32,6 +33,15 @@ protected:
+ 
+ public:
+ 	static int getDelimitersWidth(EFonts font, std::string text);
++	static int getDelimitersWidth(const IFont & font, std::string text);
++
++	/// Smallest size, in percent of the configured font size, that a label shrinks its text to before it cuts text off
++	static constexpr int minFontScale = 70;
++	static constexpr int fontScaleStep = 5;
++
++	/// Font size in percent of the configured size; labels lower it when their text does not fit
++	int fontScale = 100;
++	std::shared_ptr<const IFont> getFont() const;
+ 
+ 	ETextAlignment alignment;
+ 	EFonts font;
+@@ -83,6 +93,9 @@ public:
+ /// If text is too big to fit into requested area remaining part will not be visible
+ class CMultiLineLabel : public CLabel
+ {
++	// shrink the font when text is taller than the widget; off for labels that scroll their text
++	bool shrinkToFit = true;
++
+ 	// text to blit, split into lines that are no longer than widget width
+ 	std::vector<std::string> lines;
+ 
+@@ -99,6 +112,7 @@ public:
+ 
+ 	void setText(const std::string & Txt) override;
+ 	std::vector<std::string> getLines();
++	void setShrinkToFit(bool value);
+ 	void showAll(Canvas & to) override;
+ 
+ 	void setVisibleSize(Rect visibleSize, bool redrawElement = true);
+diff --git a/client/windows/CMessage.cpp b/client/windows/CMessage.cpp
+index e8b31e5..0609058 100644
+--- a/client/windows/CMessage.cpp
++++ b/client/windows/CMessage.cpp
+@@ -62,6 +62,11 @@ void CMessage::dispose()
+ }
+ 
+ std::vector<std::string> CMessage::breakText(std::string text, size_t maxLineWidth, EFonts font)
++{
++	return breakText(std::move(text), maxLineWidth, *ENGINE->renderHandler().loadFont(font));
++}
++
++std::vector<std::string> CMessage::breakText(std::string text, size_t maxLineWidth, const IFont & font)
+ {
+ 	assert(maxLineWidth != 0);
+ 	if(maxLineWidth == 0)
+@@ -71,7 +76,7 @@ std::vector<std::string> CMessage::breakText(std::string text, size_t maxLineWid
+ 
+ 	boost::algorithm::trim_right_if(text, boost::algorithm::is_any_of(std::string(" ")));
+ 
+-	const auto & fontPtr = ENGINE->renderHandler().loadFont(font);
++	const IFont * fontPtr = &font;
+ 
+ 	// each iteration generates one output line
+ 	while(text.length())
+diff --git a/client/windows/CMessage.h b/client/windows/CMessage.h
+index 31c5d46..ce96320 100644
+--- a/client/windows/CMessage.h
++++ b/client/windows/CMessage.h
+@@ -16,6 +16,7 @@ struct SDL_Surface;
+ class CInfoWindow;
+ class CComponent;
+ class Canvas;
++class IFont;
+ 
+ VCMI_LIB_NAMESPACE_BEGIN
+ class ColorRGBA;
+@@ -35,6 +36,7 @@ public:
+ 
+ 	/// split text in lines
+ 	static std::vector<std::string> breakText(std::string text, size_t maxLineWidth, EFonts font);
++	static std::vector<std::string> breakText(std::string text, size_t maxLineWidth, const IFont & font);
+ 
+ 	/// Try to guess a header of a message
+ 	static std::string guessHeader(const std::string & msg);

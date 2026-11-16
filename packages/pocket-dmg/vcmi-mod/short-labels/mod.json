@@ -1,0 +1,10 @@
+{
+	"name" : "Short Labels",
+	"description" : "Shorter English names for labels that get cut off when Font Scaling is 130% on a 1240x1080 screen at 155% interface scaling (AYANEO Pocket DMG): Town Hall building names, the Fort window's Damage label, the recruit window's Cost Per Troop, and scenario names in the scenario list.",
+	"author" : "ngarvey",
+	"version" : "1.0.0",
+	"modType" : "Interface",
+	"translations" : [
+		"config/english.json"
+	]
+}
