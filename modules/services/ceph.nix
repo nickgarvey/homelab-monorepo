@@ -40,8 +40,6 @@ let
   cephConf = config.environment.etc."ceph/ceph.conf".source;
 in
 {
-  imports = [ ./ceph-package.nix ];
-
   assertions = [{
     assertion = lib.versions.major ceph.version == cephMajor;
     message = "nixpkgs moved Ceph to ${ceph.version}, but ceph.nix expects major ${cephMajor}. A major upgrade needs an ordered restart (mon, mgr, OSD, RGW); bump cephMajor in modules/services/ceph.nix when doing it.";
@@ -163,7 +161,7 @@ in
       # Same reason as garage.nix: lego's propagation check queries the zone's
       # NS via blocky, whose negative cache outlasts its timeout; Knot is the
       # only authoritative server, so there is nothing to wait for.
-      dnsPropagationCheck = false;
+      dnsAuthoritativePropagationCheck = false;
       # RGW reads the key as the ceph user.
       group = "ceph";
       # RGW loads its certificate only at start (its reload signal just

@@ -2,8 +2,7 @@
 # the storage nodes. Imported by packages/outputs.nix.
 { nixpkgs, system }:
 let
-  # The same ceph as the storage nodes, with the overlay modules/services/ceph-package.nix applies.
-  pkgs = import nixpkgs { inherit system; overlays = [ (import ../../patches/ceph-overlay.nix) ]; };
+  pkgs = import nixpkgs { inherit system; };
   package = pkgs.callPackage ./. { };
 
   # The CLIs the activities shell out to. pkgs.ceph is the package the

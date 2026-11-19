@@ -58,7 +58,7 @@ in
       # Knot is the only authoritative server and commits the update before
       # lego continues; lego's own check would go to the published NS, which
       # the LAN cannot reach (docs/tls.md).
-      dnsPropagationCheck = false;
+      dnsAuthoritativePropagationCheck = false;
       keyType = "ec256";
       # Renew with 3 of the 7 days left, so an OpenBao outage of a few days
       # does not let it lapse.

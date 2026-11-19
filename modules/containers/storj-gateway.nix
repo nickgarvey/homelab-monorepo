@@ -282,7 +282,7 @@ in
           # there is no propagation to await. Let's Encrypt validates from the
           # public internet, where the DNAT does apply and dnsdist reaches
           # Knot directly.
-          dnsPropagationCheck = false;
+          dnsAuthoritativePropagationCheck = false;
           # Runs as root in the acme unit's ExecStartPost, and only on an actual
           # renewal. minio reads its certificate at startup, and the import unit
           # re-runs on every gateway start, so a restart is what picks up the

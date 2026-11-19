@@ -57,7 +57,7 @@
       inputs.nixpkgs-stable.follows = "nixpkgs";
     };
 
-    nixos-raspberrypi.url = "github:nvmd/nixos-raspberrypi/main";
+    nixos-raspberrypi.url = "github:nvmd/nixos-raspberrypi/develop";
 
     # Cartographer V3 klipper plugin (the current/active one — newer than
     # the legacy Cartographer3D/cartographer-klipper loose-script repo,

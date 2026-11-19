@@ -102,7 +102,7 @@ in
         # Same reason as modules/containers/garage.nix: lego's propagation check
         # queries the zone's NS via blocky, whose negative cache outlasts its
         # timeout; Knot is the only authoritative server.
-        dnsPropagationCheck = false;
+        dnsAuthoritativePropagationCheck = false;
         group = "openbao-tls";
         # OpenBao re-reads its listener certificate on SIGHUP (the unit's reload).
         reloadServices = [ "openbao.service" ];

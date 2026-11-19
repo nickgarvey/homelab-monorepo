@@ -53,12 +53,25 @@ let
     env.OPENSHELL_IMAGE_TAG = version;
   };
 
+  # nixpkgs' Rust setup hook (cargoUseSystemLibs) makes aws-lc-sys (under
+  # rustls, tonic, kube and sqlx) and libsqlite3-sys (sqlx) link nixpkgs'
+  # libraries rather than build their own, so the builds below take aws-lc and
+  # sqlite as build inputs.
+  #
+  # pkgsStatic.aws-lc does not build as nixpkgs has it. It lists its symbols
+  # with `go run`, and the static set's build-platform Go fails to link that
+  # ("cannot find runtime/cgo", then no gcc), so the native Go stands in. Its
+  # tests' Go SSL runner then fails to link cgo against musl; pkgs.aws-lc runs
+  # the same suite, so the static one skips it.
+  staticAwsLc = (pkgs.pkgsStatic.aws-lc.override { inherit (pkgs) go; })
+    .overrideAttrs { doCheck = false; };
+
   # The gateway and the supervisor, linked against glibc. The gateway links the
   # system libz3 (upstream's images vendor it).
   workspace = pkgs.rustPlatform.buildRustPackage (common // {
     pname = "openshell";
     nativeBuildInputs = [ pkgs.pkg-config pkgs.rustPlatform.bindgenHook ];
-    buildInputs = [ pkgs.z3 ];
+    buildInputs = [ pkgs.z3 pkgs.aws-lc pkgs.sqlite ];
     # --bin applies to every -p, so this builds only these two binaries.
     cargoBuildFlags = [
       "-p" "openshell-gateway" "--bin" "openshell-gateway"
@@ -83,7 +96,7 @@ let
   cli = pkgs.rustPlatform.buildRustPackage (common // {
     pname = "openshell-cli";
     nativeBuildInputs = [ pkgs.pkg-config pkgs.rustPlatform.bindgenHook ];
-    buildInputs = [ pkgs.z3 ];
+    buildInputs = [ pkgs.z3 pkgs.aws-lc ];
     cargoBuildFlags = [ "-p" "openshell-cli" "--bin" "openshell" ];
     doCheck = false;
     meta.mainProgram = "openshell";
@@ -94,6 +107,8 @@ let
   # uses, so it must be static (upstream builds it for musl too).
   sandbox = pkgs.pkgsStatic.rustPlatform.buildRustPackage (common // {
     pname = "openshell-sandbox";
+    nativeBuildInputs = [ pkgs.pkgsStatic.buildPackages.pkg-config ];
+    buildInputs = [ staticAwsLc ];
     cargoBuildFlags = [ "-p" "openshell-sandbox" "--bin" "openshell-sandbox" ];
     doCheck = false;
   });
@@ -166,8 +181,11 @@ let
   # on: the entrypoint exists and is executable, the user, the sandbox binary
   # is a static file of its own, the supervisor takes the patch's flag and
   # trusts the root.
+  # The supervisor runs from the unpacked image but loads its libraries
+  # (aws-lc among them) from their store paths, so the test depends on
+  # workspace to have them in its build sandbox.
   images-test = pkgs.runCommand "openshell-images-test"
-    { nativeBuildInputs = [ pkgs.jq pkgs.file ]; } ''
+    { nativeBuildInputs = [ pkgs.jq pkgs.file ]; inherit workspace; } ''
       # unpack <image> <dir>: the image's layers, in order, into <dir>/root.
       unpack() {
         mkdir -p "$2/root"

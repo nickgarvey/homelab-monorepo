@@ -129,10 +129,10 @@ in
     # The settings go in by `incus config set` rather than preseed because
     # acme.provider.environment holds the TSIG secret, and preseed is a store
     # path. lego gets that environment, which also turns off its propagation
-    # check, as dnsPropagationCheck = false does for security.acme: the check
-    # asks the public name servers, which the LAN reaches only through
-    # blocky's negative cache, and Knot has committed the update before lego
-    # moves on.
+    # check, as dnsAuthoritativePropagationCheck = false does for
+    # security.acme: the check asks the public name servers, which the LAN
+    # reaches only through blocky's negative cache, and Knot has committed the
+    # update before lego moves on.
     sops.secrets.incus-acme-tsig = {
       inherit (cfg.acme) sopsFile;
       key = "acme_tsig_secret";

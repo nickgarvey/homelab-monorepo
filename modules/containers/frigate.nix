@@ -97,7 +97,7 @@ in
         # Off for the reason given in modules/containers/garage.nix: lego's
         # check queries the public NS, which from the LAN lands on blocky's
         # negative cache, and Knot commits the update before lego moves on.
-        dnsPropagationCheck = false;
+        dnsAuthoritativePropagationCheck = false;
         # nginx reads the certificate at startup and frigate-tls-import re-runs
         # on every nginx start, so a restart picks up a renewal. `|| true` so
         # a stopped container cannot fail a renewal that already succeeded.

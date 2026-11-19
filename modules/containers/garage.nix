@@ -179,7 +179,7 @@ in
         config = { config, pkgs, lib, ... }: {
           services.garage = {
             enable = true;
-            package = pkgs.garage;
+            package = pkgs.garage_2;
             environmentFile = "/run/garage.env";
             settings = {
               metadata_dir = "/var/lib/garage/meta";
@@ -357,7 +357,7 @@ in
           # there is no propagation to await. Let's Encrypt validates from the
           # public internet, where the DNAT does apply and dnsdist reaches
           # Knot directly.
-          dnsPropagationCheck = false;
+          dnsAuthoritativePropagationCheck = false;
           # Runs as root in the acme unit's ExecStartPost, and only on an actual
           # renewal. nginx reads its certificate at startup, and the import unit
           # that copies it in re-runs on every nginx start, so a restart is what

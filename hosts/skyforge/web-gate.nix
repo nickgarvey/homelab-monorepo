@@ -56,7 +56,10 @@ in
       environmentFile = config.sops.templates."skyforge-acme.env".path;
       # Same reason as garage.nix: lego's propagation check queries the zone's
       # NS via blocky, whose negative cache outlasts its timeout; Knot is the
-      # only authoritative server, so there is nothing to wait for.
+      # only authoritative server, so there is nothing to wait for. skyforge
+      # builds from nixos-raspberrypi's nixpkgs, which still has the single
+      # option that the root nixpkgs splits into
+      # dnsAuthoritativePropagationCheck and dnsRecursivePropagationCheck.
       dnsPropagationCheck = false;
       group = config.services.nginx.group;
       reloadServices = [ "nginx.service" ];
