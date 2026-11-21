@@ -36,31 +36,10 @@
   # We dd the image directly; no need to spend build time on zstd compression.
   sdImage.compressImage = false;
 
-  # Cross-compile JUST the kernel (the long pole). Everything else stays on
-  # binfmt emulation. Whole-closure cross (nixpkgs.buildPlatform = x86)
-  # works for many packages but breaks parade-of-fails on Go (git-lfs -m64),
-  # Lua-codegen at build time (neovim), and probably more — for one printer
-  # host the constant overrides aren't worth it.
-  #
-  # nvmd's raspberry-pi-5/default.nix sets boot.kernelPackages from its own
-  # flake outputs (`nixos-raspberrypi.packages.aarch64-linux.linuxPackages_rpi5`),
-  # so even mkForce'ing pkgs.linuxPackages_rpi5 from a native context still
-  # gives a native kernel. We sidestep entirely: re-import nvmd's nixpkgs
-  # with crossSystem set and reapply nvmd's overlays, then use that one
-  # package. Adds one extra nixpkgs eval but only this drv is affected.
-  boot.kernelPackages = let
-    crossPkgs = import inputs.nixos-raspberrypi.inputs.nixpkgs {
-      localSystem = "x86_64-linux";
-      crossSystem = "aarch64-linux";
-      overlays = with inputs.nixos-raspberrypi.overlays; [
-        bootloader
-        vendor-kernel
-        vendor-firmware
-        kernel-and-firmware
-        vendor-pkgs
-      ];
-    };
-  in lib.mkForce crossPkgs.linuxPackages_rpi5;
+  # The kernel is nvmd's native linuxPackages_rpi5, set by its raspberry-pi-5
+  # module and served prebuilt by nixos-raspberrypi.cachix.org. Overriding it
+  # (cross-compiling, patching, changing its config) changes its store path,
+  # and then it is built here.
 
   # Hard-wired ethernet; no WiFi. The IP layer comes from networkd.nix
   # (DHCPv4 + static IPv6 via systemd-networkd, matched by MAC from

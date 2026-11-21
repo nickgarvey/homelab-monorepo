@@ -123,12 +123,6 @@ var AllHosts = []Host{
 		ConnChecks: []ConnCheck{CheckSSH},
 	},
 	{
-		// Unplugged: built on every run, deployed only when named.
-		Name: "guevenne", FlakeName: "guevenne",
-		Order: 41, Groups: []string{"media"}, Default: false,
-		ConnChecks: []ConnCheck{CheckSSH},
-	},
-	{
 		Name: "skyforge", FlakeName: "skyforge",
 		Order: 50, Groups: []string{"printer"}, Default: true,
 		ConnChecks: []ConnCheck{CheckSSH},

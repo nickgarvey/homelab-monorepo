@@ -43,11 +43,11 @@ spec:
         # last 3 days that has stopped pushing is down, or its vector agent is.
         # The 3-day lookback means a host still off after 3 days stops alerting
         # (and emails as resolved); a removed host alerts for 3 days.
-        # Workstations and the TV box are powered off routinely and are left out,
+        # Workstations are powered off routinely and are left out,
         # and so are NotReady k3s nodes, which KubeNodeNotReady reports.
         - alert: HostDown
           expr: |
-            max by (hostname) (last_over_time(host_filesystem_used_ratio{hostname!~"talos|dovahkiin|guevenne"}[3d]))
+            max by (hostname) (last_over_time(host_filesystem_used_ratio{hostname!~"talos|dovahkiin"}[3d]))
               unless max by (hostname) (host_filesystem_used_ratio)
               unless on (hostname) label_replace(
                 kube_node_status_condition{condition="Ready",status="true"} == 0,

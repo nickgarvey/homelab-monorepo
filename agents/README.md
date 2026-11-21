@@ -2,7 +2,7 @@
 
 Agents that run in OpenShell sandboxes on the k3s cluster. The gateway itself,
 and how to log the CLI in to it, is `k8s/manifests/openshell/`. The `openshell`
-CLI is in the default dev shell (`nix develop`).
+CLI is `nix shell .#openshell`.
 
 Three pieces:
 

@@ -28,7 +28,6 @@ Conventions for working in the repo are in [`AGENTS.md`](AGENTS.md).
 | [`frul`](hosts/frul) | Beelink EQi Mini PC | Intel Core 3 304 (Wildcat Lake) | 32 GB | iGPU (Xe, Wildcat Lake) | YMTC 512 GB UFS + WD Blue SN5100 4 TB NVMe |
 | [`wabbajack`](hosts/wabbajack) | Framework Desktop | AMD Ryzen AI Max+ 395 (Strix Halo) | 128 GB | Radeon 8060S iGPU | WD_BLACK SN850X 2 TB NVMe + WD_BLACK SN7100 2 TB NVMe |
 | [`dovahkiin`](hosts/dovahkiin) | Framework Laptop 13 | AMD Ryzen AI 7 350 | 64 GB | Radeon 860M iGPU | KIOXIA 2 TB NVMe |
-| [`guevenne`](hosts/guevenne) | ASUS Zenbook S 16 (UM5606WA) | AMD Ryzen AI 9 365 | 22 GB | Radeon 880M iGPU | Micron 2400 1 TB NVMe |
 | [`dragonsreach`](hosts/dragonsreach) | Topton Fanless PC| Intel N150 | 16 GB | iGPU (Alder Lake-N) | Samsung 870 QVO 1 TB SATA |
 | [`skyforge`](hosts/skyforge) | Raspberry Pi 5 | Broadcom BCM2712 | — | VideoCore VII | microSD |
 

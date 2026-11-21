@@ -39,19 +39,6 @@ in
       ];
     };
 
-    # TV PC (ASUS Zenbook S 16, broken internal panel, drives the living-room TV)
-    guevenne = nixpkgs.lib.nixosSystem {
-      specialArgs = { inherit inputs; };
-      modules = [
-        disko.nixosModules.disko
-        nixos-hardware.nixosModules.common-cpu-amd-pstate
-        nixos-hardware.nixosModules.common-pc-laptop
-        nixos-hardware.nixosModules.common-pc-laptop-ssd
-        ./guevenne/configuration.nix
-        ./guevenne/disk-config.nix
-      ];
-    };
-
     # Router
     dragonsreach = nixpkgs.lib.nixosSystem {
       specialArgs = { inherit inputs; };

@@ -15,8 +15,8 @@ func TestMergeStaticBeatsDynamicLease(t *testing.T) {
 	// A reserved host holds an active lease too, so the same MAC arrives from
 	// both StaticLeases and Leases.
 	leases := []Lease{
-		{MAC: "aa:bb:cc:dd:ee:01", IPv4: "10.28.1.5", Hostname: "nelkir", Source: SourceStatic},
-		{MAC: "aa:bb:cc:dd:ee:01", IPv4: "10.28.1.5", Hostname: "nelkir", Source: SourceDHCP},
+		{MAC: "aa:bb:cc:dd:ee:01", IPv4: "10.28.1.5", Hostname: "skyforge", Source: SourceStatic},
+		{MAC: "aa:bb:cc:dd:ee:01", IPv4: "10.28.1.5", Hostname: "skyforge", Source: SourceDHCP},
 	}
 	rows := Merge(leases, nil, nil, testLease, testNow)
 	if len(rows) != 1 {

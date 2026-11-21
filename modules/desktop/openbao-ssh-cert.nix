@@ -109,11 +109,11 @@ in
     timerConfig = { OnBootSec = "1min"; OnUnitActiveSec = "1h"; };
   };
 
-  # The build helpers present host certificates from the OpenBao host CA
-  # (modules/core/nix-builder.nix), so they are trusted by CA, not pinned keys.
+  # The build helper presents a host certificate from the OpenBao host CA
+  # (modules/core/nix-builder.nix), so it is trusted by CA, not a pinned key.
   programs.ssh.knownHosts.build-helpers = {
     certAuthority = true;
-    hostNames = [ "lydia" "wabbajack" "lydia.home.garvey.sh" "wabbajack.home.garvey.sh" ];
+    hostNames = [ "wabbajack" "wabbajack.home.garvey.sh" ];
     publicKeyFile = ../../pki/openbao/ssh-host-ca.pub;
   };
 

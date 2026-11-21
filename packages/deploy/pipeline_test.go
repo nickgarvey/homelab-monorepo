@@ -493,7 +493,7 @@ func TestPipelineExtraDrvsBuiltButNotDeployed(t *testing.T) {
 	todo := pipeHosts("lydia")
 	f.buildMakes["lydia"] = true
 
-	res := runPipeExtra(f, todo, []string{"/nix/store/guevenne.drv"}, PipelineOpts{})
+	res := runPipeExtra(f, todo, []string{"/nix/store/dovahkiin.drv"}, PipelineOpts{})
 
 	if got := statusOf(res, "lydia"); got != StatusDeployed {
 		t.Errorf("lydia: want StatusDeployed, got %v", got)
@@ -504,11 +504,11 @@ func TestPipelineExtraDrvsBuiltButNotDeployed(t *testing.T) {
 	if n := f.callsContaining("nix build"); n != 1 {
 		t.Errorf("want one fleet build, got %d", n)
 	}
-	if n := f.callsContaining("/nix/store/guevenne.drv^out"); n != 1 {
+	if n := f.callsContaining("/nix/store/dovahkiin.drv^out"); n != 1 {
 		t.Errorf("build-only drv missing from the fleet build: %v", f.calls)
 	}
 	for _, c := range f.calls {
-		if strings.Contains(c, "guevenne") && !strings.Contains(c, "nix build") {
+		if strings.Contains(c, "dovahkiin") && !strings.Contains(c, "nix build") {
 			t.Errorf("a build-only host must not be touched after the build: %s", c)
 		}
 	}
@@ -523,8 +523,8 @@ func TestPipelineExtraDrvsBuiltWhenNothingToDeploy(t *testing.T) {
 
 	for _, todo := range [][]PrecheckResult{nil, upToDate} {
 		f.calls = nil
-		runPipeExtra(f, todo, []string{"/nix/store/guevenne.drv"}, PipelineOpts{})
-		if n := f.callsContaining("/nix/store/guevenne.drv^out"); n != 1 {
+		runPipeExtra(f, todo, []string{"/nix/store/dovahkiin.drv"}, PipelineOpts{})
+		if n := f.callsContaining("/nix/store/dovahkiin.drv^out"); n != 1 {
 			t.Errorf("todo=%d host(s): want the build-only drv built once, calls %v", len(todo), f.calls)
 		}
 	}

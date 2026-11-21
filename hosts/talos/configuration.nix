@@ -72,18 +72,19 @@
   systemd.services.nix-daemon.serviceConfig.MemoryMax = "75%";
   nix.settings.cores = 24;
 
-  # Build helpers (modules/core/nix-builder.nix, nix-oc1lr). They add capacity
-  # but are never required: talos keeps its own build slots and every
-  # system-feature, so a helper being down only makes builds slower. The
-  # daemon logs in with an OpenBao-signed certificate and trusts the helpers by
-  # their host certificates (docs/openbao.md). Helpers fetch from the caches
-  # themselves (builders-use-substitutes) instead of receiving inputs from talos.
+  # Build helper (modules/core/nix-builder.nix, nix-oc1lr). It adds capacity
+  # but is never required: talos keeps its own build slots and every
+  # system-feature, so the helper being down only makes builds slower. The
+  # daemon logs in with an OpenBao-signed certificate and trusts the helper by
+  # its host certificate (docs/openbao.md). The helper fetches from the caches
+  # itself (builders-use-substitutes) instead of receiving inputs from talos.
   nix.distributedBuilds = true;
   nix.settings.builders-use-substitutes = true;
   nix.buildMachines = [
     {
-      # The main helper: 32 threads, 125 GB. The highest speedFactor makes it
-      # the first choice for Ceph and kernels; binfmt lets it build aarch64.
+      # 32 threads, 125 GB; binfmt lets it build aarch64. Nix always offers a
+      # build to a free helper slot before building locally, so with a single
+      # helper talos takes everything past these two jobs.
       hostName = "wabbajack";
       systems = [ "x86_64-linux" "aarch64-linux" ];
       protocol = "ssh-ng";
@@ -94,22 +95,11 @@
       speedFactor = 4;
       supportedFeatures = [ "big-parallel" "nixos-test" "benchmark" "kvm" ];
     }
-    {
-      hostName = "lydia";
-      systems = [ "x86_64-linux" ];
-      protocol = "ssh-ng";
-      sshUser = "nix-ssh";
-      # Signed as nix-ssh by OpenBao (modules/desktop/openbao-ssh-cert.nix).
-      sshKey = "/var/lib/nix-builder-ssh/id_ed25519";
-      maxJobs = 2;
-      speedFactor = 1;
-      supportedFeatures = [ "big-parallel" "nixos-test" "benchmark" "kvm" ];
-    }
   ];
   # An unreachable helper costs ~5s before Nix moves on; one that dies
   # mid-build is noticed in ~30s rather than at TCP's timeout.
   programs.ssh.extraConfig = ''
-    Host lydia wabbajack
+    Host wabbajack
       ConnectTimeout 5
       ServerAliveInterval 15
       ServerAliveCountMax 2

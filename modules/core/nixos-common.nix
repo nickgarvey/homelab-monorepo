@@ -28,12 +28,15 @@
     experimental-features = [ "nix-command" "flakes" ];
     # homelab: our celler cache (k8s/manifests/celler), with what the
     # workstations build. Hosts trust only its signing key, not the pushers.
+    # nixos-raspberrypi: skyforge's Pi 5 kernel, for the hosts that build it.
     extra-substituters = [
       "https://cache.nixos-cuda.org"
       "https://celler.home.garvey.sh/homelab"
+      "https://nixos-raspberrypi.cachix.org"
     ];
     extra-trusted-public-keys = [
       "cache.nixos-cuda.org:74DUi4Ye579gUqzH4ziL9IyiJBlDpMRn9MBN8oNan9M="
+      "nixos-raspberrypi.cachix.org-1:4iMO9LXa8BqhU+Rpg6LQKiGa2lsNh/j2oiYLNOQ5sPI="
       "homelab:6sDcOpt7utnF/hUg3mhEM5J35n+Qh5XTIIckJayzRxw="
     ];
     # celler runs on k3s, whose nodes use this config too, and is reachable

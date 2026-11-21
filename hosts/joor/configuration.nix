@@ -6,7 +6,6 @@
     ../../modules/core/nixos-common.nix
     ../../modules/networking/thunderbolt-mesh.nix
     ../../modules/services/ceph.nix
-    ../../modules/services/reboot-watchdog.nix
     ../../modules/services/shutdown-debug.nix
     # Backs up every Ceph RBD volume; one node is enough.
     ../../modules/services/ceph-restore.nix

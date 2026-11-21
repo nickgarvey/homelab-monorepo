@@ -11,7 +11,6 @@ in
         python312
         go
         self.packages.x86_64-linux.deploy
-        self.packages.x86_64-linux.openshell
         kubectl
         kubernetes-helm
         skopeo

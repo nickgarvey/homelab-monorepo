@@ -11,8 +11,7 @@
 
   networking.hostName = "wabbajack";
 
-  # Build helper for talos (modules/core/nix-builder.nix), its main one: talos
-  # prefers it (speedFactor) for big-parallel builds such as Ceph and kernels.
+  # Build helper for talos (modules/core/nix-builder.nix), its only one.
   # Ceph at -j32 peaked at 64 GB here, so 2 jobs x 16 cores fit under 96G with
   # room for garage. llama.cpp is off so the memory is free (below).
   homelab.nixBuilder.memoryMax = "96G";

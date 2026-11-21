@@ -111,7 +111,6 @@ Summary:
 | talos | 21 | – | ✓ | SSH + gateway ping |
 | lydia | 30 | – | ✓ | build helper (held, below); SSH + gateway ping |
 | dovahkiin | 40 | – | build only | deploys only when named explicitly |
-| guevenne | 41 | – | build only | TV PC, unplugged; deploys only when named; SSH only |
 | skyforge | 50 | – | ✓ | aarch64; needs binfmt on the deploying machine; printer idle pre-check |
 | dragonsreach | 99 | – | ✓ | SSH + internet ping + DNS + IPv6 tunnel + IPv6 internet |
 

@@ -16,8 +16,6 @@ keys:
   - &frul age1a230t20a7jl2ce5w9axz8caajgk2s4w6ry2cvy52l2vupf685ujsrhfsdl
   # skyforge: also from its ssh_host_ed25519_key.pub via ssh-to-age.
   - &skyforge age1z95v2ahfghn34yg2yl8k3crtqtraqg6mnvvzq2audzr96savcqxs5p7yfe
-  # guevenne: also from its ssh_host_ed25519_key.pub via ssh-to-age.
-  - &guevenne age1wht0shv9rw22tmcnuvmzpywxsfzv0ujgswsuc0nuw72p7g3p4scqzdmxv8
   - &k8s-operator age1zd28lg5yxxc06jnyym92fep4gdwwnk3k3my9l247pvskjdj8mv4sa89d08
   # paper: an offline age key written on paper, kept out of every machine. Second
   # recipient on secrets that must survive losing *ngarvey (pki/).
@@ -258,7 +256,6 @@ creation_rules:
       - *zah
       - *frul
       - *skyforge
-      - *guevenne
   # celler-push: one push-only celler token per workstation, keyed by host
   # name, for `celler watch-store` (modules/desktop/celler-push.nix). Minted
   # with the key in secrets/celler-admin.yaml; the server checks them with its

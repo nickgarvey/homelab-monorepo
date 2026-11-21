@@ -61,8 +61,9 @@ self-signed and CA Issuers); the kustomization deletes it, since nothing uses it
 
 ## Connecting the CLI
 
-The `openshell` CLI is in the default dev shell (`nix develop`), built at the
-gateway's version by the repo root's `packages/openshell/`.
+The `openshell` CLI is `nix shell .#openshell` (left out of the default dev
+shell, since it is a from-source build), built at the gateway's version by the
+repo root's `packages/openshell/`.
 
 People log in through Authelia (OIDC client `openshell-cli` in
 `manifests/authelia/configmap.yaml`). The chart's client certificate

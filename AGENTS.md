@@ -27,8 +27,9 @@ their own `outputs.nix`, and `flake.nix` merges them, failing evaluation if two
 define the same output name. Nix finds the root flake from any subdirectory,
 so `nix run .#deploy` and `nix build .#<pkg>` work from anywhere in the repo.
 
-- `nix develop` gives the default shell: deploy, openshell, go, python, kubectl, helm,
-  skopeo, jq.
+- `nix develop` gives the default shell: deploy, go, python, kubectl, helm, skopeo,
+  jq. The `openshell` CLI is left out (a from-source Rust build that no binary
+  cache has); get it with `nix shell .#openshell`.
   The only other shells are `.#esp32` (ESP-IDF; needed for anything in
   `firmware/`) and `.#makernexus`.
 - There is one `nixpkgs`. Two inputs keep their own locked nixpkgs on purpose:
@@ -64,8 +65,8 @@ narrowest matching subdir; create a new one only when you have ≥2 related file
 |---|---|
 | `core/` | Baseline config applied to virtually every host (NixOS defaults, SSH, locale, CA certs). Currently: `nixos-common`, `nspawn-cleanup`, `server-base` (networkd + systemd-boot + sops defaults for LAN servers; k3s-common builds on it). |
 | `networking/` | Network configuration and shared host-address data. Currently: `networkd`, `network-manager`, `dns`, `zone` (Knot zone file built from the dns.nix data), `lan-hosts`, `ipv6-accept-ra-routes`, `thunderbolt-mesh` (FRR-routed Thunderbolt mesh between the storage nodes). |
-| `desktop/` | Workstation/desktop features (Wayland compositors, audio, packages, udev rules for peripherals). Currently: `common-workstation`, `common-tv`, `niri`, `steam`, `upower-overlay`, `printer`, `orca-slicer`, `orca-skyforge` (OrcaSlicer preset host + API key for skyforge), `openscad` (OpenSCAD + BOSL2, and the Claude Code skill for LLM-written parts), `rtl-sdr`, `zot-push` (containers auth.json for pushing to oci.garvey.sh). |
-| `services/` | Host services that don't fit a tighter category. Currently: `smb-automount`, `fancontrol`, `ceph` (mon/mgr/OSD/RGW/MDS on joor/zah/frul, no Rook), `ceph-restore` (restore tools for the Ceph backups the k3s worker makes), `cephfs-mount` (~/local-drive on CephFS, per-host cephx key), `ceph-cluster` (fsid and mon hosts, plain data shared by ceph and cephfs-mount), `ha-cert-probe` (checks the cert Home Assistant serves), `netboot-server` (pixiecore PXE for live-netboot), `reboot-watchdog` (hardware watchdog kept running through reboot, so a hung reboot resets), `shutdown-debug` (temporary: console line per device shut down at reboot, to find the driver that hangs), `repo-backup` (daily archive of ~/homelab-monorepo, ait DB included, to CephFS with 30-day retention), `vector-agent` (host metrics pushed to Prometheus). |
+| `desktop/` | Workstation/desktop features (Wayland compositors, audio, packages, udev rules for peripherals). Currently: `common-workstation`, `niri`, `steam`, `upower-overlay`, `printer`, `orca-slicer`, `orca-skyforge` (OrcaSlicer preset host + API key for skyforge), `openscad` (OpenSCAD + BOSL2, and the Claude Code skill for LLM-written parts), `rtl-sdr`, `zot-push` (containers auth.json for pushing to oci.garvey.sh). |
+| `services/` | Host services that don't fit a tighter category. Currently: `smb-automount`, `fancontrol`, `ceph` (mon/mgr/OSD/RGW/MDS on joor/zah/frul, no Rook), `ceph-restore` (restore tools for the Ceph backups the k3s worker makes), `cephfs-mount` (~/local-drive on CephFS, per-host cephx key), `ceph-cluster` (fsid and mon hosts, plain data shared by ceph and cephfs-mount), `ha-cert-probe` (checks the cert Home Assistant serves), `netboot-server` (pixiecore PXE for live-netboot), `shutdown-debug` (temporary: console line per device shut down at reboot, to find the driver that hangs), `repo-backup` (daily archive of ~/homelab-monorepo, ait DB included, to CephFS with 30-day retention), `vector-agent` (host metrics pushed to Prometheus). |
 | `k3s/` | Kubernetes cluster node configuration. Currently: `k3s-common`. |
 | `router/` | Router subsystem (nftables, DHCP, DNS, IPv6 tunnel, NAT64). Exposes a `default.nix` — import the directory. |
 | `containers/` | systemd-nspawn container definitions. Common networking lives in `common.nix`. |

@@ -133,7 +133,7 @@ the clock shows it), `tomorrow` or `YYYY-MM-DD` (at the check-in time),
 image, upload it into a throwaway sandbox that has a copy of the profile whose
 `binaries` entry is the uploaded path, and label the supervisor pod with the
 type, so agent-token grants it a token (as in "Running pi by hand" in
-`agents/README.md`). From the repo root, in `nix develop`:
+`agents/README.md`). From the repo root, in `nix shell .#openshell`:
 
 ```sh
 B=$(nix build --no-link --print-out-paths .#habit-cli)/bin/habit
