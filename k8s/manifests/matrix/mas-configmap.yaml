@@ -1,6 +1,6 @@
 # The Matrix Authentication Service's configuration. MAS handles every Matrix
 # login: clients sign in through it, and it sends the browser on to Authelia.
-# Secrets are files from the mas Secret (mas-secret.yaml), mounted at
+# Secrets are files from OpenBao (mas-secret-provider-class.yaml), mounted at
 # /etc/mas/secrets. Read at start: after a change,
 # kubectl -n matrix rollout restart deploy/mas.
 apiVersion: v1

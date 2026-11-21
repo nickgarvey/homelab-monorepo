@@ -7,7 +7,8 @@ metadata:
     app.kubernetes.io/managed-by: ngarvey-homelab
 data:
   # Pulls are anonymous (k3s and pods pull without credentials); push and
-  # delete need the `ngarvey` account from the zot-auth htpasswd.
+  # delete need the `ngarvey` account from the htpasswd that
+  # secret-provider-class.yaml mounts from OpenBao.
   config.json: |
     {
       "distSpecVersion": "1.1.0",

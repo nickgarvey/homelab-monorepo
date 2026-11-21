@@ -17,6 +17,7 @@ spec:
         app.kubernetes.io/managed-by: ngarvey-homelab
     spec:
       serviceAccountName: trmnl-display
+      automountServiceAccountToken: false
       containers:
         - name: trmnl-display
           image: oci.garvey.sh/trmnl-display:latest
@@ -56,6 +57,10 @@ spec:
           csi:
             driver: csi.spiffe.io
             readOnly: true
+        # From OpenBao (secret-provider-class.yaml).
         - name: secret-vol
-          secret:
-            secretName: trmnl-display-secret
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: trmnl-display

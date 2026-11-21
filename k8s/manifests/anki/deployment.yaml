@@ -18,6 +18,23 @@ spec:
         app: anki-sync-server
         app.kubernetes.io/managed-by: ngarvey-homelab
     spec:
+      serviceAccountName: anki-sync-server
+      automountServiceAccountToken: false
+      # Copies the static env-from-files binary (packages/env-from-files) into
+      # the env-from-files volume, since the server image has no shell.
+      initContainers:
+        - name: env-from-files
+          image: oci.garvey.sh/env-from-files:8bfld05lcsks4qkksbnjadzh7d64m83m
+          args: ["install", "/opt/env-from-files"]
+          volumeMounts:
+            - name: env-from-files
+              mountPath: /opt/env-from-files
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 32Mi
       containers:
         # TLS terminator for anki.home.garvey.sh. anki-sync-server has no
         # cert/key config path of its own, so this follows the jellyfin
@@ -57,17 +74,19 @@ spec:
         - name: anki-sync-server
           image: oci.garvey.sh/anki-sync-server:26.09.3-0bm8amr
           imagePullPolicy: IfNotPresent
+          # The accounts come from OpenBao as files (secret-provider-class.yaml);
+          # env-from-files sets one variable per file, then runs the server.
+          command:
+            - /opt/env-from-files/env-from-files
+            - /run/secrets/env
+            - "--"
+            - /bin/anki-sync-server
           ports:
             - containerPort: 8080
               name: http
           env:
             - name: SYNC_HOST
               value: "::"
-          envFrom:
-            # SYNC_USER1 is the real collection; SYNC_USER2 (duettest) is a
-            # throwaway account for testing sync clients against.
-            - secretRef:
-                name: anki-credentials
           securityContext:
             runAsUser: 1000
             runAsGroup: 1000
@@ -78,7 +97,23 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /anki_data
+            - name: credentials
+              mountPath: /run/secrets/env
+              readOnly: true
+            - name: env-from-files
+              mountPath: /opt/env-from-files
+              readOnly: true
       volumes:
+        - name: credentials
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: anki-sync-server
+        - name: env-from-files
+          emptyDir:
+            medium: Memory
+            sizeLimit: 8Mi
         - name: data
           persistentVolumeClaim:
             claimName: anki-data

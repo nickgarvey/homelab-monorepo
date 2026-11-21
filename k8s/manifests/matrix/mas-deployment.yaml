@@ -21,6 +21,7 @@ spec:
         app.kubernetes.io/managed-by: ngarvey-homelab
     spec:
       serviceAccountName: mas
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -83,10 +84,13 @@ spec:
         - name: config
           configMap:
             name: mas
+        # From OpenBao (mas-secret-provider-class.yaml).
         - name: secrets
-          secret:
-            secretName: mas
-            defaultMode: 0440
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: mas
         - name: tls
           secret:
             secretName: mas-tls

@@ -22,6 +22,7 @@ spec:
         app.kubernetes.io/managed-by: ngarvey-homelab
     spec:
       serviceAccountName: postgrest
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         # The image runs as 1000; this lets it read the keys (0440).
@@ -115,7 +116,10 @@ spec:
           secret:
             secretName: habit-helper-owner-postgres-client
             defaultMode: 0440
+        # From OpenBao (secret-provider-class.yaml).
         - name: jwt
-          secret:
-            secretName: postgrest-jwt
-            defaultMode: 0440
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: postgrest

@@ -25,10 +25,11 @@ data:
       }
 
       # Remote write takes the Vector agents' credential
-      # (modules/services/vector-agent.nix); the bcrypt hash is in secret.yaml.
+      # (modules/services/vector-agent.nix); the bcrypt hash is from OpenBao
+      # (secret-provider-class.yaml), read when the config loads.
       handle /api/v1/write* {
         basic_auth {
-          vector {$REMOTE_WRITE_BCRYPT}
+          vector {file./run/secrets/remote-write/bcrypt}
         }
         reverse_proxy http://[::1]:9090
       }

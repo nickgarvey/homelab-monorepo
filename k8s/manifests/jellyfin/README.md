@@ -26,8 +26,10 @@ accounts keep working beside it.
 
 ### Adding a person
 
-Add them to `users_database.yml` in `manifests/authelia/secret.yaml` with the
-group `jellyfin-users`, and restart Authelia.
+Add them to `users_database.yml` in `secrets/openbao/authelia/authelia.yaml`
+with the group `jellyfin-users`, push it
+(`bash scripts/push-secrets.sh secrets/openbao/authelia/authelia.yaml`) and
+restart Authelia.
 
 ### Devices without a browser login (TVs, Jellyfin Media Player)
 
@@ -46,8 +48,7 @@ re-run, each person's next login re-links them by username.
 With a Jellyfin API key (Dashboard > API Keys) in `$JF_API_KEY`, from `k8s/`:
 
 ```bash
-kubectl -n jellyfin get secret jellyfin-sso -o jsonpath='{.data.client-secret}' \
-  | base64 -d \
+sops decrypt --extract '["client-secret"]' secrets/manual/jellyfin/sso.yaml \
   | jq -Rn '{
       oidEndpoint: "https://auth.home.garvey.sh",
       oidClientId: "jellyfin",

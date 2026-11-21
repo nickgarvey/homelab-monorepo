@@ -20,9 +20,8 @@ Do not put bootstrap-critical services on it: they issue the certificates and se
    kubectl -n cnpg-system rollout status deploy/barman-cloud
    ```
 2. `kubectl apply -f manifests/postgres/namespace.yaml`
-3. `kubectl apply -f manifests/postgres/secret.yaml -f manifests/postgres/litellm-secret.yaml`,
-   then wait for the sops-secrets-operator to create `postgres-temporal`,
-   `postgres-backups-s3` and `postgres-litellm` (`kubectl -n postgres get secret`).
+3. `bash scripts/push-secrets.sh secrets/k8s/postgres/*.yaml`, which applies the
+   Secrets `postgres-temporal`, `postgres-backups-s3` and `postgres-litellm`.
 4. `kubectl apply -f manifests/postgres/objectstore.yaml -f manifests/postgres/cluster.yaml`
    and wait: `kubectl -n postgres get cluster postgres` shows 2/2 ready.
 5. `kubectl apply -f manifests/postgres/databases.yaml -f manifests/postgres/scheduled-backup.yaml -f manifests/postgres/pod-monitor.yaml`
@@ -30,10 +29,10 @@ Do not put bootstrap-critical services on it: they issue the certificates and se
 
 ## Adding an app
 
-1. Add a `kubernetes.io/basic-auth` secret template to `secret.yaml`
-   (`sops secret.yaml`), with `username` and `password`, or put it in a
-   SopsSecret of its own, as `litellm-secret.yaml` is (with a rule for its path
-   in the repo root's `.sops.yaml`).
+1. Add a `kubernetes.io/basic-auth` Secret `secrets/k8s/postgres/postgres-<app>.yaml`
+   with `username` and `password` and the label `cnpg.io/reload: "true"`, shaped
+   like `postgres-litellm.yaml` (`sops edit <new file>` creates it), and push it with
+   `bash scripts/push-secrets.sh secrets/k8s/postgres/postgres-<app>.yaml`.
 2. Add a role under `managed.roles` in `cluster.yaml`, pointing at that secret.
 3. Add a `Database` to `databases.yaml`, owned by the role.
 4. Restrict it to its databases. Add two lines to `postgresql.pg_hba` in
@@ -49,7 +48,7 @@ Do not put bootstrap-critical services on it: they issue the certificates and se
    ```
    Do not revoke on the `postgres` database: the metrics exporter connects to it.
 5. The app connects to `postgres-rw.postgres.svc` with the same credentials,
-   kept in its own namespace's SopsSecret.
+   kept in its own sops file (`secrets/openbao/<namespace>/<serviceAccount>.yaml`).
 
 ## Backups
 
@@ -87,8 +86,8 @@ database.
    ```sh
    kubectl -n postgres exec postgres-1 -c postgres -- psql -U postgres -c 'select pg_switch_wal()'
    ```
-2. Create the target namespace and copy in the S3 credentials (the
-   sops-secrets-operator only writes them into `postgres`):
+2. Create the target namespace and copy in the S3 credentials
+   (`secrets/k8s/postgres/postgres-backups-s3.yaml` names the `postgres` namespace):
    ```sh
    kubectl create namespace postgres-restore-test
    kubectl -n postgres get secret postgres-backups-s3 -o json \

@@ -1,8 +1,8 @@
 # Run once, on any node, as root. The Ceph identities of the backup worker
 # (k8s/manifests/ceph-backup): a cephx key and an RGW admin-ops user, both
-# limited to what backing up needs. Prints no secrets. Their keys live in the
-# SopsSecret k8s/manifests/ceph-backup/secret.yaml (Secrets ceph-backup-ceph and
-# ceph-backup-rgw-admin), piped from `ceph auth print-key` and `radosgw-admin
+# limited to what backing up needs. Prints no secrets. Their keys live in
+# k8s/secrets/openbao/ceph-backup/ceph-backup-worker.yaml (secrets.ceph and
+# secrets.rgw-admin, pushed to OpenBao), piped from `ceph auth print-key` and `radosgw-admin
 # user info` straight into `sops --encrypt` so they are never shown.
 set -euo pipefail
 

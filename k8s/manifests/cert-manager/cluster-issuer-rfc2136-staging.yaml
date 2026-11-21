@@ -12,7 +12,7 @@ spec:
       name: letsencrypt-rfc2136-staging-key
     solvers:
       # DNS-01 written straight into Knot, the home.garvey.sh authority, with
-      # the acme-cert-manager TSIG key (secret.yaml). Knot is reached through
+      # the acme-cert-manager TSIG key (secrets/k8s/cert-manager/rfc2136-tsig.yaml). Knot is reached through
       # NAT64 (it has only a LAN IPv4 address). garvey.sh names have a
       # Cloudflare CNAME from their _acme-challenge name into home.garvey.sh,
       # which Follow writes through (modules/networking/dns.nix, certManagerAcme).

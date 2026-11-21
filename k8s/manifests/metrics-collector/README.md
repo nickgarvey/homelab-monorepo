@@ -13,7 +13,8 @@ Vector idiom: a source, a VRL `remap`, and a `log_to_metric` transform.
 | `configmap.yaml` | The Vector config; every metric is defined here. |
 | `deployment.yaml` | `timberio/vector`, the version the hosts run. `--watch-config` reloads the config when the ConfigMap changes. |
 | `pod-monitor.yaml` | Prometheus scrapes `:9598` every 60s. |
-| `secret.yaml` | Credentials for the APIs that need one, mounted for Vector's `directory` secret backend. |
+| `secrets/openbao/metrics-collector/metrics-collector.yaml` | Credentials for the APIs that need one (sops; pushed to OpenBao by `scripts/push-secrets.sh`). |
+| `secret-provider-class.yaml` | The ServiceAccount, and the SecretProviderClass that mounts those credentials from OpenBao for Vector's `directory` secret backend (docs/openbao.md, "Pod secrets"). |
 
 When a poll fails, Vector keeps serving the last values until the sink's
 `flush_period_secs` (an hour) runs out. For data that must be fresh, export the
@@ -67,13 +68,14 @@ The cluster is IPv6-only. For a target without an AAAA record, such as api.githu
 From `k8s/`:
 
 ```sh
+bash scripts/push-secrets.sh secrets/openbao/metrics-collector/metrics-collector.yaml
 kubectl apply -f manifests/metrics-collector/namespace.yaml
-kubectl apply -f manifests/metrics-collector/secret.yaml
 kubectl apply -f manifests/metrics-collector/
 ```
 
-The Secret must exist before the Deployment starts, since the pod mounts it.
-Vector reads secrets only at startup, so after changing one,
+The values must be in OpenBao before the pod starts (it fails to mount
+otherwise), and the role must exist (`pki/openbao/tofu.sh apply`). Vector reads
+secrets only at startup, so after changing one,
 `kubectl -n metrics-collector rollout restart deploy/metrics-collector`.
 
 A ConfigMap change reaches the pod in about a minute, and Vector reloads it. If the new config is invalid, Vector logs the error and keeps running the old one, so check `kubectl -n metrics-collector logs deploy/metrics-collector` after a change.

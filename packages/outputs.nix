@@ -15,6 +15,7 @@ let
   ceph-backup-worker = import ./ceph-backup-worker/outputs.nix { inherit nixpkgs system; };
   anki-sync-server-image = import ./anki-sync-server/outputs.nix { inherit nixpkgs system; };
   longhorn-backup-pruner = import ./longhorn-backup-pruner/outputs.nix { inherit nixpkgs system; };
+  env-from-files = import ./env-from-files/outputs.nix { inherit nixpkgs system; };
   matrix-synapse = import ./matrix-synapse/outputs.nix { inherit nixpkgs system; };
   matrix-authentication-service = import ./matrix-authentication-service/outputs.nix { inherit nixpkgs system; };
   mcp-gateway = import ./mcp-gateway/outputs.nix { inherit nixpkgs system; };
@@ -116,6 +117,8 @@ in
     ceph-backup-worker-image = ceph-backup-worker.image;
     longhorn-backup-pruner = longhorn-backup-pruner.package;
     longhorn-backup-pruner-image = longhorn-backup-pruner.image;
+    env-from-files = env-from-files.package;
+    env-from-files-image = env-from-files.image;
     matrix-synapse = matrix-synapse.package;
     matrix-synapse-image = matrix-synapse.image;
     matrix-authentication-service = matrix-authentication-service.package;

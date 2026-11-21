@@ -22,14 +22,41 @@ spec:
         app: mongo
         app.kubernetes.io/managed-by: ngarvey-homelab
     spec:
+      serviceAccountName: mongo
+      automountServiceAccountToken: false
       # The entrypoint drops to the image's mongodb user, uid/gid 999.
       securityContext:
         fsGroup: 999
       # Time for mongod to flush and exit cleanly on SIGTERM.
       terminationGracePeriodSeconds: 60
+      # Copies the static env-from-files binary (packages/env-from-files) into
+      # the env-from-files volume for the mongo container's command.
+      initContainers:
+        - name: env-from-files
+          image: oci.garvey.sh/env-from-files:8bfld05lcsks4qkksbnjadzh7d64m83m
+          args: ["install", "/opt/env-from-files"]
+          volumeMounts:
+            - name: env-from-files
+              mountPath: /opt/env-from-files
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 32Mi
       containers:
         - name: mongo
           image: mongo:6.0.28
+          # The credentials come from OpenBao as files
+          # (secret-provider-class.yaml); env-from-files sets
+          # MONGO_INITDB_ROOT_* and NIGHTSCOUT_DB_* from them, then runs the
+          # image's entrypoint. The root user being set is what makes the
+          # entrypoint start mongod with --auth, on every start.
+          command:
+            - /opt/env-from-files/env-from-files
+            - /run/secrets/env
+            - "--"
+            - docker-entrypoint.sh
           # The cluster is IPv6-only; --bind_ip_all alone listens on IPv4 only.
           # The cache size is set explicitly so WiredTiger sizes itself to this
           # dataset, not to a fraction of the memory limit.
@@ -40,10 +67,13 @@ spec:
           env:
             - name: MONGO_INITDB_DATABASE
               value: nightscout
-          envFrom:
-            - secretRef:
-                name: mongo-credentials
           volumeMounts:
+            - name: credentials
+              mountPath: /run/secrets/env
+              readOnly: true
+            - name: env-from-files
+              mountPath: /opt/env-from-files
+              readOnly: true
             - name: data
               mountPath: /data/db
             - name: init
@@ -68,6 +98,16 @@ spec:
             initialDelaySeconds: 60
             periodSeconds: 30
       volumes:
+        - name: credentials
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: mongo
+        - name: env-from-files
+          emptyDir:
+            medium: Memory
+            sizeLimit: 8Mi
         - name: data
           persistentVolumeClaim:
             claimName: mongo-data

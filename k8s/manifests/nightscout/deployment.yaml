@@ -18,6 +18,23 @@ spec:
         app: nightscout
         app.kubernetes.io/managed-by: ngarvey-homelab
     spec:
+      serviceAccountName: nightscout
+      automountServiceAccountToken: false
+      # Copies the static env-from-files binary (packages/env-from-files) into
+      # the env-from-files volume for the nightscout container's command.
+      initContainers:
+        - name: env-from-files
+          image: oci.garvey.sh/env-from-files:8bfld05lcsks4qkksbnjadzh7d64m83m
+          args: ["install", "/opt/env-from-files"]
+          volumeMounts:
+            - name: env-from-files
+              mountPath: /opt/env-from-files
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 32Mi
       containers:
         # TLS terminator for nightscout.home.garvey.sh. Caddy's static `tls`
         # directive loads the cert at startup only, so a
@@ -48,6 +65,16 @@ spec:
               memory: 128Mi
         - name: nightscout
           image: nightscout/cgm-remote-monitor:15.0.9
+          # MONGODB_URI and API_SECRET come from OpenBao as files
+          # (secret-provider-class.yaml); env-from-files sets them, then runs
+          # the image's entrypoint and command.
+          command:
+            - /opt/env-from-files/env-from-files
+            - /run/secrets/env
+            - "--"
+            - docker-entrypoint.sh
+            - node
+            - lib/server/server.js
           env:
             # Nightscout listens on $HOSTNAME, which Kubernetes sets to the pod
             # name (the pod IP). Loopback keeps 1337 reachable only by Caddy.
@@ -71,10 +98,13 @@ spec:
             # Nothing is readable without a token or API_SECRET.
             - name: AUTH_DEFAULT_ROLES
               value: denied
-          # MONGODB_URI and API_SECRET.
-          envFrom:
-            - secretRef:
-                name: nightscout-env
+          volumeMounts:
+            - name: env
+              mountPath: /run/secrets/env
+              readOnly: true
+            - name: env-from-files
+              mountPath: /opt/env-from-files
+              readOnly: true
           resources:
             requests:
               cpu: 50m
@@ -99,6 +129,16 @@ spec:
             periodSeconds: 30
             timeoutSeconds: 10
       volumes:
+        - name: env
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: nightscout
+        - name: env-from-files
+          emptyDir:
+            medium: Memory
+            sizeLimit: 8Mi
         - name: caddy-config
           configMap:
             name: nightscout-caddy

@@ -24,23 +24,20 @@ spec:
           effect: NoSchedule
       nodeSelector:
         node-role.kubernetes.io/control-plane: "true"
+      serviceAccountName: zot
+      automountServiceAccountToken: false
       containers:
         - name: zot
           image: ghcr.io/project-zot/zot-linux-amd64:v2.1.13
           args:
             - serve
             - /etc/zot/config.json
+          # The S3 key comes from OpenBao as an AWS shared credentials file
+          # (secret-provider-class.yaml). The storage config has no static
+          # keys, so the s3 driver's AWS SDK default chain reads this file.
           env:
-            - name: AWS_ACCESS_KEY_ID
-              valueFrom:
-                secretKeyRef:
-                  name: zot-s3
-                  key: AWS_ACCESS_KEY_ID
-            - name: AWS_SECRET_ACCESS_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: zot-s3
-                  key: AWS_SECRET_ACCESS_KEY
+            - name: AWS_SHARED_CREDENTIALS_FILE
+              value: /run/secrets/aws/credentials
           ports:
             # zot terminates TLS itself and serves directly on 443. The image
             # runs as root (User=0), so binding the privileged port needs no
@@ -63,6 +60,9 @@ spec:
             # htpasswd for http.auth (push/delete account).
             - name: zot-auth
               mountPath: /etc/zot/auth
+              readOnly: true
+            - name: zot-s3
+              mountPath: /run/secrets/aws
               readOnly: true
           livenessProbe:
             httpGet:
@@ -87,6 +87,16 @@ spec:
         - name: zot-tls
           secret:
             secretName: zot-tls
+        # From OpenBao (secret-provider-class.yaml).
         - name: zot-auth
-          secret:
-            secretName: zot-auth
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: zot-auth
+        - name: zot-s3
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: zot-s3

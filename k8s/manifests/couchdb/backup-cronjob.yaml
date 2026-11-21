@@ -21,19 +21,21 @@ spec:
             app: couchdb-backup
             app.kubernetes.io/managed-by: ngarvey-homelab
         spec:
+          serviceAccountName: couchdb-backup
+          automountServiceAccountToken: false
           restartPolicy: OnFailure
           containers:
             - name: backup
               image: alpine:3.24
-              envFrom:
-                - secretRef:
-                    name: couchdb-admin
-                - secretRef:
-                    name: couchdb-backup-b2
               command: ["/bin/sh", "-c"]
               args:
                 - |
                   set -eu
+                  # The admin user, B2 key and restic settings, one file per
+                  # variable (secret-provider-class.yaml).
+                  for f in /run/secrets/env/*; do
+                    export "${f##*/}=$(cat "$f")"
+                  done
                   apk add --no-cache curl jq restic >/dev/null
                   mkdir -p /dump
                   echo "[dump] Listing databases..."
@@ -56,6 +58,9 @@ spec:
               volumeMounts:
                 - name: dump
                   mountPath: /dump
+                - name: secrets
+                  mountPath: /run/secrets/env
+                  readOnly: true
               resources:
                 requests:
                   cpu: "50m"
@@ -67,3 +72,9 @@ spec:
             # off-cluster to B2, then the pod exits and emptyDir is reclaimed.
             - name: dump
               emptyDir: {}
+            - name: secrets
+              csi:
+                driver: secrets-store.csi.k8s.io
+                readOnly: true
+                volumeAttributes:
+                  secretProviderClass: couchdb-backup

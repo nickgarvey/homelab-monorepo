@@ -40,7 +40,9 @@ server:
   credentialStorage:
     # Without this the chart renders the key-encryption key from `lookup` and
     # `randBytes`, so every offline render (and every apply) gets a new key.
-    # The Secret comes from manifests/openshell/secret.yaml (sops).
+    # No such Secret exists: kustomization.yaml removes the variable that
+    # reads it and sets it from OpenBao instead
+    # (manifests/openshell/secret-provider-class.yaml).
     existingSecret: openshell-kek
   # CLI users log in through Authelia (manifests/authelia, client
   # openshell-cli). This is what authenticates people; programs log in with a

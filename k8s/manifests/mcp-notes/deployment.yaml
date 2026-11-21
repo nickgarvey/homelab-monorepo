@@ -26,6 +26,8 @@ spec:
         app: obsidian-sync-mcp
         app.kubernetes.io/managed-by: ngarvey-homelab
     spec:
+      serviceAccountName: obsidian-sync-mcp
+      automountServiceAccountToken: false
       securityContext:
         runAsUser: 1000
         runAsGroup: 1000
@@ -33,9 +35,38 @@ spec:
         fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
+      # Copies the static env-from-files binary (packages/env-from-files) into
+      # the env-from-files volume, since the server image has no shell.
+      initContainers:
+        - name: env-from-files
+          image: oci.garvey.sh/env-from-files:8bfld05lcsks4qkksbnjadzh7d64m83m
+          args: ["install", "/opt/env-from-files"]
+          volumeMounts:
+            - name: env-from-files
+              mountPath: /opt/env-from-files
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 32Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
       containers:
         - name: obsidian-sync-mcp
           image: oci.garvey.sh/obsidian-sync-mcp:0.10.0-v6bjc2n
+          # The CouchDB login comes from OpenBao as files
+          # (secret-provider-class.yaml); env-from-files sets COUCHDB_USER and
+          # COUCHDB_PASSWORD from them, then runs the image's Cmd (its store
+          # path changes with the image tag).
+          command:
+            - /opt/env-from-files/env-from-files
+            - /run/secrets/env
+            - "--"
+            - /nix/store/v6bjc2nyv3g7yb5bb8y3qs57iyqmbd75-obsidian-sync-mcp-0.10.0/bin/obsidian-sync-mcp
           ports:
             - containerPort: 8787
               name: http
@@ -69,9 +100,6 @@ spec:
               value: /data
             - name: DISPLAY_TIMEZONE
               value: America/Los_Angeles
-          envFrom:
-            - secretRef:
-                name: mcp-notes-couchdb
           # Not /ready: fastmcp answers 503 there until an MCP session exists.
           readinessProbe:
             httpGet:
@@ -100,7 +128,23 @@ spec:
               mountPath: /data
             - name: tmp
               mountPath: /tmp
+            - name: couchdb
+              mountPath: /run/secrets/env
+              readOnly: true
+            - name: env-from-files
+              mountPath: /opt/env-from-files
+              readOnly: true
       volumes:
+        - name: couchdb
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: obsidian-sync-mcp
+        - name: env-from-files
+          emptyDir:
+            medium: Memory
+            sizeLimit: 8Mi
         - name: data
           persistentVolumeClaim:
             claimName: obsidian-sync-mcp-data

@@ -17,6 +17,8 @@ spec:
       labels:
         app.kubernetes.io/name: mimir
     spec:
+      serviceAccountName: mimir
+      automountServiceAccountToken: false
       tolerations:
         - key: node-role.kubernetes.io/control-plane
           operator: Exists
@@ -44,16 +46,9 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
-            - name: GATEWAY_S3_ACCESS_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: mimir-storage
-                  key: GATEWAY_S3_ACCESS_KEY
-            - name: GATEWAY_S3_SECRET_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: mimir-storage
-                  key: GATEWAY_S3_SECRET_KEY
+            # The S3 key, from OpenBao (secret-provider-class.yaml).
+            - name: AWS_SHARED_CREDENTIALS_FILE
+              value: /run/secrets/s3/credentials
           ports:
             - name: http
               containerPort: 8080
@@ -82,10 +77,19 @@ spec:
               mountPath: /etc/mimir
             - name: data
               mountPath: /data
+            - name: s3
+              mountPath: /run/secrets/s3
+              readOnly: true
       volumes:
         - name: config
           configMap:
             name: mimir-config
+        - name: s3
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: mimir-s3
   volumeClaimTemplates:
     - metadata:
         name: data

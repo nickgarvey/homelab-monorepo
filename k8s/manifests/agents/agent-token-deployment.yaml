@@ -24,6 +24,7 @@ spec:
         app.kubernetes.io/managed-by: ngarvey-homelab
     spec:
       serviceAccountName: agent-token
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         # The image runs as 1000; this lets it read the keys (0440).
@@ -58,8 +59,6 @@ spec:
             - name: tls
               mountPath: /etc/agent-token/tls
               readOnly: true
-            # Mounted whole (no subPath), so rotated keys reach the files,
-            # which are read for every grant.
             - name: credentials
               mountPath: /etc/agent-token/credentials
               readOnly: true
@@ -98,24 +97,24 @@ spec:
           secret:
             secretName: agent-token-tls
             defaultMode: 0440
-        # The credential Secrets in one directory (agent-token-configmap.yaml).
+        # From OpenBao (agent-token-secret-provider-class.yaml): the
+        # credential files in one directory (agent-token-configmap.yaml), the
+        # habit-data grants' JWT key and the habit-admin-api grant's.
         - name: credentials
-          projected:
-            defaultMode: 0440
-            sources:
-              - secret:
-                  name: agent-token-credentials
-              - secret:
-                  name: agent-token-litellm
-              - secret:
-                  name: agent-token-litellm-habit-admin
-        # The habit-data grant's JWT key (agent-token-habit-data-secret.yaml).
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: agent-token-credentials
         - name: habit-data
-          secret:
-            secretName: agent-token-habit-data
-            defaultMode: 0440
-        # The habit-admin-api grant's JWT key (habit-admin-secret.yaml).
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: agent-token-habit-data
         - name: admin-api
-          secret:
-            secretName: agents-admin-api
-            defaultMode: 0440
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: agent-token-admin-api

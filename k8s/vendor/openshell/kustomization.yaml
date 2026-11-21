@@ -83,6 +83,65 @@ patches:
                 env:
                   - name: OPENSHELL_ENABLE_MTLS_AUTH
                     value: "true"
+  # The key-encryption key comes from OpenBao
+  # (manifests/openshell/secret-provider-class.yaml), not the openshell-kek
+  # Secret the chart's existingSecret names. The gateway reads it only from the
+  # variable gateway.toml names (its key_encryption_key_path mode wants raw
+  # bytes in a file it can chmod), so env-from-files (packages/env-from-files),
+  # copied in by an init container, sets it from the mounted file and execs
+  # the image's entrypoint with the chart's args.
+  - target:
+      kind: Deployment
+      name: openshell
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: openshell
+      spec:
+        template:
+          spec:
+            initContainers:
+              - name: env-from-files
+                image: oci.garvey.sh/env-from-files:8bfld05lcsks4qkksbnjadzh7d64m83m
+                args: ["install", "/opt/env-from-files"]
+                volumeMounts:
+                  - name: env-from-files
+                    mountPath: /opt/env-from-files
+                resources:
+                  requests:
+                    cpu: 10m
+                    memory: 16Mi
+                  limits:
+                    memory: 32Mi
+            containers:
+              - name: openshell-gateway
+                command:
+                  - /opt/env-from-files/env-from-files
+                  - /run/secrets/env
+                  - "--"
+                  - /usr/local/bin/openshell-gateway
+                env:
+                  - name: OPENSHELL_GATEWAY_CREDENTIAL_KEY_ENCRYPTION_KEY
+                    $patch: delete
+                volumeMounts:
+                  - name: credentials
+                    mountPath: /run/secrets/env
+                    readOnly: true
+                  - name: env-from-files
+                    mountPath: /opt/env-from-files
+                    readOnly: true
+            volumes:
+              - name: credentials
+                csi:
+                  driver: secrets-store.csi.k8s.io
+                  readOnly: true
+                  volumeAttributes:
+                    secretProviderClass: openshell
+              - name: env-from-files
+                emptyDir:
+                  medium: Memory
+                  sizeLimit: 8Mi
   # The gateway's server certificate and the chart's client certificate (the
   # CLI's and the supervisors' transport certificate) come from the cluster-ca
   # ClusterIssuer, not the chart's own CA, whose 90-day lifetime is shorter

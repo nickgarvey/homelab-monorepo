@@ -29,7 +29,7 @@ its own challenge names.
 ### 1. cert-manager — the default for cluster services
 
 cert-manager's `letsencrypt-rfc2136-prod` issuer holds the `acme-cert-manager` TSIG key
-(`k8s/manifests/cert-manager/secret.yaml`) and reaches Knot through NAT64. Knot allows it
+(`k8s/secrets/k8s/cert-manager/rfc2136-tsig.yaml`) and reaches Knot through NAT64. Knot allows it
 TXT at `_acme-challenge.<name>.home.garvey.sh` for each `home` name in `certManagerAcme`,
 and at `<name>.challenge.home.garvey.sh` for each `garveySh` name. A `garvey.sh` name has
 a one-time Cloudflare CNAME from `_acme-challenge.<name>.garvey.sh` to that second form,

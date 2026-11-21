@@ -1,7 +1,7 @@
 # Alertmanager's routing config, in plain text: it holds no secrets. The SMTP
-# password and the Cronitor ping URL come from the alertmanager-credentials
-# Secret (secret.yaml), which the Alertmanager CR mounts under
-# /etc/alertmanager/secrets/.
+# password and the Cronitor ping URL come from OpenBao
+# (secret-provider-class.yaml), which the Alertmanager CR mounts under
+# /etc/alertmanager/secrets/alertmanager-credentials/.
 apiVersion: v1
 kind: Secret
 metadata:

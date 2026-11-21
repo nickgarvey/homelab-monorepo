@@ -12,7 +12,6 @@ on top of a component (issuers, StorageClasses, policies) live in
 |---|---|---|---|
 | cilium | chart, `cilium/chart.env` | 1.19.8 | `kubectl apply -f vendor/cilium/cilium.yaml` |
 | cert-manager | chart, `cert-manager/chart.env` | v1.20.1 | `kubectl apply -f vendor/cert-manager/cert-manager.yaml` |
-| sops-secrets-operator | chart, `sops-secrets-operator/chart.env` | 0.23.1 (operator 0.17.1) | `kubectl apply -n sops-secrets-operator -f vendor/sops-secrets-operator/sops-secrets-operator.yaml` |
 | longhorn | chart, `longhorn/chart.env`, plus `kustomization.yaml` (no support-bundle cluster-admin binding) | 1.11.1 | `kubectl apply -k vendor/longhorn` |
 | ceph-csi-rbd | chart, `ceph-csi-rbd/chart.env` | 3.17.1 | `kubectl apply -f vendor/ceph-csi-rbd/ceph-csi-rbd.yaml` |
 | openshell | chart, `openshell/chart.env` (OCI), plus `kustomization.yaml` (IPv6 listeners); see `manifests/openshell/README.md` | 0.1.3 chart; our images with NVIDIA/OpenShell#3702 and the supervisor template-labels patch (`packages/openshell`), pinned in `values.yaml` | `kubectl apply -k vendor/openshell` |
@@ -25,11 +24,11 @@ on top of a component (issuers, StorageClasses, policies) live in
 | plugin-barman-cloud | static, `plugin-barman-cloud/source.env` (`manifest.yaml` of cloudnative-pg/plugin-barman-cloud) | v0.15.1 | `kubectl apply --server-side -f vendor/plugin-barman-cloud/manifest.yaml` |
 | spire-crds | chart, `spire-crds/chart.env`; the CRDs of spire, apply first | 0.6.1 | `kubectl apply -f vendor/spire-crds/spire-crds.yaml` |
 | spire | chart, `spire/chart.env`; see `manifests/spire/README.md` | 0.31.0 (SPIRE 1.16.0) | `kubectl apply -f vendor/spire/spire.yaml` |
+| secrets-store-csi-driver | chart, `secrets-store-csi-driver/chart.env`; mounts pod secrets from OpenBao (docs/openbao.md, "Pod secrets") | 1.6.2 | `kubectl apply -f vendor/secrets-store-csi-driver/secrets-store-csi-driver.yaml` |
+| openbao-csi-provider | chart (`openbao`, CSI provider only), `openbao-csi-provider/chart.env`, plus `kustomization.yaml` (no token-minting ClusterRole); apply after the driver | 0.30.8 (provider 2.0.3) | `kubectl apply -k vendor/openbao-csi-provider` |
 
 Notes on the apply commands:
 
-- **sops-secrets-operator** needs `-n`: the chart leaves `metadata.namespace` off
-  its ServiceAccount and Deployment, and without `-n` they land in `default`.
 - **prometheus-operator** and **cloudnative-pg** need `--server-side`: their CRDs
   are too big for the `last-applied-configuration` annotation that client-side
   apply writes.

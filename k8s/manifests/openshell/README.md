@@ -27,8 +27,9 @@ are gone.
 
 ```sh
 kubectl apply -f vendor/agent-sandbox/sandbox.yaml
+bash scripts/push-secrets.sh secrets/openbao/openshell/openshell.yaml
 kubectl apply -k vendor/openshell                       # namespace, PKI, gateway
-kubectl apply -f manifests/openshell/secret.yaml
+kubectl apply -f manifests/openshell/secret-provider-class.yaml
 kubectl apply -f manifests/openshell/jwt-keys-job.yaml
 kubectl apply -f manifests/openshell/service-lb.yaml     # LAN address for the CLI
 kubectl -n openshell wait --for=condition=Complete job/openshell-jwt-keys
@@ -37,14 +38,28 @@ kubectl -n openshell rollout status deployment/openshell
 ```
 
 The gateway pod waits (CreateContainerConfigError, ContainerCreating) until
-`openshell-kek`, `openshell-jwt-keys` and the cert-manager Secrets exist, then
-starts on its own. The gateway's certificates come from the cluster-ca
-ClusterIssuer, so `manifests/cert-manager/cluster-policies.yaml` must be applied
-first (policies `cluster-openshell-gateway` and `cluster-openshell-client`).
+`openshell-jwt-keys`, the cert-manager Secrets and the SecretProviderClass
+exist, then starts on its own. The gateway's certificates come from the
+cluster-ca ClusterIssuer, so `manifests/cert-manager/cluster-policies.yaml`
+must be applied first (policies `cluster-openshell-gateway` and `cluster-openshell-client`).
 
-These Secrets exist nowhere else, or are costly to lose; nothing should delete
-them: `openshell-kek` (in sops here; losing it makes stored provider
-credentials unreadable) and `openshell-jwt-keys`.
+These exist nowhere else, or are costly to lose; nothing should delete
+them: the key-encryption key ("Key-encryption key") and `openshell-jwt-keys`.
+
+## Key-encryption key
+
+The gateway encrypts every stored provider credential with a key-encryption
+key: base64 of 32 random bytes, `secrets.kek` in
+`secrets/openbao/openshell/openshell.yaml`, the only copy besides OpenBao.
+Each stored credential records the key's ID (`sha256:` of the 32 bytes); with
+a different key every one of them is unreadable. The gateway reads it only
+from `OPENSHELL_GATEWAY_CREDENTIAL_KEY_ENCRYPTION_KEY`, so
+`vendor/openshell/kustomization.yaml` mounts it from OpenBao
+(`secret-provider-class.yaml`, role `openshell.openshell`: the chart's
+ServiceAccount, which keeps its token for the Kubernetes API) and runs the
+gateway under env-from-files (docs/openbao.md, "Pod secrets"). Its role must
+exist (`pki/openbao/tofu.sh apply`) and the value be pushed before the gateway
+starts.
 
 ## Certificates
 

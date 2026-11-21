@@ -25,6 +25,7 @@ spec:
         app.kubernetes.io/managed-by: ngarvey-homelab
     spec:
       serviceAccountName: synapse
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -130,17 +131,19 @@ spec:
           emptyDir: {}
         - name: caddy-state
           emptyDir: {}
+        # From OpenBao (secret-provider-class.yaml).
         - name: secrets
-          secret:
-            secretName: synapse
-            defaultMode: 0440
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: synapse
         - name: mas
-          secret:
-            secretName: mas
-            items:
-              - key: synapse-secret
-                path: synapse-secret
-            defaultMode: 0440
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: synapse-mas
         - name: tls
           secret:
             secretName: synapse-tls

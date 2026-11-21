@@ -18,17 +18,21 @@ spec:
         app: couchdb-restic-init
         app.kubernetes.io/managed-by: ngarvey-homelab
     spec:
+      serviceAccountName: couchdb-backup
+      automountServiceAccountToken: false
       restartPolicy: Never
       containers:
         - name: init
           image: alpine:3.24
-          envFrom:
-            - secretRef:
-                name: couchdb-backup-b2
           command: ["/bin/sh", "-c"]
           args:
             - |
               set -eu
+              # couchdb-backup's secrets (the B2 key and restic settings among
+              # them), one file per variable (secret-provider-class.yaml).
+              for f in /run/secrets/env/*; do
+                export "${f##*/}=$(cat "$f")"
+              done
               apk add --no-cache restic >/dev/null
               # `restic cat config` fails both when there is no repository and when
               # it cannot be opened (wrong password, B2 unreachable), and init
@@ -45,3 +49,14 @@ spec:
               memory: "64Mi"
             limits:
               memory: "256Mi"
+          volumeMounts:
+            - name: secrets
+              mountPath: /run/secrets/env
+              readOnly: true
+      volumes:
+        - name: secrets
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: couchdb-backup

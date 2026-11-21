@@ -2,7 +2,7 @@
 # collection, full control under the Duet deck and read-only elsewhere.
 #
 # It syncs its own copy of the collection with anki-sync-server as the user in
-# the mcp-anki-sync secret, before every read and after every write, and never
+# OpenBao (secret-provider-class.yaml), before every read and after every write, and never
 # does a full sync except one download into an empty volume at first start.
 # If its pre-sync audit finds a change outside Duet, it stops syncing and
 # writes state/quarantine.json; /healthz then returns 503 and every tool call
@@ -34,6 +34,8 @@ spec:
         app: mcp-anki
         app.kubernetes.io/managed-by: ngarvey-homelab
     spec:
+      serviceAccountName: mcp-anki
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -87,8 +89,12 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: mcp-anki-data
+        # From OpenBao (secret-provider-class.yaml).
         - name: credential
-          secret:
-            secretName: mcp-anki-sync
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: mcp-anki
         - name: tmp
           emptyDir: {}

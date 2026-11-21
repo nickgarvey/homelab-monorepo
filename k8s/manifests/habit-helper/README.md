@@ -90,12 +90,12 @@ Postgres.
 migrations). Configured by environment only (`PGRST_DB_CONFIG=false`).
 
 - **Authentication.** No anonymous role: a request without a valid JWT is
-  answered 401. A JWT must be HS256 with the key in `secret.yaml`
-  (`postgrest-jwt`), unexpired, and if it has an `aud`, `habit-data`. PostgREST
+  answered 401. A JWT must be HS256 with the key in `secrets/openbao/habit-helper/postgrest.yaml`
+  (`jwt-secret`, mounted from OpenBao by `secret-provider-class.yaml`), unexpired, and if it has an `aud`, `habit-data`. PostgREST
   runs the request as the JWT's `role`; `habit_helper_api` can only become
   `habit_agent` or `habit_admin`, so any other role is refused. The only other
   holder of the key is agent-token
-  (`manifests/agents/agent-token-habit-data-secret.yaml`), whose `habit-data`
+  (`postgrest-jwt-key` in `secrets/openbao/agents/agent-token.yaml`), whose `habit-data`
   grant gives `spiffe://home.garvey.sh/agent/habit-helper/*` a token with
   `role: habit_agent`, and whose `habit-admin` grant gives the Matrix bridge
   (`spiffe://home.garvey.sh/ns/agents/sa/agents-matrix`) one with
@@ -118,11 +118,13 @@ migrations). Configured by environment only (`PGRST_DB_CONFIG=false`).
 
 ### Rotating the JWT key
 
-Write the same new value into both `secret.yaml` here (`jwt-secret`) and
-`manifests/agents/agent-token-habit-data-secret.yaml` (`postgrest-jwt-key`)
-with `sops`, at least 32 characters, apply both, then
-`kubectl -n habit-helper rollout restart deploy/postgrest` (PostgREST reads the
-key at start; agent-token reads it for every grant). Tokens signed with the
+Write the same new value into both `secrets/openbao/habit-helper/postgrest.yaml` (`jwt-secret`) and
+`secrets/openbao/agents/agent-token.yaml` (`postgrest-jwt-key` under
+`habit-data`) with `sops`, at least 32 characters, push both
+(`bash scripts/push-secrets.sh secrets/openbao/habit-helper/postgrest.yaml secrets/openbao/agents/agent-token.yaml`),
+then `kubectl -n habit-helper rollout restart deploy/postgrest` and
+`kubectl -n agents rollout restart deploy/agent-token` (both read the key from
+a volume mounted at pod start). Tokens signed with the
 old key fail until their 5 minutes are up.
 
 ## Image
@@ -140,15 +142,18 @@ nixpkgs bump changes it; set it in `deployment.yaml` (the `&image` anchor).
 ## Apply (from `k8s/`)
 
 `manifests/cert-manager/cluster-policies.yaml` first, then the roles and the
-database, then this namespace:
+database, then this namespace. The JWT key must be in OpenBao before the pod
+starts (it fails to mount otherwise), and PostgREST's OpenBao role must exist
+(`pki/openbao/tofu.sh apply`, which creates one per file in `secrets/openbao/`):
 
 ```sh
 kubectl apply -f manifests/cert-manager/cluster-policies.yaml
 kubectl apply -f manifests/postgres/cluster.yaml -f manifests/postgres/databases.yaml
 kubectl -n postgres get cluster postgres -o jsonpath='{.status.managedRolesStatus.byStatus.reconciled}'   # lists the four roles
 kubectl apply -f manifests/habit-helper/namespace.yaml
-kubectl apply -f manifests/habit-helper/secret.yaml
+bash scripts/push-secrets.sh secrets/openbao/habit-helper/postgrest.yaml
 kubectl apply -f manifests/habit-helper/service-account.yaml
+kubectl apply -f manifests/habit-helper/secret-provider-class.yaml
 kubectl apply -f manifests/habit-helper/postgres-client-certificates.yaml
 kubectl -n habit-helper wait --for=condition=Ready certificate --all
 kubectl apply -f manifests/habit-helper/deployment.yaml
@@ -156,6 +161,6 @@ kubectl apply -f manifests/habit-helper/service.yaml
 kubectl -n habit-helper rollout status deploy/postgrest
 ```
 
-agent-token's side: `manifests/agents/agent-token-habit-data-secret.yaml`,
+agent-token's side: `secrets/openbao/agents/agent-token.yaml`,
 then the ConfigMap and Deployment, as in "Apply" in `manifests/agents/README.md`.
 The profile and provider are published by `nix run .#agents-apply`.

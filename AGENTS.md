@@ -37,7 +37,7 @@ so `nix run .#deploy` and `nix build .#<pkg>` work from anywhere in the repo.
   (skyforge's vendor kernel must match its userspace). Ceph is held to one major
   by an assertion in `modules/services/ceph.nix`.
 
-Paths in comments and docs ("k8s/manifests/zot/secret.yaml",
+Paths in comments and docs ("k8s/manifests/zot/deployment.yaml",
 "modules/networking/dns.nix") are relative to the repo root unless they start
 with `./`.
 

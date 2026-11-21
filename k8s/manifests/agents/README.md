@@ -175,16 +175,19 @@ bytes, as for PostgREST's `jwt-secret`. The service refuses to start if two
 grants for one audience could match the same ID, if a grant covers
 `/agent/untyped/` (sandboxes created without an agent type, whose creator chose
 no identity), or if a file is missing or invalid. Credential files are read
-again for every grant, so a rotated key goes out as soon as the Secret volume
-updates. Both Secrets with credential files are mounted in that one
-directory: `agent-token-credentials` (`secret.yaml`), which holds only two
-throwaway test values, `test-static-token` and `test-jwt-key`, that no grant
-uses, and `agent-token-litellm` (`litellm-keys-secret.yaml`), the litellm
-virtual keys.
-The `habit-data` grant (Habit Helper's PostgREST,
-`manifests/habit-helper/README.md`) has its key in a Secret of its own,
-`agent-token-habit-data` from `agent-token-habit-data-secret.yaml`, mounted at
-`/etc/agent-token/habit-data`; PostgREST holds the same key.
+again for every grant, but they come from OpenBao at mount time
+(`agent-token-secret-provider-class.yaml`, docs/openbao.md "Pod secrets"), so a
+changed value goes out after `kubectl -n agents rollout restart
+deploy/agent-token`. The values are in `secrets/openbao/agents/agent-token.yaml`. The
+credential files are in one directory, `/etc/agent-token/credentials`: the
+litellm virtual keys (`litellm` and `litellm-habit-admin`) and two throwaway
+test values, `test-static-token` and `test-jwt-key` (`credentials`), that no
+grant uses.
+The `habit-data` and `habit-admin` grants (Habit Helper's PostgREST,
+`manifests/habit-helper/README.md`) sign with `postgrest-jwt-key`, mounted at
+`/etc/agent-token/habit-data`; PostgREST holds the same key. The
+`habit-admin-api` grant signs with `jwt-key`, mounted at
+`/etc/agent-token/admin-api`; the bridge holds the same key.
 
 The committed grants:
 
@@ -255,13 +258,15 @@ skopeo copy docker-archive:result docker://oci.garvey.sh/agent-token:$(nix eval 
   spiffe-helper) has `write` in the namespace `agents`, for Update-with-Start
   on the `ChatSession`s, cancelling `Wakeup`s, and polling the
   `agents-matrix` task queue, where it posts wake-up replies.
-- **Synapse**: the appservice registration (`matrix-secret.yaml`) holds the
+- **Synapse**: the appservice registration (`registration` in
+  `secrets/openbao/agents/agents-matrix.yaml`, mounted from OpenBao by
+  `matrix-secret-provider-class.yaml`) holds the
   `as_token` the bridge acts as the agents' users with, and the `hs_token`
   Synapse sends with each transaction to
   `http://agents-matrix.agents.svc.cluster.local:8009` (`matrix-service.yaml`).
   That hop is plaintext inside the cluster; the bridge refuses a transaction
   without the `hs_token`. Synapse has the same registration as
-  `appservice-agents.yaml` in `manifests/matrix/secret.yaml`.
+  `appservice-agents.yaml` in `secrets/openbao/matrix/synapse.yaml`.
 - **Habit Helper's PostgREST**, for the admin API: spiffe-helper also keeps
   a JWT-SVID for agent-token (`/run/spiffe/jwt_svid.token`), which the
   `habit-admin` grant (`agent-token-configmap.yaml`) trades for a 5-minute
@@ -269,8 +274,9 @@ skopeo copy docker-archive:result docker://oci.garvey.sh/agent-token:$(nix eval 
 - **The admin API**, which the habit-admin agent's sandboxes reach at
   `http://agents-matrix.agents.svc.cluster.local:8010/run`
   (`agents/habit-admin/admin-api-profile.yaml`): the bridge refuses a request
-  without a JWT signed with the `jwt-key` of `agents-admin-api`
-  (`habit-admin-secret.yaml`, which agent-token mounts too) and carrying
+  without a JWT signed with `jwt-key`
+  (`admin-api` in `secrets/openbao/agents/agents-matrix.yaml`; agent-token's
+  `secrets/openbao/agents/agent-token.yaml` holds the same value) and carrying
   `aud: habit-admin`.
 
 Its state is in Matrix and Temporal only, so it can be restarted at any time;
@@ -281,22 +287,18 @@ To change the registration (a new agent type's user, new tokens), change both
 copies the same way, decrypting only into a pipe:
 
 ```sh
-sops -d manifests/agents/matrix-secret.yaml \
-  | yq '.spec.secretTemplates[0].stringData["registration.yaml"]'   # check the current namespace
-# Edit with `sops manifests/agents/matrix-secret.yaml`, then copy it into Synapse's:
-REG=$(sops -d manifests/agents/matrix-secret.yaml | yq '.spec.secretTemplates[0].stringData["registration.yaml"]')
-sops -d manifests/matrix/secret.yaml \
-  | REG="$REG" yq '.spec.secretTemplates[0].stringData["appservice-agents.yaml"] = strenv(REG)' \
-  | sops -e --filename-override manifests/matrix/secret.yaml --input-type yaml --output-type yaml /dev/stdin \
-  > manifests/matrix/secret.yaml.new && mv manifests/matrix/secret.yaml.new manifests/matrix/secret.yaml
+sops -d secrets/openbao/agents/agents-matrix.yaml \
+  | yq '.secrets.registration["registration.yaml"]'   # check the current namespace
+# Edit with `sops secrets/openbao/agents/agents-matrix.yaml`, then copy it into Synapse's:
+REG=$(sops -d secrets/openbao/agents/agents-matrix.yaml | yq '.secrets.registration["registration.yaml"]')
+printf '%s\n' "$REG" | jq -Rs . \
+  | sops set --value-stdin secrets/openbao/matrix/synapse.yaml '["secrets"]["secrets"]["appservice-agents.yaml"]'
 unset REG
-kubectl apply -f manifests/agents/matrix-secret.yaml -f manifests/matrix/secret.yaml
+bash scripts/push-secrets.sh secrets/openbao/agents/agents-matrix.yaml \
+  secrets/openbao/matrix/synapse.yaml
 kubectl -n matrix rollout restart deploy/synapse
 kubectl -n agents rollout restart deploy/agents-matrix
 ```
-
-(`sops --set` on a key of `manifests/matrix/secret.yaml` mangles the comment
-above the list item, so the pipe it is.)
 
 ## Apply (from `k8s/`)
 
@@ -337,16 +339,16 @@ kubectl apply -f manifests/agents/pod-monitor.yaml -f manifests/prometheus/rules
 The token service, with `manifests/cert-manager/cluster-policies.yaml` applied
 and its image pushed. Sandboxes reach it only once their supervisor runs our
 image with the root (pki/root.crt) ("Upgrading" in `manifests/openshell/README.md`
-for pushing and pinning it):
+for pushing and pinning it). Its keys must be in OpenBao before the pod
+starts (it fails to mount otherwise), and its OpenBao role must exist
+(`pki/openbao/tofu.sh apply`, which creates one per file in `secrets/openbao/`):
 
 ```sh
-kubectl apply -f manifests/agents/secret.yaml -f manifests/agents/litellm-keys-secret.yaml
-kubectl -n agents get secret agent-token-credentials agent-token-litellm   # wait for both
+bash scripts/push-secrets.sh secrets/openbao/agents/agent-token.yaml
 kubectl apply -f manifests/agents/agent-token-service-account.yaml
+kubectl apply -f manifests/agents/agent-token-secret-provider-class.yaml
 kubectl apply -f manifests/agents/agent-token-certificate.yaml
 kubectl -n agents wait --for=condition=Ready certificate/agent-token-tls
-kubectl apply -f manifests/agents/agent-token-habit-data-secret.yaml
-kubectl apply -f manifests/agents/habit-admin-secret.yaml
 kubectl apply -f manifests/agents/agent-token-configmap.yaml
 kubectl apply -f manifests/agents/agent-token-deployment.yaml
 kubectl apply -f manifests/agents/agent-token-service.yaml
@@ -357,18 +359,17 @@ The RGW role takes effect when joor is deployed. `postgres-1` is whichever
 instance is primary (`kubectl -n postgres get cluster postgres`).
 
 The Matrix bridge, with Synapse and MAS running (`manifests/matrix`) and the
-agents-worker image that has `agents-matrix` pushed:
+agents-worker image that has `agents-matrix` pushed, and its OpenBao role
+(`pki/openbao/tofu.sh apply`):
 
 ```sh
 kubectl apply -f manifests/temporal/authz-configmap.yaml
 kubectl -n temporal rollout restart deploy/temporal
-kubectl apply -f manifests/matrix/secret.yaml -f manifests/matrix/configmap.yaml
+kubectl apply -f manifests/matrix/configmap.yaml
 kubectl -n matrix rollout restart deploy/synapse
-kubectl apply -f manifests/agents/matrix-secret.yaml
-kubectl -n agents get secret agents-matrix        # wait for it
-kubectl apply -f manifests/agents/habit-admin-secret.yaml
-kubectl -n agents get secret agents-admin-api     # wait for it
+bash scripts/push-secrets.sh secrets/openbao/agents/agents-matrix.yaml
 kubectl apply -f manifests/agents/matrix-service-account.yaml \
+  -f manifests/agents/matrix-secret-provider-class.yaml \
   -f manifests/agents/matrix-spiffe-helper-configmap.yaml \
   -f manifests/agents/matrix-service.yaml -f manifests/agents/matrix-deployment.yaml
 kubectl -n agents rollout status deploy/agents-matrix

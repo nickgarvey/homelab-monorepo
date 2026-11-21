@@ -15,7 +15,7 @@ kubectl apply -f manifests/cert-manager/
 
 - `cluster-issuer-rfc2136-staging.yaml` / `-prod.yaml` — Let's Encrypt issuers that write
   DNS-01 challenges straight into Knot (RFC2136) with the `acme-cert-manager` TSIG key in
-  `secret.yaml`. Every Let's Encrypt Certificate uses `letsencrypt-rfc2136-prod`. Knot lets
+  `secrets/k8s/cert-manager/rfc2136-tsig.yaml`. Every Let's Encrypt Certificate uses `letsencrypt-rfc2136-prod`. Knot lets
   the key write TXT only at the names in `certManagerAcme` (`modules/networking/dns.nix`);
   the `cert-manager-acme-names` flake check keeps that list equal to the Certificates.
 - Adding a name: `ONBOARDING.md`.
@@ -51,5 +51,5 @@ identity by adding a policy (and its name to the ClusterRole there).
 
 Apply order: `vendor/cert-manager/cert-manager.yaml`, then
 `kubectl apply -f vendor/cert-manager-approver-policy/cert-manager-approver-policy.yaml`,
-then `kubectl apply -f manifests/cert-manager/` (the CA secret needs the
-sops-secrets-operator).
+then `bash scripts/push-secrets.sh secrets/k8s/cert-manager/rfc2136-tsig.yaml` (the TSIG
+key) and `kubectl apply -f manifests/cert-manager/`.

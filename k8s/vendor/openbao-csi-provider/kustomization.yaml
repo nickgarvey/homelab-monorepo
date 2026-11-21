@@ -1,0 +1,26 @@
+# The openbao-csi-provider render (scripts/render-chart.sh, never edited)
+# without its ClusterRole to create tokens for any ServiceAccount.
+# Apply with: kubectl apply -k vendor/openbao-csi-provider
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - openbao-csi-provider.yaml
+patches:
+  # The provider uses that role only when a mount request carries no token,
+  # to request one itself. The CSIDriver's tokenRequests (vendor/
+  # secrets-store-csi-driver/values.yaml) always supplies one, minted by the
+  # kubelet for the pod being mounted. With the role, the provider on any
+  # node could mint an `openbao` token for every ServiceAccount in the
+  # cluster and read every workload's secrets.
+  - patch: |-
+      $patch: delete
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRoleBinding
+      metadata:
+        name: secrets-store-csi-openbao-csi-provider-clusterrolebinding
+  - patch: |-
+      $patch: delete
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      metadata:
+        name: openbao-csi-provider-clusterrole

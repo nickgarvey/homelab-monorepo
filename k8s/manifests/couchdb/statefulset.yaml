@@ -17,6 +17,23 @@ spec:
         app: couchdb
         app.kubernetes.io/managed-by: ngarvey-homelab
     spec:
+      serviceAccountName: couchdb
+      automountServiceAccountToken: false
+      # Copies the static env-from-files binary (packages/env-from-files) into
+      # the env-from-files volume for the couchdb container's command.
+      initContainers:
+        - name: env-from-files
+          image: oci.garvey.sh/env-from-files:8bfld05lcsks4qkksbnjadzh7d64m83m
+          args: ["install", "/opt/env-from-files"]
+          volumeMounts:
+            - name: env-from-files
+              mountPath: /opt/env-from-files
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 32Mi
       # The official couchdb image runs as uid/gid 5984.
       securityContext:
         fsGroup: 5984
@@ -51,13 +68,28 @@ spec:
               memory: 128Mi
         - name: couchdb
           image: couchdb:3.4
+          # The admin user comes from OpenBao as files
+          # (secret-provider-class.yaml); env-from-files sets COUCHDB_USER and
+          # COUCHDB_PASSWORD from them, then runs the image's entrypoint and
+          # command.
+          command:
+            - /opt/env-from-files/env-from-files
+            - /run/secrets/env
+            - "--"
+            - tini
+            - "--"
+            - /docker-entrypoint.sh
+            - /opt/couchdb/bin/couchdb
           ports:
             - containerPort: 5984
               name: http
-          envFrom:
-            - secretRef:
-                name: couchdb-admin
           volumeMounts:
+            - name: admin
+              mountPath: /run/secrets/env
+              readOnly: true
+            - name: env-from-files
+              mountPath: /opt/env-from-files
+              readOnly: true
             - name: data
               mountPath: /opt/couchdb/data
             - name: config
@@ -83,6 +115,16 @@ spec:
             initialDelaySeconds: 60
             periodSeconds: 30
       volumes:
+        - name: admin
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: couchdb
+        - name: env-from-files
+          emptyDir:
+            medium: Memory
+            sizeLimit: 8Mi
         - name: caddy-config
           configMap:
             name: couchdb-caddy

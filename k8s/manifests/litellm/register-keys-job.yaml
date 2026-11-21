@@ -1,7 +1,8 @@
-# Registers the virtual keys in the litellm-virtual-keys Secret (secret.yaml)
-# and in habit-admin-key-secret.yaml with litellm, each with its alias and the
-# only models it may call. agent-token hands the same values out
-# (manifests/agents/litellm-keys-secret.yaml, habit-admin-secret.yaml). A key
+# Registers the virtual keys with litellm, each with its alias and the only
+# models it may call. The keys and the master key come from OpenBao
+# (secrets/openbao/litellm/litellm-register-keys.yaml, mounted by
+# secret-provider-class.yaml); agent-token hands the same virtual keys out
+# (secrets/openbao/agents/agent-token.yaml). A key
 # litellm already has gets its model list set again; nothing else changes, so
 # the Job is safe to re-run, and it is how a lost database gets the keys back.
 # It waits for litellm to be ready, so it can go in with a litellm rollout. The
@@ -25,19 +26,16 @@ spec:
         app.kubernetes.io/managed-by: ngarvey-homelab
     spec:
       restartPolicy: Never
+      serviceAccountName: litellm-register-keys
+      automountServiceAccountToken: false
       containers:
         - name: register
           image: alpine:3.24
-          env:
-            - name: MASTER_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: litellm
-                  key: master-key
           command: ["/bin/sh", "-c"]
           args:
             - |
               set -eu
+              MASTER_KEY=$(cat /keys/master-key)
               apk add --no-cache curl >/dev/null
               api=http://litellm.litellm.svc.cluster.local:4000
               for i in $(seq 120); do
@@ -82,12 +80,11 @@ spec:
             limits:
               memory: 64Mi
       volumes:
-        # One file per key: litellm-virtual-keys (secret.yaml) and
-        # habit-admin-key-secret.yaml.
+        # One file per virtual key, named by its alias, and master-key, from
+        # OpenBao (secret-provider-class.yaml).
         - name: keys
-          projected:
-            sources:
-              - secret:
-                  name: litellm-virtual-keys
-              - secret:
-                  name: litellm-virtual-key-habit-admin
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: litellm-register-keys

@@ -45,7 +45,7 @@ let
   #                         (modules/services/openbao.nix). IPv6-only, via NAT64.
   #   acme-cert-manager  -> cert-manager in k3s, for the Let's Encrypt names in
   #                         certManagerAcme (modules/networking/dns.nix); the
-  #                         same secret is k8s/manifests/cert-manager/secret.yaml.
+  #                         same secret is k8s/secrets/k8s/cert-manager/rfc2136-tsig.yaml.
   #                         Pods reach Knot through NAT64.
   #   acme-pki-dns-<host> -> lego on each host in pkiDnsHosts, for its own
   #                         <host>.home.garvey.sh from OpenBao's hosts CA

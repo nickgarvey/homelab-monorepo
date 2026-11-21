@@ -29,6 +29,8 @@ spec:
       # Authelia reads every AUTHELIA_* variable as config; the Service links
       # for authelia-https (AUTHELIA_HTTPS_PORT, ...) would be flagged as unknown.
       enableServiceLinks: false
+      serviceAccountName: authelia
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
@@ -118,9 +120,13 @@ spec:
         - name: config
           configMap:
             name: authelia-config
+        # From OpenBao (secret-provider-class.yaml).
         - name: secrets
-          secret:
-            secretName: authelia-secrets
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: authelia
         - name: data
           persistentVolumeClaim:
             claimName: authelia-data

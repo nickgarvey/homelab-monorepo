@@ -20,6 +20,8 @@ spec:
         app: metrics-collector
         app.kubernetes.io/managed-by: ngarvey-homelab
     spec:
+      serviceAccountName: metrics-collector
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
@@ -69,7 +71,11 @@ spec:
             name: metrics-collector
         - name: data
           emptyDir: {}
-        # Read through Vector's directory secret backend (configmap.yaml).
+        # From OpenBao (secret-provider-class.yaml), read through Vector's
+        # directory secret backend (configmap.yaml).
         - name: credentials
-          secret:
-            secretName: metrics-collector-credentials
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: metrics-collector

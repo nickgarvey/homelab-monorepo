@@ -87,7 +87,7 @@ spec:
             - --temporal-key=/run/spiffe/svid_key.pem
             - --temporal-ca=/run/spiffe/bundle.pem
             - --ceph-conf=/etc/ceph-backup/ceph/ceph.conf
-            - --ceph-keyring=/etc/ceph-backup/ceph/keyring
+            - --ceph-keyring=/etc/ceph-backup/ceph-keyring/keyring
             - --rgw-endpoint=https://rgw.home.garvey.sh
             - --rgw-admin-dir=/etc/ceph-backup/rgw-admin
             - --kopia-dir=/etc/ceph-backup/kopia
@@ -119,6 +119,9 @@ spec:
               readOnly: true
             - name: ceph
               mountPath: /etc/ceph-backup/ceph
+              readOnly: true
+            - name: ceph-keyring
+              mountPath: /etc/ceph-backup/ceph-keyring
               readOnly: true
             - name: rgw-admin
               mountPath: /etc/ceph-backup/rgw-admin
@@ -165,25 +168,34 @@ spec:
           emptyDir:
             medium: Memory
         - name: ceph
-          projected:
+          configMap:
+            name: ceph-backup-ceph-conf
             defaultMode: 0400
-            sources:
-              - configMap:
-                  name: ceph-backup-ceph-conf
-              - secret:
-                  name: ceph-backup-ceph
+        # The credentials, from OpenBao (secret-provider-class.yaml).
+        - name: ceph-keyring
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: ceph-backup-ceph
         - name: rgw-admin
-          secret:
-            secretName: ceph-backup-rgw-admin
-            defaultMode: 0400
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: ceph-backup-rgw-admin
         - name: kopia
-          secret:
-            secretName: ceph-backup-kopia
-            defaultMode: 0400
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: ceph-backup-kopia
         - name: storj
-          secret:
-            secretName: ceph-backup-storj
-            defaultMode: 0400
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: ceph-backup-storj
         - name: run
           emptyDir:
             medium: Memory

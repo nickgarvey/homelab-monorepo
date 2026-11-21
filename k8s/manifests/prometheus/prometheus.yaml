@@ -89,12 +89,6 @@ spec:
     - name: caddy
       image: caddy:2-alpine
       command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile"]
-      env:
-        - name: REMOTE_WRITE_BCRYPT
-          valueFrom:
-            secretKeyRef:
-              name: prometheus-remote-write
-              key: bcrypt
       ports:
         - containerPort: 80
           name: http-redirect
@@ -107,6 +101,9 @@ spec:
           mountPath: /data
         - name: certs
           mountPath: /certs
+          readOnly: true
+        - name: remote-write
+          mountPath: /run/secrets/remote-write
           readOnly: true
       resources:
         requests:
@@ -123,6 +120,13 @@ spec:
     - name: certs
       secret:
         secretName: prometheus-tls
+    # The remote-write bcrypt hash, from OpenBao (secret-provider-class.yaml).
+    - name: remote-write
+      csi:
+        driver: secrets-store.csi.k8s.io
+        readOnly: true
+        volumeAttributes:
+          secretProviderClass: prometheus
 
   # AlertManager configuration
   alerting:

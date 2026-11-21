@@ -10,11 +10,33 @@ spec:
   version: v0.31.1
   externalUrl: http://alertmanager.prometheus.k8s.home.garvey.sh:9093
 
+  # Its own ServiceAccount, with no token: nothing in the pod calls the
+  # Kubernetes API.
+  serviceAccountName: alertmanager
+  automountServiceAccountToken: false
+
   # Routing config (alertmanager-config.yaml); the credentials it reads by file
-  # path are mounted at /etc/alertmanager/secrets/alertmanager-credentials/.
+  # path come from OpenBao (secret-provider-class.yaml), mounted at
+  # /etc/alertmanager/secrets/alertmanager-credentials/ in Alertmanager and the
+  # config-reloader.
   configSecret: alertmanager-config
-  secrets:
-    - alertmanager-credentials
+  volumes:
+    - name: alertmanager-credentials
+      csi:
+        driver: secrets-store.csi.k8s.io
+        readOnly: true
+        volumeAttributes:
+          secretProviderClass: alertmanager
+  volumeMounts:
+    - name: alertmanager-credentials
+      mountPath: /etc/alertmanager/secrets/alertmanager-credentials
+      readOnly: true
+  containers:
+    - name: config-reloader
+      volumeMounts:
+        - name: alertmanager-credentials
+          mountPath: /etc/alertmanager/secrets/alertmanager-credentials
+          readOnly: true
 
   # Runs on the k3s servers (fus/ro/dah) so alerting keeps working when the
   # storage nodes and Ceph are down.

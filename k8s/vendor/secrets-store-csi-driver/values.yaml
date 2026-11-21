@@ -1,0 +1,23 @@
+# Values for the secrets-store-csi-driver chart (version in chart.env), rendered
+# by scripts/render-chart.sh; see vendor/README.md.
+#
+# Pods read their secrets from OpenBao as files on a CSI volume
+# (docs/openbao.md, "Pod secrets"). Nothing here may write a k8s Secret: the
+# point is that pod secrets stay out of etcd.
+
+# Off: the sync feature copies mounted secrets into k8s Secrets.
+syncSecret:
+  enabled: false
+
+# At mount time the kubelet mints a short-lived token for the pod's
+# ServiceAccount with this audience and hands it to the provider, which logs
+# in to OpenBao's auth/k8s with it. The pod itself needs no token.
+tokenRequests:
+  - audience: openbao
+
+linux:
+  # Pods that mount secrets may run on the control-plane nodes too.
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule

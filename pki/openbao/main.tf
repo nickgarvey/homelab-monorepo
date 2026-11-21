@@ -410,3 +410,52 @@ resource "vault_pki_secret_backend_config_issuers" "pki_cluster" {
   default                       = vault_pki_secret_backend_intermediate_set_signed.pki_cluster.imported_issuers[0]
   default_follows_latest_issuer = false
 }
+
+# Pod secrets (docs/openbao.md, "Pod secrets"). Values live in sops files at
+# k8s/secrets/openbao/<namespace>/<serviceAccount>.yaml, pushed here by
+# k8s/scripts/push-secrets.sh, and reach pods through the Secrets Store CSI
+# driver, which logs in to auth/k8s with a token for the pod's ServiceAccount
+# (audience openbao). Each file names its namespace and serviceAccount in
+# plain text; every pair gets a role and a policy that reads only
+# kv/k8s/<namespace>/<serviceAccount>/*.
+resource "vault_mount" "kv" {
+  path        = "kv"
+  type        = "kv"
+  options     = { version = "2" }
+  description = "Static secrets: pod secrets under k8s/<namespace>/<serviceAccount>/"
+}
+
+locals {
+  k8s_secret_files = [
+    for f in fileset("${path.module}/../../k8s/secrets/openbao", "*/*.yaml") :
+    yamldecode(file("${path.module}/../../k8s/secrets/openbao/${f}"))
+  ]
+  # One entry per namespace/serviceAccount pair, however many files name it.
+  k8s_secret_readers = {
+    for k, v in { for d in local.k8s_secret_files : "${d.namespace}.${d.serviceAccount}" => d... } :
+    k => { namespace = v[0].namespace, serviceAccount = v[0].serviceAccount }
+  }
+}
+
+resource "vault_policy" "k8s_secrets" {
+  for_each = local.k8s_secret_readers
+  name     = "k8s-${each.value.namespace}-${each.value.serviceAccount}"
+  policy   = <<-EOT
+    path "kv/data/k8s/${each.value.namespace}/${each.value.serviceAccount}/*" {
+      capabilities = ["read"]
+    }
+  EOT
+}
+
+resource "vault_jwt_auth_backend_role" "k8s_secrets" {
+  for_each        = local.k8s_secret_readers
+  backend         = vault_jwt_auth_backend.k8s.path
+  role_name       = each.key
+  role_type       = "jwt"
+  user_claim      = "sub"
+  bound_subject   = "system:serviceaccount:${each.value.namespace}:${each.value.serviceAccount}"
+  bound_audiences = ["openbao"]
+  token_policies  = [vault_policy.k8s_secrets[each.key].name]
+  token_ttl       = 600
+  token_max_ttl   = 600
+}

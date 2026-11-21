@@ -130,13 +130,14 @@ What a rebuild uses, besides the backups:
 | RGW TLS | issued on each node by ACME (`ceph.nix`) |
 | RGW roles | `modules/services/rgw-roles.nix` recreates them on deploy |
 | RGW account, its users, OIDC provider | the `rgw-metadata` snapshot |
-| ceph-csi key | created by 05; its copy is `k8s/manifests/ceph-csi-rbd/secret.yaml` |
+| ceph-csi key | created by 05; its copy is `k8s/secrets/k8s/ceph-csi-rbd/csi-rbd-secret.yaml` |
 | admin keyring | recreated by 01; recovery copy in `secrets/ceph-admin.yaml` |
 
 1. Rebuild Ceph from `docs/ceph-bootstrap/` (01 to 06), on wiped mon/OSD
    state. 01 reuses the fsid in `modules/services/ceph.nix`, so ceph-csi's
    `clusterID` stays valid. 05 creates a new `client.kubernetes` key: re-encrypt
-   it into `k8s/manifests/ceph-csi-rbd/secret.yaml` and apply it. The
+   it into `k8s/secrets/k8s/ceph-csi-rbd/csi-rbd-secret.yaml` and push it
+   (`bash scripts/push-secrets.sh secrets/k8s/ceph-csi-rbd/csi-rbd-secret.yaml` from `k8s/`). The
    admin key is new too; update `secrets/ceph-admin.yaml`.
 2. RGW identities, before any bucket. Restore the newest rgw-metadata snapshot
    to `/var/tmp/rgw-metadata` and put back, in this order (the account keeps
@@ -189,8 +190,8 @@ retries forever. Go through rclone, which lists the bucket and filters itself.
 Either way works:
 
 - **Storj's S3 gateway** (IPv6 works; what the worker uses), with the S3 keys
-  in the SopsSecret `k8s/manifests/ceph-backup/secret.yaml`
-  (`ceph-backup-storj`).
+  in `k8s/secrets/openbao/ceph-backup/ceph-backup-worker.yaml`
+  (`secrets.storj`, served from OpenBao).
 - **rclone's native storj backend**, with `storj_access_grant` from
   `secrets/ceph-backup.yaml`. It talks to Storj's storage nodes, whose
   addresses are IPv4 literals NAT64 cannot translate: dual-stack machines only
@@ -214,7 +215,7 @@ then restore as from Garage. For the gateway instead, set
 `RCLONE_CONFIG_STORJ_TYPE=s3 RCLONE_CONFIG_STORJ_PROVIDER=Storj
 RCLONE_CONFIG_STORJ_ENDPOINT=https://gateway.storjshare.io` and
 `RCLONE_CONFIG_STORJ_ACCESS_KEY_ID` / `RCLONE_CONFIG_STORJ_SECRET_ACCESS_KEY`
-from the SopsSecret. Kopia starts rclone for every command, so keep these in
+from `k8s/secrets/openbao/ceph-backup/ceph-backup-worker.yaml` (`sops decrypt`). Kopia starts rclone for every command, so keep these in
 the environment for all of them, not only `connect`.
 
 Checked 2026-10-12: an anki-data snapshot restored from the copy on talos, through

@@ -38,6 +38,14 @@ downloaded by `scripts/fetch-vendor.sh`. Never hand-edit either; local changes g
 in `values.yaml` or a kustomization. `vendor/README.md` lists each component,
 its source and version, and its apply command.
 
+# Secrets
+
+The sops files that `scripts/push-secrets.sh` pushes live under `secrets/`, not
+`manifests/`, so `kubectl apply -f manifests/<app>/` never applies them:
+`secrets/openbao/<namespace>/<serviceAccount>.yaml` for pod secrets served from
+OpenBao, and `secrets/k8s/<namespace>/<name>.yaml` for `v1/Secret` manifests that
+controllers read (`docs/openbao.md`, "Pod secrets").
+
 ---
 
 # Network Configuration
@@ -147,7 +155,7 @@ router — but do not treat an address as secret because it is "internal".
 Registry: `oci.garvey.sh` (TLS, Let's Encrypt prod cert)
 
 Pulls are anonymous. Push and delete need the `ngarvey` account: zot holds its
-bcrypt hash (`manifests/zot/secret.yaml`), and the workstations (talos,
+bcrypt hash (`secrets/openbao/zot/zot.yaml`), and the workstations (talos,
 dovahkiin) get the credential as `~/.config/containers/auth.json` from
 `modules/desktop/zot-push.nix`, so skopeo and podman push there
 with no login step. docker and crane don't read that file.

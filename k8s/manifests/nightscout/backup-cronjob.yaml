@@ -26,7 +26,12 @@ spec:
             app: nightscout-backup
             app.kubernetes.io/managed-by: ngarvey-homelab
         spec:
+          serviceAccountName: nightscout-backup
+          automountServiceAccountToken: false
           restartPolicy: Never
+          # Each container exports one variable per file of its OpenBao volume
+          # (secret-provider-class.yaml): MONGODB_URI for the dump, the Garage
+          # key for the upload.
           initContainers:
             # Same image as the server, so mongodump matches it. The URI is the
             # nightscout user's, so the dump is that database only.
@@ -36,18 +41,18 @@ spec:
               args:
                 - |
                   set -eu
+                  for f in /run/secrets/env/*; do
+                    export "${f##*/}=$(cat "$f")"
+                  done
                   mongodump --quiet --uri="$MONGODB_URI" --gzip \
                     --archive=/dump/nightscout.archive.gz
                   ls -l /dump
-              env:
-                - name: MONGODB_URI
-                  valueFrom:
-                    secretKeyRef:
-                      name: nightscout-env
-                      key: MONGODB_URI
               volumeMounts:
                 - name: dump
                   mountPath: /dump
+                - name: mongodb
+                  mountPath: /run/secrets/env
+                  readOnly: true
               resources:
                 requests:
                   cpu: 50m
@@ -61,6 +66,9 @@ spec:
               args:
                 - |
                   set -eu
+                  for f in /run/secrets/env/*; do
+                    export "${f##*/}=$(cat "$f")"
+                  done
                   name="nightscout-$(date -u +%Y-%m-%dT%H%M%SZ).archive.gz"
                   rclone copyto /dump/nightscout.archive.gz "garage:nightscout-backup/daily/$name"
                   rclone delete --min-age 30d garage:nightscout-backup/daily
@@ -76,12 +84,12 @@ spec:
                   value: garage
                 - name: RCLONE_CONFIG_GARAGE_FORCE_PATH_STYLE
                   value: "true"
-              envFrom:
-                - secretRef:
-                    name: nightscout-backup-s3
               volumeMounts:
                 - name: dump
                   mountPath: /dump
+                  readOnly: true
+                - name: s3
+                  mountPath: /run/secrets/env
                   readOnly: true
               resources:
                 requests:
@@ -92,3 +100,15 @@ spec:
           volumes:
             - name: dump
               emptyDir: {}
+            - name: mongodb
+              csi:
+                driver: secrets-store.csi.k8s.io
+                readOnly: true
+                volumeAttributes:
+                  secretProviderClass: nightscout-backup-dump
+            - name: s3
+              csi:
+                driver: secrets-store.csi.k8s.io
+                readOnly: true
+                volumeAttributes:
+                  secretProviderClass: nightscout-backup-upload

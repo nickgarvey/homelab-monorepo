@@ -61,13 +61,17 @@ Each piece reaches only what backing up needs:
 | What | Credential |
 |---|---|
 | Temporal | X.509-SVID `spiffe://home.garvey.sh/ns/ceph-backup/sa/ceph-backup-worker`, `write` in namespace `ceph-backup` (`manifests/temporal/authz-configmap.yaml`) |
-| RBD, CephFS, pool and filesystem maps, RGW OIDC objects | cephx `client.ceph-backup` (`docs/ceph-bootstrap/07-ceph-backup-worker.sh` sets its caps), Secret `ceph-backup-ceph` |
+| RBD, CephFS, pool and filesystem maps, RGW OIDC objects | cephx `client.ceph-backup` (`docs/ceph-bootstrap/07-ceph-backup-worker.sh` sets its caps), `secrets.ceph` |
 | RGW bucket contents | STS role `ceph-backup` (`modules/services/rgw-roles.nix`): read and list on every bucket of the `k8s` account, for the JWT-SVID (audience `rgw.home.garvey.sh`) |
-| RGW metadata | admin-ops user `ceph-backup-admin-ops`, read caps only, Secret `ceph-backup-rgw-admin` |
-| Kopia repository | Garage key `ceph-backup-worker-key` (bucket `ceph-backup`) and the repository password, Secret `ceph-backup-kopia` |
-| Off-site copy | Storj hosted S3 gateway keys for bucket `ceph-backup`, Secret `ceph-backup-storj` |
+| RGW metadata | admin-ops user `ceph-backup-admin-ops`, read caps only, `secrets.rgw-admin` |
+| Kopia repository | Garage key `ceph-backup-worker-key` (bucket `ceph-backup`) and the repository password, `secrets.kopia` |
+| Off-site copy | Storj hosted S3 gateway keys for bucket `ceph-backup`, `secrets.storj` |
 
-The four Secrets come from the SopsSecret in `secret.yaml`. The Kubernetes
+The `secrets.*` are in `secrets/openbao/ceph-backup/ceph-backup-worker.yaml`,
+served from OpenBao and mounted through `secret-provider-class.yaml`, one
+directory each (docs/openbao.md, "Pod secrets"); the keyring is at
+`/etc/ceph-backup/ceph-keyring/keyring`, beside `ceph.conf` from the ConfigMap.
+A pod mounts them at start, so it starts only while OpenBao answers. The Kubernetes
 token is mounted only for the Lease `ceph-backup-metrics` (`rbac.yaml`), which
 picks the pod that computes the backup metrics.
 
@@ -77,7 +81,8 @@ and is refused CreateBucket and PutObject (403).
 ## Apply (from `k8s/`)
 
 The cephx key and admin-ops user (`docs/ceph-bootstrap/07-ceph-backup-worker.sh`)
-and the RGW role (deploy joor) first. Then Temporal:
+and the RGW role (deploy joor) first, and the worker's OpenBao role
+(`pki/openbao/tofu.sh apply`). Then Temporal:
 
 ```sh
 kubectl apply -f manifests/temporal/authz-configmap.yaml
@@ -92,7 +97,8 @@ and this directory:
 kubectl apply -f manifests/ceph-backup/namespace.yaml
 kubectl apply -f manifests/ceph-backup/service-account.yaml
 kubectl apply -f manifests/ceph-backup/rbac.yaml
-kubectl apply -f manifests/ceph-backup/secret.yaml
+bash scripts/push-secrets.sh secrets/openbao/ceph-backup/ceph-backup-worker.yaml
+kubectl apply -f manifests/ceph-backup/secret-provider-class.yaml
 kubectl apply -f manifests/ceph-backup/ceph-configmap.yaml
 kubectl apply -f manifests/ceph-backup/spiffe-helper-configmap.yaml
 kubectl apply -f manifests/ceph-backup/daemonset.yaml

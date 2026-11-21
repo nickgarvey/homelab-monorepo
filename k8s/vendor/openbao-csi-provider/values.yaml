@@ -1,0 +1,31 @@
+# Values for the openbao chart (version in chart.env), rendered by
+# scripts/render-chart.sh; see vendor/README.md. Only the CSI provider: OpenBao
+# itself runs on fus/ro/dah as a NixOS service (modules/services/openbao.nix).
+
+# The chart is made for running OpenBao; here it renders only the provider,
+# with no server ServiceAccount or auth-delegator binding.
+server:
+  enabled: false
+  authDelegator:
+    enabled: false
+  serviceAccount:
+    create: false
+injector:
+  enabled: false
+csi:
+  enabled: true
+  # The provider logs in with the token the kubelet minted for the pod
+  # (secrets-store-csi-driver's tokenRequests, audience openbao) at auth/k8s,
+  # the JWT auth mount that checks k3s ServiceAccount tokens, and talks to
+  # OpenBao directly, verifying its Let's Encrypt certificate.
+  extraArgs:
+    - -openbao-addr=https://openbao.home.garvey.sh:8200
+    - -openbao-mount=k8s
+  # The chart's caching bao agent sidecar is not needed for a handful of pods.
+  agent:
+    enabled: false
+  pod:
+    tolerations:
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule

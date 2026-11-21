@@ -10,7 +10,7 @@ data:
     # Single-binary (monolithic) Mimir for long-term Prometheus storage.
     # Started with -target=all (distributor, ingester, querier, query-frontend,
     # query-scheduler, store-gateway, compactor, ruler -- NOT alertmanager).
-    # Credentials are injected from env via -config.expand-env=true.
+    # ${POD_IP} is expanded from env via -config.expand-env=true.
 
     multitenancy_enabled: false
 
@@ -22,14 +22,15 @@ data:
     # Shared object storage on the Storj S3 gateway (HTTPS, IPv6-reachable).
     # A single bucket "mimir" is shared by blocks + ruler via distinct
     # storage_prefix values (Mimir refuses the same bucket+prefix for both).
+    # No static keys here: the objstore S3 client then falls back to its
+    # credential chain, which reads the AWS shared credentials file named by
+    # AWS_SHARED_CREDENTIALS_FILE (statefulset.yaml, from OpenBao).
     common:
       storage:
         backend: s3
         s3:
           endpoint: storj-gateway.home.garvey.sh:7777
           region: us-east-1
-          access_key_id: ${GATEWAY_S3_ACCESS_KEY}
-          secret_access_key: ${GATEWAY_S3_SECRET_KEY}
           bucket_name: mimir
 
     blocks_storage:

@@ -19,7 +19,22 @@ spec:
         app.kubernetes.io/managed-by: ngarvey-homelab
     spec:
       serviceAccountName: temporal-ui
+      automountServiceAccountToken: false
       initContainers:
+        # Copies the static env-from-files binary (packages/env-from-files)
+        # into the env-from-files volume for the ui container's command.
+        - name: env-from-files
+          image: oci.garvey.sh/env-from-files:8bfld05lcsks4qkksbnjadzh7d64m83m
+          args: ["install", "/opt/env-from-files"]
+          volumeMounts:
+            - name: env-from-files
+              mountPath: /opt/env-from-files
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 32Mi
         # Native sidecar: starts before the UI and keeps its SVID files fresh.
         - name: spiffe-helper
           image: ghcr.io/spiffe/spiffe-helper:0.11.0
@@ -88,6 +103,16 @@ spec:
           # Pin exact version; the UI speaks a versioned gRPC API to the server.
           image: temporalio/ui:v2.38.3
           imagePullPolicy: IfNotPresent
+          # The OIDC client secret comes from OpenBao as a file
+          # (secret-provider-class.yaml); the UI's config template reads it
+          # only from the environment, so env-from-files sets
+          # TEMPORAL_AUTH_CLIENT_SECRET from it, then runs the image's
+          # entrypoint (./start-ui-server.sh in /home/ui-server).
+          command:
+            - /opt/env-from-files/env-from-files
+            - /run/secrets/env
+            - "--"
+            - /home/ui-server/start-ui-server.sh
           env:
             - name: TEMPORAL_ADDRESS
               value: temporal-frontend.temporal.svc:7233
@@ -112,11 +137,6 @@ spec:
               value: https://auth.home.garvey.sh
             - name: TEMPORAL_AUTH_CLIENT_ID
               value: temporal-ui
-            - name: TEMPORAL_AUTH_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: temporal-ui-oidc
-                  key: client-secret
             - name: TEMPORAL_AUTH_CALLBACK_URL
               value: https://temporal.garvey.sh/auth/sso/callback
             - name: TEMPORAL_AUTH_SCOPES
@@ -135,6 +155,12 @@ spec:
           volumeMounts:
             - name: svid
               mountPath: /run/spiffe
+              readOnly: true
+            - name: oidc
+              mountPath: /run/secrets/env
+              readOnly: true
+            - name: env-from-files
+              mountPath: /opt/env-from-files
               readOnly: true
           ports:
             - containerPort: 8080
@@ -163,6 +189,16 @@ spec:
         - name: svid
           emptyDir:
             medium: Memory
+        - name: oidc
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: temporal-ui
+        - name: env-from-files
+          emptyDir:
+            medium: Memory
+            sizeLimit: 8Mi
         - name: caddy-config
           configMap:
             name: temporal-caddy

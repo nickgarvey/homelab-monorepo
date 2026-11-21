@@ -80,6 +80,92 @@ with `login.sh` unless `VAULT_TOKEN` is set, and runs OpenTofu. The state
 a fresh checkout. OpenBao stores PEM keys without their trailing newline, hence the
 `trimspace` in `main.tf`.
 
+## Pod secrets
+
+Pods in k3s read their secrets from the KV v2 mount `kv`, at
+`kv/k8s/<namespace>/<serviceAccount>/<name>`. Each workload may read only its own
+`kv/k8s/<namespace>/<serviceAccount>/*`, through a role `<namespace>.<serviceAccount>`
+on `auth/k8s` (`bound_subject` `system:serviceaccount:<namespace>:<serviceAccount>`,
+audience `openbao`, 10-minute tokens) and a policy `k8s-<namespace>-<serviceAccount>`.
+
+The values live in sops files at `k8s/secrets/openbao/<namespace>/<serviceAccount>.yaml`,
+encrypted to the user and the paper key only (`.sops.yaml`). They are kept out of
+`k8s/manifests/` so that `kubectl apply -f manifests/<app>/` never sees them:
+
+```yaml
+namespace: anki                # plain: OpenTofu reads these two
+serviceAccount: anki-sync-server
+secrets:                       # encrypted
+  credentials:                 # -> kv/k8s/anki/anki-sync-server/credentials
+    SYNC_USER1: ...
+```
+
+`main.tf` makes a role and a policy for every namespace/serviceAccount pair it finds
+in those files, so a new app needs a `tofu.sh apply` before its pods can log in.
+
+Pods get them as files from the Secrets Store CSI driver and `openbao-csi-provider`
+(`k8s/vendor/secrets-store-csi-driver`, `k8s/vendor/openbao-csi-provider`). At
+mount time the kubelet mints a token for the pod's ServiceAccount with audience
+`openbao` (the `CSIDriver`'s `tokenRequests`), and the provider logs in with it at
+`auth/k8s`, so the pod needs no token of its own (`automountServiceAccountToken:
+false` works). Nothing is written to a k8s Secret: the driver's secret sync is off,
+and the provider has no RBAC to mint tokens itself (`kustomization.yaml`).
+
+```yaml
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata: {name: anki, namespace: anki}
+spec:
+  provider: openbao
+  parameters:
+    roleName: anki.anki-sync-server
+    objects: |
+      - objectName: SYNC_USER1                       # file name in the volume
+        secretPath: kv/data/k8s/anki/anki-sync-server/credentials
+        secretKey: SYNC_USER1
+---
+# in the pod spec
+volumes:
+  - name: secrets
+    csi:
+      driver: secrets-store.csi.k8s.io
+      readOnly: true
+      volumeAttributes: {secretProviderClass: anki}
+```
+
+A pod whose ServiceAccount does not match the role fails to mount (`invalid subject
+(sub) claim` in its events). OpenBao's audit log records every login and read.
+
+An app that reads secrets only from environment variables gets them through
+`env-from-files` (`packages/env-from-files`, image `oci.garvey.sh/env-from-files`):
+an init container copies the static binary into an `emptyDir`
+(`args: ["install", "/opt/env-from-files"]`), and the app's command becomes
+`/opt/env-from-files/env-from-files /run/secrets/env -- <entrypoint>`, which sets one
+variable per file (named after the `objectName`) and then execs the app. It needs no
+shell in the image. `k8s/manifests/anki` is the example; `k8s/manifests/metrics-collector`
+reads the files directly.
+
+Secrets that controllers read as k8s Secrets (ceph-csi, cert-manager, Longhorn,
+CloudNativePG, csi-smb) stay k8s Secrets: they are sops-encrypted `v1/Secret` manifests at
+`k8s/secrets/k8s/<namespace>/<name>.yaml`, also encrypted to the user and the paper
+key only. Secrets nothing in the cluster reads, only used by hand (the Jellyfin SSO
+plugin's client secret), are plain sops files in `k8s/secrets/manual/`, which
+`push-secrets.sh` leaves alone.
+
+To add or change a secret, edit the file with `sops`, then from `k8s/`:
+
+```sh
+nix shell nixpkgs#sops nixpkgs#openssl nixpkgs#curl nixpkgs#jq nixpkgs#kubectl \
+  -c bash scripts/push-secrets.sh [--dry-run] [<file>...]   # no file: all of them
+```
+
+It writes an entry from `secrets/openbao/` to KV only when its value differs (so KV
+versions record real changes), applies the files in `secrets/k8s/` with `kubectl apply --server-side` (client-side
+apply would copy the values into the last-applied-configuration annotation), and
+prints paths, never values. KV entries a file no longer names are reported, not
+deleted. A new namespace/serviceAccount also needs `tofu.sh apply` for its role,
+and pods read changed values only after a restart (`kubectl rollout restart`).
+
 ## Recovery without talos
 
 1. **Offline key:** log in as above with the offline admin key.

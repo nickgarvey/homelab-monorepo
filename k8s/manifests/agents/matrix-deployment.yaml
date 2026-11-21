@@ -3,10 +3,10 @@
 # each message from an allowed user as a turn of the room's conversation and
 # posts the reply as the agent. It also serves the admin API on port 8010
 # (matrix-service.yaml) to the habit-admin agent's sandboxes, checking their
-# tokens with the key in habit-admin-secret.yaml; the API reaches Habit
-# Helper's PostgREST with a token from agent-token. It logs in
+# tokens with the key in secrets/openbao/agents/agents-matrix.yaml; the API reaches
+# Habit Helper's PostgREST with a token from agent-token. It logs in
 # to Temporal with its SVID (spiffe-helper) and acts on Synapse with the
-# registration's as_token (matrix-secret.yaml). It keeps no state, so one replica can be replaced at
+# registration's as_token (secrets/openbao/agents/agents-matrix.yaml). It keeps no state, so one replica can be replaced at
 # any time; a reply still running when it goes is not posted.
 apiVersion: apps/v1
 kind: Deployment
@@ -30,6 +30,7 @@ spec:
         app.kubernetes.io/managed-by: ngarvey-homelab
     spec:
       serviceAccountName: agents-matrix
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -136,15 +137,21 @@ spec:
         - name: svid
           emptyDir:
             medium: Memory
+        # From OpenBao (matrix-secret-provider-class.yaml).
         - name: registration
-          secret:
-            secretName: agents-matrix
-            defaultMode: 0440
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: agents-matrix-registration
         - name: desired-state
           configMap:
             name: agents-desired-state
-        # The admin API's token key (habit-admin-secret.yaml).
+        # The admin API's token key, from OpenBao
+        # (matrix-secret-provider-class.yaml).
         - name: admin-api
-          secret:
-            secretName: agents-admin-api
-            defaultMode: 0440
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: agents-matrix-admin-api

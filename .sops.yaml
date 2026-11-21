@@ -16,7 +16,6 @@ keys:
   - &frul age1a230t20a7jl2ce5w9axz8caajgk2s4w6ry2cvy52l2vupf685ujsrhfsdl
   # skyforge: also from its ssh_host_ed25519_key.pub via ssh-to-age.
   - &skyforge age1z95v2ahfghn34yg2yl8k3crtqtraqg6mnvvzq2audzr96savcqxs5p7yfe
-  - &k8s-operator age1zd28lg5yxxc06jnyym92fep4gdwwnk3k3my9l247pvskjdj8mv4sa89d08
   # paper: an offline age key written on paper, kept out of every machine. Second
   # recipient on secrets that must survive losing *ngarvey (pki/).
   - &paper age15entx47hsg4rgdmrasv9yxthgk3tdk0r3jfjxha7nz2gsskqfaksw5xv42
@@ -124,7 +123,7 @@ creation_rules:
       - *ro
       - *dah
   # Knot's copy of cert-manager's TSIG key (modules/containers/knot-auth.nix);
-  # cert-manager's copy is k8s/manifests/cert-manager/secret.yaml.
+  # cert-manager's copy is k8s/secrets/k8s/cert-manager/rfc2136-tsig.yaml.
   - path_regex: secrets/cert-manager-acme\.yaml$
     key_groups:
     - age:
@@ -255,7 +254,7 @@ creation_rules:
   # zot-push: the `auth` value (base64 of user:password) for pushing to the
   # oci.garvey.sh registry. `workstation` lets talos and dovahkiin install it as
   # ~/.config/containers/auth.json (modules/desktop/zot-push.nix). zot itself
-  # holds only the bcrypt hash (k8s/manifests/zot/secret.yaml).
+  # holds only the bcrypt hash (k8s/secrets/openbao/zot/zot.yaml).
   - path_regex: secrets/zot-push.yaml
     key_groups:
     - age:
@@ -264,7 +263,7 @@ creation_rules:
   # prometheus-remote-write: the password the Vector agent on every host sends
   # to prometheus.home.garvey.sh/api/v1/write (modules/services/vector-agent.nix).
   # Prometheus's Caddy sidecar holds only the bcrypt hash
-  # (k8s/manifests/prometheus/secret.yaml).
+  # (k8s/secrets/openbao/prometheus/prometheus.yaml).
   - path_regex: secrets/prometheus-remote-write.yaml
     key_groups:
     - age:
@@ -335,45 +334,35 @@ creation_rules:
     - age:
       - *ngarvey
       - *dragonsreach
-  # The Temporal UI's OIDC client secret.
-  - path_regex: k8s/manifests/temporal/ui-oidc-secret\.yaml$
-    encrypted_regex: "^(data|stringData)$"
+  # Pod secrets served from OpenBao (docs/openbao.md, "Pod secrets"): decrypted
+  # only on the workstation by k8s/scripts/push-secrets.sh, so no machine is a
+  # recipient. Files are k8s/secrets/openbao/<namespace>/<serviceAccount>.yaml;
+  # namespace and serviceAccount stay plain for OpenTofu to read.
+  - path_regex: k8s/secrets/openbao/.+\.yaml$
+    encrypted_regex: "^secrets$"
     key_groups:
     - age:
       - *ngarvey
-      - *k8s-operator
-  # Secrets kept apart from their directory's secret.yaml: the litellm
-  # role's Postgres password (postgres), the litellm virtual keys agent-token
-  # hands out (agents), agent-token's copy of the habit-data JWT key
-  # (agents; the habit-helper namespace holds the other copy), and litellm's
-  # DeepSeek key (litellm), and the Matrix
-  # Authentication Service's keys (matrix), and the Matrix bridge's
-  # appservice registration (agents; Synapse's copy is in matrix/secret.yaml),
-  # and Habit Admin's keys: the bridge admin API's JWT key and its litellm
-  # virtual key (agents), and litellm's copy of that virtual key (litellm),
-  # and litellm's OpenAI key (litellm).
-  - path_regex: k8s/manifests/(postgres/litellm-secret|agents/litellm-keys-secret|agents/agent-token-habit-data-secret|litellm/deepseek-secret|matrix/mas-secret|agents/matrix-secret|agents/habit-admin-secret|litellm/habit-admin-key-secret|litellm/openai-secret|jellyfin/sso-secret)\.yaml$
-    encrypted_regex: "^(data|stringData)$"
-    key_groups:
-    - age:
-      - *ngarvey
-      - *k8s-operator
-  # The LUKS passphrase for every Longhorn volume. Losing it makes every
-  # Longhorn backup unrecoverable, so the offline *paper key is a recipient.
-  - path_regex: k8s/manifests/longhorn/crypto-secret\.yaml$
+      - *paper
+  # Secrets that controllers read as k8s Secrets (ceph-csi, cert-manager,
+  # Longhorn, CloudNativePG, ...), one v1 Secret manifest per
+  # k8s/secrets/k8s/<namespace>/<name>.yaml, applied by k8s/scripts/push-secrets.sh.
+  # The offline *paper key is a recipient because one of them is the LUKS
+  # passphrase for every Longhorn volume: losing it loses every Longhorn backup.
+  - path_regex: k8s/secrets/k8s/.+\.yaml$
     encrypted_regex: "^(data|stringData)$"
     key_groups:
     - age:
       - *ngarvey
       - *paper
-      - *k8s-operator
-  - path_regex: k8s/manifests/.*/secret\.yaml$
-    # Only encrypt values under stringData and data keys
-    encrypted_regex: "^(data|stringData)$"
+  # Secrets nothing in the cluster reads, used by hand from the workstation
+  # (e.g. the Jellyfin SSO plugin's client secret, k8s/manifests/jellyfin/README.md).
+  # push-secrets.sh does not touch this directory.
+  - path_regex: k8s/secrets/manual/.+\.yaml$
     key_groups:
     - age:
       - *ngarvey
-      - *k8s-operator
+      - *paper
   # ESP32 firmware secrets (wifi, thread, ha). `workstation` and dovahkiin are
   # the machines that build and flash the devices.
   - path_regex: firmware/secrets/.*\.sops\.yaml$

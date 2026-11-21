@@ -51,7 +51,7 @@ spec:
   managed:
     roles:
       # One role per app. A new app adds a role here, a password Secret in
-      # secret.yaml and a Database in databases.yaml.
+      # secrets/k8s/postgres/ and a Database in databases.yaml.
       - name: temporal
         ensure: present
         login: true

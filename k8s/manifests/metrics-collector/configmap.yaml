@@ -18,7 +18,7 @@ data:
       enabled: true
       address: "[::]:8686"
 
-    # Credentials from secret.yaml, mounted by deployment.yaml.
+    # Credentials from OpenBao (secret-provider-class.yaml), mounted by deployment.yaml.
     secret:
       credentials:
         type: directory

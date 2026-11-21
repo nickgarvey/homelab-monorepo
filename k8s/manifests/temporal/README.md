@@ -19,6 +19,11 @@ Cloudflare CNAME `_acme-challenge.temporal.garvey.sh` points at
 
 ## Apply order
 
+The UI's OIDC client secret lives in OpenBao (`secrets/openbao/temporal/temporal-ui.yaml`, ServiceAccount
+`temporal-ui`; docs/openbao.md, "Pod secrets"). On a fresh cluster run
+`pki/openbao/tofu.sh apply` (it makes the `temporal.temporal-ui` role) and
+`scripts/push-secrets.sh secrets/openbao/temporal/temporal-ui.yaml` before the UI.
+
 ```bash
 kubectl apply -f manifests/temporal/namespace.yaml
 kubectl apply -f manifests/temporal/certificate.yaml
@@ -30,8 +35,8 @@ kubectl apply -f manifests/temporal/config-configmap.yaml
 kubectl apply -f manifests/temporal/deployment.yaml
 kubectl apply -f manifests/temporal/service.yaml
 kubectl apply -f manifests/temporal/caddy-configmap.yaml
-kubectl apply -f manifests/temporal/ui-oidc-secret.yaml
 kubectl apply -f manifests/temporal/ui-service-account.yaml
+kubectl apply -f manifests/temporal/secret-provider-class.yaml
 kubectl apply -f manifests/temporal/ui-spiffe-helper-configmap.yaml
 kubectl apply -f manifests/temporal/ui-deployment.yaml
 kubectl apply -f manifests/temporal/ui-service.yaml
@@ -56,7 +61,7 @@ certificate in `postgres-client-certificate.yaml` (CN `temporal`, URI SAN
 `spiffe://home.garvey.sh/ns/temporal/sa/temporal`, from the cluster CA, 24h), and
 `manifests/postgres/cluster.yaml` accepts only that for the role. The server certificate
 is verified against the same CA. The role has a password
-(`manifests/postgres/secret.yaml`), which nothing uses.
+(`secrets/k8s/postgres/postgres-temporal.yaml`), which nothing uses.
 
 The init containers run `temporal-sql-tool update-schema` with the schemas embedded in the
 image (`--schema-name postgresql/v12/temporal` and `.../visibility`), so the schema always

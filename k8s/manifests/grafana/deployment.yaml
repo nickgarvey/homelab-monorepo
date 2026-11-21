@@ -18,6 +18,8 @@ spec:
         app: grafana
         app.kubernetes.io/managed-by: ngarvey-homelab
     spec:
+      serviceAccountName: grafana
+      automountServiceAccountToken: false
       tolerations:
         - key: node-role.kubernetes.io/control-plane
           operator: Exists
@@ -72,23 +74,20 @@ spec:
             # service-account tokens.
             - name: GF_AUTH_BASIC_ENABLED
               value: "false"
-            # Used only when Grafana creates a fresh database; see secret.yaml.
-            - name: GF_SECURITY_ADMIN_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: grafana-auth
-                  key: admin-password
+            # Secrets are files from OpenBao (secret-provider-class.yaml),
+            # read through Grafana's GF_<SECTION>_<KEY>__FILE variables.
+            # Used only when Grafana creates a fresh database; see
+            # secret-provider-class.yaml.
+            - name: GF_SECURITY_ADMIN_PASSWORD__FILE
+              value: /run/secrets/grafana/admin-password
             - name: GF_AUTH_GENERIC_OAUTH_ENABLED
               value: "true"
             - name: GF_AUTH_GENERIC_OAUTH_NAME
               value: Authelia
             - name: GF_AUTH_GENERIC_OAUTH_CLIENT_ID
               value: grafana
-            - name: GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: grafana-auth
-                  key: oauth-client-secret
+            - name: GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET__FILE
+              value: /run/secrets/grafana/oauth-client-secret
             - name: GF_AUTH_GENERIC_OAUTH_SCOPES
               value: openid profile email groups
             - name: GF_AUTH_GENERIC_OAUTH_AUTH_URL
@@ -127,6 +126,9 @@ spec:
               mountPath: /var/lib/grafana
             - name: datasources
               mountPath: /etc/grafana/provisioning/datasources
+            - name: secrets
+              mountPath: /run/secrets/grafana
+              readOnly: true
       volumes:
         - name: caddy-config
           configMap:
@@ -142,3 +144,9 @@ spec:
         - name: datasources
           configMap:
             name: grafana-datasources
+        - name: secrets
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: grafana

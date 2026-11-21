@@ -56,7 +56,8 @@ record.
   Synapse has none of these once MAS handles auth; the Caddy in its pod sends
   them to MAS's compatibility layer, which offers SSO login (through Authelia).
 - **Synapse and MAS** call each other at their public names with the secret
-  in `mas-secret.yaml`: Synapse asks MAS about each access token, and MAS
+  `synapse-secret` (in both `secrets/openbao/matrix/mas.yaml` and
+  `secrets/openbao/matrix/synapse.yaml`): Synapse asks MAS about each access token, and MAS
   makes and changes accounts through Synapse's admin API.
 - **Appservices** (the agents bridge) are unaffected: Synapse checks their
   `as_token` itself, before asking MAS. MAS has no
@@ -118,8 +119,13 @@ record.
    ```
 4. Authelia's client for MAS: `kubectl apply -f manifests/authelia/configmap.yaml`
    and `kubectl -n authelia rollout restart deploy/authelia`.
-5. The rest. MAS first: Synapse checks every token with it.
+5. The rest. MAS first: Synapse checks every token with it. The secrets go
+   to OpenBao first (the pods fail to mount otherwise), and the roles for
+   `mas` and `synapse` must exist (`pki/openbao/tofu.sh apply`, which creates
+   one per file in `secrets/openbao/`).
    ```sh
+   bash scripts/push-secrets.sh secrets/openbao/matrix/mas.yaml \
+     secrets/openbao/matrix/synapse.yaml
    kubectl apply -f manifests/matrix/
    kubectl -n matrix rollout status deploy/mas
    kubectl -n matrix rollout status deploy/synapse
@@ -170,7 +176,8 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://matrix.garvey.sh/_matrix/key/v
   Their first login makes the account.
 - **Backups:** both databases are in the shared postgres's backups
   (`manifests/postgres/README.md`, "Backups"). Synapse's signing key is in
-  `secret.yaml` and MAS's keys in `mas-secret.yaml`; MAS's `encryption`
+  `secrets/openbao/matrix/synapse.yaml` and MAS's keys in `secrets/openbao/matrix/mas.yaml`
+  (sops, and in OpenBao's KV); MAS's `encryption`
   secret must never change, or what it encrypted in its database is lost.
   Media is on the ceph-rbd volume.
 - **Logs:** `kubectl -n matrix logs deploy/synapse -c synapse`,

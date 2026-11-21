@@ -23,8 +23,8 @@ data:
         litellm_params:
           model: deepseek/deepseek-v4-flash
           api_key: os.environ/DEEPSEEK_API_KEY
-      # GPT-6.1 Sol, for the habit-helper agent, with the key from the
-      # litellm-openai Secret. Through OpenAI's Responses API: on Chat
+      # GPT-6.1 Sol, for the habit-helper agent, with the key in
+      # OPENAI_API_KEY (from OpenBao). Through OpenAI's Responses API: on Chat
       # Completions the model refuses function tools while it reasons.
       - model_name: habit-helper
         litellm_params:
@@ -39,6 +39,6 @@ data:
     litellm_settings:
       drop_params: true
     general_settings:
-      # From the litellm Secret (deployment.yaml). Virtual keys live in the
+      # From OpenBao (secret-provider-class.yaml). Virtual keys live in the
       # litellm database (DATABASE_URL).
       master_key: os.environ/LITELLM_MASTER_KEY

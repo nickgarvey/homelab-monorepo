@@ -6,8 +6,9 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: ngarvey-homelab
 data:
-  # Secrets come from the authelia-secrets Secret: the *_FILE env vars in
-  # deployment.yaml, plus the JWKS key through the template filter below.
+  # Secrets come from OpenBao (secret-provider-class.yaml), mounted at
+  # /secrets: the *_FILE env vars in deployment.yaml, plus the JWKS key
+  # through the template filter below.
   configuration.yml: |
     theme: auto
     server:
@@ -16,8 +17,8 @@ data:
     log:
       level: info
     authentication_backend:
-      # users_database.yml is mounted read-only from the Secret; add or change
-      # users there (sops) and restart the pod.
+      # users_database.yml is mounted read-only from OpenBao; add or change
+      # users in secrets/openbao/authelia/authelia.yaml (sops), push it and restart the pod.
       password_reset:
         disable: true
       password_change:
@@ -154,7 +155,8 @@ data:
           - client_id: grafana
             client_name: Grafana
             claims_policy: grafana
-            # pbkdf2 digest of the plaintext in manifests/grafana/secret.yaml.
+            # pbkdf2 digest of the plaintext oauth-client-secret in
+            # secrets/openbao/grafana/grafana.yaml.
             client_secret: '$pbkdf2-sha512$310000$8kW131B4Xs.aZCwJtHBalw$aquf9/yGNeM0fgryX9kJJDX9LtmixS9QeET9dEVVBgOAris21DFtE.DZ/x0AfHPP977/X5dXVFL6gmxt8V9xZw'
             public: false
             authorization_policy: two_factor
@@ -211,7 +213,8 @@ data:
           - client_id: temporal-ui
             client_name: Temporal
             claims_policy: temporal-ui
-            # pbkdf2 digest of the plaintext in manifests/temporal/ui-oidc-secret.yaml.
+            # pbkdf2 digest of the plaintext client-secret in
+            # secrets/openbao/temporal/temporal-ui.yaml.
             client_secret: '$pbkdf2-sha512$310000$SmCKEiCr/fjPZyyq3j2ZjA$7WyifDwJMfOXMH5XnuPzAcjJUcwExZ9xeBjmdeyExnjY09Iv.sNhhViDsZ.Ym6OaF4cl7U/Q2YpBd5VZnLADnQ'
             public: false
             authorization_policy: temporal
@@ -288,7 +291,7 @@ data:
           - client_id: matrix
             client_name: Matrix
             claims_policy: matrix
-            # pbkdf2 digest of the plaintext in manifests/matrix/mas-secret.yaml.
+            # pbkdf2 digest of the plaintext in secrets/openbao/matrix/mas.yaml.
             client_secret: '$pbkdf2-sha512$310000$Bxj00wnzWtURaAyUsnp01Q$cYhinB6pPiIzWSc8a8D65cUheb886Ll3vyOp.A9aLEfKTIvwW0ycKsvkhBy4q1tnSCV6631OLvIRH4kSOYEN1w'
             public: false
             authorization_policy: matrix
@@ -311,7 +314,7 @@ data:
           # the username and groups from the userinfo endpoint.
           - client_id: jellyfin
             client_name: Jellyfin
-            # pbkdf2 digest of the plaintext in manifests/jellyfin/sso-secret.yaml.
+            # pbkdf2 digest of the plaintext in secrets/manual/jellyfin/sso.yaml.
             client_secret: '$pbkdf2-sha512$310000$CdeUXMqwbRIe3kkNu7v7AQ$UfoDP4UxFDODnLNHGjREHopZhg0l9TjQXnNWgU2pK69SNOPiHH28jBQzwiuGiyxavyWfZBrRptC.suRyWTaMoQ'
             public: false
             authorization_policy: jellyfin

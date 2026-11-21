@@ -18,7 +18,7 @@ rbd pool init kubernetes
 ceph osd pool set kubernetes target_size_ratio 0.7
 ceph osd pool set default.rgw.buckets.data target_size_ratio 0.3
 
-# Key for ceph-csi, restricted to the kubernetes pool. Its secret is the
-# SopsSecret in k8s/manifests/ceph-csi-rbd/secret.yaml.
+# Key for ceph-csi, restricted to the kubernetes pool. Its secret is
+# k8s/secrets/k8s/ceph-csi-rbd/csi-rbd-secret.yaml.
 ceph auth get-or-create client.kubernetes \
   mon 'profile rbd' osd 'profile rbd pool=kubernetes' mgr 'profile rbd pool=kubernetes'

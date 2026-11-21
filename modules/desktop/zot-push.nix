@@ -8,7 +8,7 @@
 # works with no login step. docker and crane read ~/.docker/config.json instead
 # and do not see it.
 #
-# zot holds only the bcrypt hash (k8s/manifests/zot/secret.yaml); rotate
+# zot holds only the bcrypt hash (k8s/secrets/openbao/zot/zot.yaml); rotate
 # both together.
 { config, pkgs, ... }:
 
