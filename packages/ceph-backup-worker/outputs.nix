@@ -5,6 +5,12 @@ let
   pkgs = import nixpkgs { inherit system; };
   package = pkgs.callPackage ./. { };
 
+  # Serves the Storj copy to kopia over WebDAV without a HEAD per object in
+  # each listing (the patch's header says why).
+  rclone = pkgs.rclone.overrideAttrs (old: {
+    patches = (old.patches or [ ]) ++ [ ../../patches/rclone-webdav-content-type-from-name.patch ];
+  });
+
   # The CLIs the activities shell out to. pkgs.ceph is the package the
   # storage nodes run (modules/services/ceph.nix), so the kernel-client
   # tools match the cluster's version.
@@ -14,7 +20,7 @@ let
       package
       pkgs.ceph # rbd, ceph, rados, mount.ceph
       pkgs.kopia
-      pkgs.rclone
+      rclone
       pkgs.fuse3 # fusermount3, for rclone mount
       pkgs.util-linux # mount, umount, blkid, findmnt, mountpoint
       pkgs.e2fsprogs

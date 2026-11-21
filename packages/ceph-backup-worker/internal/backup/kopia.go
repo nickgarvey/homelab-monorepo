@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"homelab/ceph-backup-worker/internal/cmdrun"
@@ -100,8 +101,16 @@ func (a *Activities) storageEnv(r repo) ([]string, error) {
 // the hosted S3 gateway (the pods are IPv6-only; Storj's storage nodes are
 // reached only by IPv4). --flat stores blobs as <id>.f at the top, the
 // same objects rclone's native storj backend reads (docs/ceph-backup.md).
+//
+// Flat, every ListBlobs is a WebDAV listing of the whole bucket (about 4000
+// blobs). --use-server-modtime, with the image's patched rclone for the
+// content type (patches/rclone-webdav-content-type-from-name.patch), answers
+// it from the S3 listing alone instead of a HEAD per blob, which took up to
+// an hour when Storj's HEADs were slow. Kopia's WebDAV writes cannot set a
+// modtime, so the stored one is the upload time anyway.
 func (a *Activities) storjArgs() []string {
-	return []string{"--remote-path=storj:" + a.Cfg.StorjBucket, "--flat"}
+	return []string{"--remote-path=storj:" + a.Cfg.StorjBucket, "--flat",
+		"--rclone-args=--use-server-modtime"}
 }
 
 // connect connects r unless it already is. The Storj copy is connected
@@ -253,6 +262,30 @@ func ids(snaps []Snapshot) []string {
 		out[i] = s.ID
 	}
 	return out
+}
+
+// blobs lists r's blobs and their sizes, without the log blobs (_log): any
+// command against the repository may write one, and they hold only
+// diagnostics.
+func (a *Activities) blobs(ctx context.Context, r repo) (map[string]int64, error) {
+	out, err := a.kopia(ctx, r, "blob", "list", "--json")
+	if err != nil {
+		return nil, err
+	}
+	var list []struct {
+		ID     string `json:"id"`
+		Length int64  `json:"length"`
+	}
+	if err := json.Unmarshal(out, &list); err != nil {
+		return nil, fmt.Errorf("parsing the %s blob list: %w", r, err)
+	}
+	m := make(map[string]int64, len(list))
+	for _, b := range list {
+		if !strings.HasPrefix(b.ID, "_log") {
+			m[b.ID] = b.Length
+		}
+	}
+	return m, nil
 }
 
 // verifySnapshots reads back percent of the files of the given snapshots

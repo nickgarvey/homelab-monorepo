@@ -7,9 +7,25 @@ joor, zah and frul, polling task queue `ceph-backup` in Temporal namespace
 it; if a node goes down mid-activity, Temporal retries the activity on
 another. Recovery does not use any of this: `docs/ceph-backup.md`.
 
-The worker creates the Schedule `ceph-backup` (daily 10:00 UTC) **paused** and
-never unpauses it. To run a backup now, from the Temporal break-glass path
-("Ports" in `manifests/temporal/README.md`):
+The Schedule `ceph-backup` runs the backup daily at 10:00 UTC, then the Storj
+copy. It is unpaused on the cluster. The worker creates it only when it is
+missing, and then paused, so after a fresh deploy (or after pausing it on
+purpose) nothing is backed up until it is unpaused.
+
+## Checking that backups run
+
+From the Temporal break-glass path ("Ports" in `manifests/temporal/README.md`),
+read-only:
+
+```sh
+temporal schedule describe --schedule-id ceph-backup --namespace ceph-backup --address 127.0.0.1:7236   # Paused, recent runs
+temporal workflow list --namespace ceph-backup --address 127.0.0.1:7236 --limit 10
+```
+
+Prometheus has `homelab_ceph_backup_last_success_timestamp_seconds` per item
+(`packages/ceph-backup-worker/internal/metrics/metrics.go`).
+
+To run a backup now, or to unpause the Schedule on a fresh deploy:
 
 ```sh
 temporal schedule trigger --schedule-id ceph-backup --namespace ceph-backup --address 127.0.0.1:7236

@@ -1,0 +1,35 @@
+Upstream:      rclone (github.com/rclone/rclone): cmd/serve/webdav/webdav.go,
+               FileInfo.ContentType
+Upstreamable:  yes, as an option rather than as is
+How:           An issue and PR on rclone/rclone adding a serve webdav flag to
+               take getcontenttype from the file name, as --use-server-modtime
+               already does for getlastmodified. Changing the default would
+               drop real content types for backends that list them.
+Written:       2026-11-18, against rclone 1.76.0
+Last checked:  2026-11-18
+Remove when:   rclone serve webdav can answer a PROPFIND without reading each
+               object's metadata, and the worker passes that option
+Applied by:    packages/ceph-backup-worker/outputs.nix (the image's rclone only;
+               the build fails if the patch stops applying)
+
+A PROPFIND asks for each file's content type. For an S3 object rclone reads
+it with readMetaData(), a HEAD request per object, since S3 listings carry no
+content type. The worker reaches the Storj copy of the backup repository
+through `rclone serve webdav` with kopia's flat layout, so every kopia
+ListBlobs is a PROPFIND of the whole bucket: about 4000 HEADs. When Storj's
+gateway answered HEADs in 0.3-1s (2026-11-16 to 18) a listing took 20 to 60
+minutes, past kopia's 20-minute epoch refresh window, and kopia retried for
+hours. The patch takes the content type from the file name, as rclone already
+does for objects without one. Kopia does not read content types.
+
+--- a/cmd/serve/webdav/webdav.go	2026-11-18 10:29:54.387358564 -0800
++++ b/cmd/serve/webdav/webdav.go	2026-11-18 10:30:07.496512035 -0800
+@@ -746,7 +746,7 @@
+ 	entry := node.DirEntry() // can be nil
+ 	switch x := entry.(type) {
+ 	case fs.Object:
+-		return fs.MimeType(ctx, x), nil
++		return fs.MimeTypeFromName(x.Remote()), nil
+ 	case fs.Directory:
+ 		return "inode/directory", nil
+ 	case nil:

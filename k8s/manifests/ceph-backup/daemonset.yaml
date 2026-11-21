@@ -81,7 +81,7 @@ spec:
               memory: 64Mi
       containers:
         - name: worker
-          image: oci.garvey.sh/ceph-backup-worker:iscb54ah8dhk5bfg8p9vxjm6dsqb63yf
+          image: oci.garvey.sh/ceph-backup-worker:5nh8da6y51agdfy1lansfn32smagzp2v
           args:
             - --temporal-cert=/run/spiffe/svid.pem
             - --temporal-key=/run/spiffe/svid_key.pem

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -436,7 +437,7 @@ func TestCheckSnapshot(t *testing.T) {
 	// Stats counted only part of an unchanged postgres volume (2026-10-12);
 	// the root summary is the whole tree.
 	partial := withSummary(snap("s", 2, 40, 4), 100, 10)
-	shrunk := withSummary(snap("s", 2, 100, 10), 40, 4)
+	shrunk := withSummary(snap("s", 2, 100, 10), 0, 0)
 	for _, tc := range []struct {
 		name    string
 		s, prev Snapshot
@@ -445,16 +446,16 @@ func TestCheckSnapshot(t *testing.T) {
 	}{
 		{"fine", snap("s", 2, 100, 10), prev, true, false},
 		{"partial stats, whole tree as before", partial, prev, true, false},
-		{"whole tree under half", shrunk, prev, true, true},
+		{"whole tree empty", shrunk, prev, true, true},
 		{"first", snap("s", 2, 5, 1), Snapshot{}, false, false},
 		{"first empty", snap("s", 2, 0, 0), Snapshot{}, false, false},
 		{"errors", errs, prev, true, true},
 		{"ignored errors", ignored, prev, true, true},
 		{"empty after non-empty", snap("s", 2, 0, 0), prev, true, true},
 		{"empty after empty", snap("s", 2, 0, 0), empty, true, false},
-		{"half the size", snap("s", 2, 50, 10), prev, true, false},
-		{"under half the size", snap("s", 2, 49, 10), prev, true, true},
-		{"under half the files", snap("s", 2, 100, 4), prev, true, true},
+		{"a tenth the size", snap("s", 2, 10, 10), prev, true, false},
+		{"one file left", snap("s", 2, 100, 1), prev, true, false},
+		{"zero bytes left", snap("s", 2, 0, 10), prev, true, true},
 		{"grew", snap("s", 2, 1000, 100), prev, true, false},
 	} {
 		var p *Snapshot
@@ -470,23 +471,20 @@ func TestCheckSnapshot(t *testing.T) {
 func TestVerify(t *testing.T) {
 	f := &cmdrun.Fake{}
 	f.On("kopia repository status", "")
-	list := []Snapshot{snap("old", 1, 1000, 100), snap("prev", 2, 100, 10), snap("new", 3, 40, 10)}
+	list := []Snapshot{snap("old", 1, 1000, 100), snap("prev", 2, 100, 10), snap("new", 3, 0, 0)}
 	b, _ := json.Marshal(list)
 	f.On("kopia snapshot list --json root@ceph-backup:/run/ceph-backup/a/b", string(b))
 	f.On("kopia snapshot verify", "")
 	a := newActs(t, f)
 
 	err := a.Verify(context.Background(), VerifyInput{BackupResult{"new", "/run/ceph-backup/a/b"}, 10})
-	if err == nil || !strings.Contains(err.Error(), "under half") || !strings.Contains(err.Error(), "prev") {
-		t.Errorf("shrunk snapshot: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "is empty") || !strings.Contains(err.Error(), "prev") {
+		t.Errorf("empty snapshot: %v", err)
 	}
 	if f.Called("kopia snapshot verify") {
 		t.Error("read back a snapshot that failed its checks")
 	}
-	if err := a.Verify(context.Background(), VerifyInput{BackupResult{"prev", "/run/ceph-backup/a/b"}, 100}); err == nil {
-		t.Error("prev is a tenth of old, should fail")
-	}
-	list[2].Stats.TotalSize = 90
+	list[2].Stats.TotalSize, list[2].Stats.FileCount = 4, 1
 	b, _ = json.Marshal(list)
 	f.On("kopia snapshot list --json root@ceph-backup:/run/ceph-backup/a/b", string(b))
 	if err := a.Verify(context.Background(), VerifyInput{BackupResult{"new", "/run/ceph-backup/a/b"}, 10}); err != nil {
@@ -510,47 +508,69 @@ func TestSyncAndVerifyStorj(t *testing.T) {
 	if err := a.SyncStorj(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if !f.Called("kopia repository sync-to rclone --no-progress --remote-path=storj:ceph-backup --flat --delete --parallel=8") {
+	if !f.Called("kopia repository sync-to rclone --no-progress --remote-path=storj:ceph-backup --flat --rclone-args=--use-server-modtime --delete --parallel=8") {
 		t.Errorf("calls %q", f.Calls)
 	}
 	if !contains(syncEnv, "RCLONE_CONFIG_STORJ_ACCESS_KEY_ID=SK1") || !contains(syncEnv, "RCLONE_CONFIG_STORJ_ENDPOINT=https://gateway.example") || !contains(syncEnv, "KOPIA_PASSWORD=pw") {
 		t.Errorf("sync env %q", syncEnv)
 	}
 
-	garageSnaps, _ := json.Marshal([]Snapshot{snap("a1", 1, 1, 1), snap("a2", 2, 1, 1)})
-	storjSnaps, _ := json.Marshal([]Snapshot{snap("a1", 1, 1, 1)})
-	f.OnFunc("kopia snapshot list --json --all", func(c cmdrun.Cmd) (string, error) {
-		for _, e := range c.Env {
-			if strings.HasSuffix(e, "storj.config") {
-				return string(storjSnaps), nil
-			}
-		}
-		return string(garageSnaps), nil
-	})
+	garageBlobs := `[{"id":"kopia.repository","length":1},{"id":"p1","length":100},{"id":"q1","length":20},{"id":"_log_a","length":5}]`
+	storjBlobs := `[{"id":"kopia.repository","length":1},{"id":"p1","length":99},{"id":"x9","length":3}]`
 	var storjListEnv []string
-	f.OnFunc("kopia snapshot list --json --all", func(c cmdrun.Cmd) (string, error) {
+	f.OnFunc("kopia blob list --json", func(c cmdrun.Cmd) (string, error) {
 		for _, e := range c.Env {
 			if strings.HasSuffix(e, "storj.config") {
 				storjListEnv = c.Env
-				return string(storjSnaps), nil
+				return storjBlobs, nil
 			}
 		}
-		return string(garageSnaps), nil
+		return garageBlobs, nil
 	})
-	f.On("kopia snapshot verify", "")
-	if err := a.VerifyStorj(context.Background()); err == nil || !strings.Contains(err.Error(), "a2") {
-		t.Errorf("missing newest snapshot: %v", err)
+	err := a.VerifyStorj(context.Background())
+	if err == nil {
+		t.Fatal("no error for a differing copy")
 	}
-	storjSnaps = garageSnaps
+	for _, want := range []string{"p1 99 bytes, want 100", "q1 missing", "x9 not in the repository"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q lacks %q", err, want)
+		}
+	}
+	if strings.Contains(err.Error(), "_log") {
+		t.Errorf("log blobs compared: %v", err)
+	}
+	// Log blobs may differ; everything else matches.
+	storjBlobs = `[{"id":"kopia.repository","length":1},{"id":"p1","length":100},{"id":"q1","length":20},{"id":"_log_b","length":7}]`
 	if err := a.VerifyStorj(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if !f.Called("kopia snapshot verify --no-progress --verify-files-percent=1 a2") {
-		t.Errorf("calls %q", f.Calls)
+	if f.Called("kopia snapshot verify") {
+		t.Errorf("VerifyStorj read blobs back: %q", f.Calls)
 	}
 	// kopia starts rclone for every command against the copy.
 	if !contains(storjListEnv, "RCLONE_CONFIG_STORJ_ACCESS_KEY_ID=SK1") {
-		t.Errorf("storj snapshot list env %q", storjListEnv)
+		t.Errorf("storj blob list env %q", storjListEnv)
+	}
+}
+
+// Listing the Storj copy is slow: VerifyStorj must heartbeat while it runs.
+func TestVerifyStorjHeartbeats(t *testing.T) {
+	defer func(d time.Duration) { HeartbeatInterval = d }(HeartbeatInterval)
+	HeartbeatInterval = time.Millisecond
+	f := &cmdrun.Fake{}
+	a := newActs(t, f)
+	var beats atomic.Int32
+	a.Heartbeat = func(context.Context) { beats.Add(1) }
+	f.On("kopia repository", "")
+	f.OnFunc("kopia blob list --json", func(cmdrun.Cmd) (string, error) {
+		time.Sleep(20 * time.Millisecond)
+		return `[{"id":"p1","length":1}]`, nil
+	})
+	if err := a.VerifyStorj(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if beats.Load() == 0 {
+		t.Error("no heartbeat while listing the blobs")
 	}
 }
 
@@ -563,7 +583,7 @@ func TestConnect(t *testing.T) {
 	if err := a.connect(context.Background(), storj); err != nil {
 		t.Fatal(err)
 	}
-	if !f.Called("kopia repository connect rclone --remote-path=storj:ceph-backup --flat --readonly --override-hostname=ceph-backup --override-username=root") {
+	if !f.Called("kopia repository connect rclone --remote-path=storj:ceph-backup --flat --rclone-args=--use-server-modtime --readonly --override-hostname=ceph-backup --override-username=root") {
 		t.Errorf("calls %q", f.Calls)
 	}
 	if !contains(env, "RCLONE_CONFIG_STORJ_SECRET_ACCESS_KEY=ss") || !contains(env, "KOPIA_CONFIG_PATH="+a.Cfg.RunDir+"/storj.config") {

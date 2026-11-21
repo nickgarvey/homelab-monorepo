@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -60,8 +61,8 @@ func (a *Activities) heartbeat(ctx context.Context) {
 func (a *Activities) heartbeating(ctx context.Context, f func(context.Context) error) error {
 	done := make(chan struct{})
 	defer close(done)
+	t := time.NewTicker(HeartbeatInterval)
 	go func() {
-		t := time.NewTicker(HeartbeatInterval)
 		defer t.Stop()
 		for {
 			select {
@@ -467,10 +468,11 @@ func (a *Activities) Verify(ctx context.Context, in VerifyInput) error {
 	return nil
 }
 
-// checkSnapshot fails a snapshot with errors, or one that is empty or under
-// half the size or file count of the previous snapshot of its source when
-// that one was not empty: a source that silently stopped being readable
-// alerts instead of being backed up as nothing.
+// checkSnapshot fails a snapshot with errors, or one whose size or file
+// count is zero when the previous snapshot of its source had some: a source
+// that silently stopped being readable alerts instead of being backed up as
+// nothing. A smaller snapshot that is not empty passes: a small SQLite volume
+// halves whenever its WAL is checkpointed.
 func checkSnapshot(s, prev *Snapshot) error {
 	failed := s.Stats.ErrorCount
 	if s.RootEntry != nil && s.RootEntry.Summary != nil && s.RootEntry.Summary.Failed > failed {
@@ -485,11 +487,8 @@ func checkSnapshot(s, prev *Snapshot) error {
 	}
 	size, files := s.totals()
 	psize, pfiles := prev.totals()
-	if psize == 0 && pfiles == 0 {
-		return nil
-	}
-	if size*2 < psize || files*2 < pfiles {
-		return fmt.Errorf("snapshot %s of %s has %d bytes in %d files, under half of the previous one's (%s: %d bytes in %d files)",
+	if (size == 0 && psize > 0) || (files == 0 && pfiles > 0) {
+		return fmt.Errorf("snapshot %s of %s is empty (%d bytes in %d files), the previous one was not (%s: %d bytes in %d files)",
 			s.ID, s.Source.Path, size, files, prev.ID, psize, pfiles)
 	}
 	return nil
@@ -543,42 +542,58 @@ func (a *Activities) SyncStorj(ctx context.Context) error {
 	})
 }
 
-// VerifyStorj opens the Storj copy as a repository of its own and checks it
-// has the newest snapshot of every source the repository has, then reads
-// back 1% of their files.
+// VerifyStorj checks that the Storj copy holds every blob of the repository,
+// at the same size, and nothing else, from the two blob listings alone. It
+// reads no blob: Storj bills reads as egress, and kopia's small reads through
+// rclone are billed as large ranged downloads, so even reading back 1% of the
+// files costs hundreds of GB a day. Storj's erasure coding and audits cover
+// the blobs' contents.
+//
+// It heartbeats throughout: through rclone, Storj lists each blob prefix in
+// about 50 seconds, past the 5-minute heartbeat timeout in total.
 func (a *Activities) VerifyStorj(ctx context.Context) error {
+	return a.heartbeating(ctx, a.verifyStorj)
+}
+
+func (a *Activities) verifyStorj(ctx context.Context) error {
 	if err := a.connect(ctx, garage); err != nil {
 		return err
 	}
 	if err := a.connect(ctx, storj); err != nil {
 		return err
 	}
-	want, err := a.snapshots(ctx, garage, "")
+	want, err := a.blobs(ctx, garage)
 	if err != nil {
 		return err
 	}
-	got, err := a.snapshots(ctx, storj, "")
+	got, err := a.blobs(ctx, storj)
 	if err != nil {
 		return err
 	}
-	have := map[string]bool{}
-	for _, s := range got {
-		have[s.ID] = true
+	if len(want) == 0 {
+		return errors.New("the repository lists no blobs")
 	}
-	var missing []string
-	for _, s := range newestPerSource(want) {
-		if !have[s.ID] {
-			missing = append(missing, s.Source.Path+" "+s.ID)
+	var bad []string
+	for id, n := range want {
+		if m, ok := got[id]; !ok {
+			bad = append(bad, id+" missing")
+		} else if m != n {
+			bad = append(bad, fmt.Sprintf("%s %d bytes, want %d", id, m, n))
 		}
 	}
-	if len(missing) > 0 {
-		return fmt.Errorf("the Storj copy lacks the newest snapshot of: %s", strings.Join(missing, ", "))
+	for id := range got {
+		if _, ok := want[id]; !ok {
+			bad = append(bad, id+" not in the repository")
+		}
 	}
-	newest := newestPerSource(got)
-	if len(newest) == 0 {
-		return errors.New("the Storj copy has no snapshots")
+	if len(bad) == 0 {
+		return nil
 	}
-	return a.verifySnapshots(ctx, storj, 1, ids(newest)...)
+	sort.Strings(bad)
+	if len(bad) > 20 {
+		bad = append(bad[:20], fmt.Sprintf("and %d more", len(bad)-20))
+	}
+	return fmt.Errorf("the Storj copy differs from the repository: %s", strings.Join(bad, ", "))
 }
 
 // Snapshots lists every snapshot in the repository, for the metrics.

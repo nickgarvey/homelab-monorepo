@@ -19,9 +19,13 @@ Built here:
 
 ## What it runs
 
-Temporal namespace and task queue `ceph-backup`. The worker creates the
-Schedule `ceph-backup` (daily 10:00 UTC, overlap skip) **paused** if it is
-missing, and keeps an existing one's spec without touching its paused state.
+Temporal namespace and task queue `ceph-backup`, Schedule `ceph-backup` (daily
+10:00 UTC, overlap skip). The cluster's Schedule is unpaused: every item is
+backed up daily, then copied to Storj. The worker only creates the Schedule
+when it is missing, and then creates it paused, so a fresh deploy backs nothing
+up until someone unpauses it; it keeps an existing Schedule's spec in line
+without touching its paused state. To check the live state, see "Checking that
+backups run" in `k8s/manifests/ceph-backup/README.md`.
 
 Workflow `CephBackup` (`internal/backup/workflow.go`):
 
@@ -34,8 +38,8 @@ Workflow `CephBackup` (`internal/backup/workflow.go`):
    applications, RBD namespaces, pools the cephx key has no caps on).
 2. For each item, one at a time: `BackupRBD` / `BackupRGWMetadata` /
    `BackupBucket` / `BackupCephFS`, then `Verify` of the new snapshot: no
-   errors, not empty or under half the size or file count (of the whole
-   tree) of the previous non-empty snapshot of the source, and `kopia
+   errors, not empty (zero bytes or zero files, of the whole tree) when the
+   previous snapshot of the source was not, and `kopia
    snapshot verify` of 10% of its files (100% for rgw-metadata).
 3. `Maintenance`: quick daily; full on Sundays (UTC), which also verifies
    every file of the newest snapshot of every source.
@@ -45,8 +49,11 @@ Workflow `CephBackup` (`internal/backup/workflow.go`):
    only prefixes ending in `/` (501 NotImplemented otherwise), and kopia lists
    by blob-ID prefix; rclone lists the bucket and filters. Blobs are stored as
    `<id>.f`, which rclone's native storj backend reads too. `VerifyStorj`:
-   connects to the copy the same way, read-only, checks it has the newest
-   snapshot of every source, and verifies 1% of their files.
+   connects to the copy the same way, read-only, and compares the two blob
+   listings (`kopia blob list`): every blob present at the same size, nothing
+   extra, `_log` blobs aside. It reads no blob back, since Storj bills reads
+   as egress, and kopia's small reads through rclone as large ranged
+   downloads.
 
 A failed item does not stop the others; the run fails at the end with every
 failure listed. Item activities retry 3 times (Verify's check failures are

@@ -16,8 +16,8 @@ run:
 | `rgw-metadata` | accounts, users (with keys), roles, OIDC providers, bucket metadata (not the zone/zonegroup, which `docs/ceph-bootstrap/` recreates) | the RGW admin-ops API (`/admin/metadata`, the same JSON as `radosgw-admin metadata get`), `rados get` for OIDC providers | `/run/ceph-backup-rgw-metadata` |
 | `cephfs` | every CephFS filesystem (today: `local-drive`) | a CephFS snapshot of the root (`.snap/kopia-backup-<time>`), mounted with the worker's key `client.ceph-backup` | `/run/ceph-backup-cephfs/<fs>` |
 
-Right after each snapshot the worker checks it: no errors, not under half
-the size or file count of the previous one, and 10% of its files read back
+Right after each snapshot the worker checks it: no errors, not empty
+(zero bytes or zero files) when the previous one was not, and 10% of its files read back
 from the repository (all of rgw-metadata's). On Sundays maintenance reads back
 every file of the newest snapshot of every source. Each backup is crash-consistent per item, not across items. Not captured:
 RGW object versions, tags, ACLs, Content-Type and user metadata (the S3 view
@@ -177,8 +177,9 @@ mount it, empty it, `kopia snapshot restore` into it, unmount, unmap.
 The Storj bucket `ceph-backup` holds a blob-for-blob copy of the repository:
 same password, same snapshots. The worker's `SyncStorj` refreshes it after
 every run (`kopia repository sync-to rclone --flat --delete`, so pruning is
-mirrored too), and `VerifyStorj` then opens the copy, checks it has the newest
-snapshot of every source and reads back 1% of their files. Each blob is an
+mirrored too), and `VerifyStorj` then checks the copy's blob listing matches
+the repository's, name for name and size for size. It reads nothing back: a
+restore from Storj is the first full read of the copy. Each blob is an
 object `<blob-id>.f` at the top of the bucket.
 
 Kopia's own s3 storage cannot read this copy: this Storj project (self-managed
