@@ -8,6 +8,12 @@ void        http_mock_set_perform_result(esp_err_t result);
 const char *http_mock_last_url(void);
 const char *http_mock_last_auth(void);
 const char *http_mock_last_body(void);
+void        http_mock_fail_next_performs(int n);
+const char *http_mock_last_content_type(void);
+int         http_mock_last_method(void);
+int         http_mock_init_count(void);
+int         http_mock_perform_count(void);
+int         http_mock_close_count(void);
 void        http_mock_reset(void);
 
 /* neopixel_mocks.c */

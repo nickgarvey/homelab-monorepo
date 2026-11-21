@@ -1,8 +1,9 @@
 # End-to-end check of the certificate Home Assistant actually serves.
 #
-# cert-manager renewing successfully is necessary but not sufficient: the cert
-# still has to be copied out to HAOS and picked up by a restart. If that sync
-# breaks, cert-manager looks perfectly healthy while HA serves something stale.
+# lego on lydia renewing successfully is necessary but not sufficient: HA only
+# loads its cert at startup, so the renewal's postRun has to restart the HA
+# container. If that breaks, the ACME unit looks healthy while HA serves
+# something stale.
 #
 # Expiry alone is a weak signal here -- a long-lived certificate for the wrong
 # hostname, or one chained to a private CA, would pass an expiry check for

@@ -24,7 +24,8 @@ let
   # sops.secrets attribute this container's host renders the secret into.
   #
   # Hosts that hold the same secret run the ACME client:
-  #   acme-homeassistant -> the HAOS box's certbot
+  #   acme-homeassistant-lydia -> lego on lydia, for the Home Assistant pod
+  #                         (modules/services/home-assistant.nix)
   #   acme-garage        -> lego on lydia and wabbajack, one cert per node for
   #                         the shared name garage.home.garvey.sh
   #                         (modules/containers/garage.nix)
@@ -51,11 +52,11 @@ let
   #                         (modules/services/pki-dns-cert.nix).
   acmeKeys = [
     {
-      name = "acme-homeassistant";
+      name = "acme-homeassistant-lydia";
       owners = [ "_acme-challenge.homeassistant.${domain}." ];
-      sopsName = "knot-acme-tsig";
-      sopsFile = ../../secrets/dragonsreach.yaml;
-      sopsKey = "knot-acme-tsig";
+      sopsName = "homeassistant-acme-tsig";
+      sopsFile = ../../secrets/homeassistant-acme.yaml;
+      sopsKey = "acme_tsig_secret";
     }
     {
       name = "acme-garage";

@@ -100,8 +100,80 @@ void test_ha_get_truncates_to_buffer_capacity(void)
     TEST_ASSERT_EQUAL_INT('\0', buf[4]);
 }
 
+void test_requests_share_one_client(void)
+{
+    setup();
+    http_mock_set_response(200, "{}");
+    char buf[64];
+    ha_get("/api/states/cover.garage_door", buf, sizeof(buf));
+    ha_post("/api/services/cover/toggle", "{}");
+    ha_get("/api/states/cover.garage_door", buf, sizeof(buf));
+
+    TEST_ASSERT_EQUAL_INT(1, http_mock_init_count());
+    TEST_ASSERT_EQUAL_INT(3, http_mock_perform_count());
+    TEST_ASSERT_EQUAL_INT(0, http_mock_close_count());
+}
+
+void test_get_after_post_sends_no_body(void)
+{
+    setup();
+    http_mock_set_response(200, "{}");
+    ha_post("/api/services/cover/toggle", "{\"entity_id\":\"cover.garage\"}");
+    TEST_ASSERT_EQUAL_INT(HTTP_METHOD_POST, http_mock_last_method());
+    TEST_ASSERT_EQUAL_STRING("application/json", http_mock_last_content_type());
+
+    char buf[64];
+    ha_get("/api/states/cover.garage_door", buf, sizeof(buf));
+    TEST_ASSERT_EQUAL_INT(HTTP_METHOD_GET, http_mock_last_method());
+    TEST_ASSERT_EQUAL_STRING("", http_mock_last_body());
+    TEST_ASSERT_EQUAL_STRING("", http_mock_last_content_type());
+    TEST_ASSERT_NOT_NULL(strstr(http_mock_last_auth(), TEST_API_KEY));
+}
+
+void test_ha_get_retries_once_on_new_connection(void)
+{
+    setup();
+    http_mock_set_response(200, "{\"state\":\"open\"}");
+    http_mock_fail_next_performs(1);
+    char buf[64];
+    int status = ha_get("/api/states/cover.garage_door", buf, sizeof(buf));
+
+    TEST_ASSERT_EQUAL_INT(200, status);
+    TEST_ASSERT_EQUAL_STRING("{\"state\":\"open\"}", buf);
+    TEST_ASSERT_EQUAL_INT(2, http_mock_perform_count());
+    TEST_ASSERT_EQUAL_INT(1, http_mock_close_count());
+}
+
+void test_ha_get_gives_up_after_retry(void)
+{
+    setup();
+    http_mock_fail_next_performs(2);
+    char buf[64];
+    int status = ha_get("/api/states/cover.garage_door", buf, sizeof(buf));
+
+    TEST_ASSERT_EQUAL_INT(-1, status);
+    TEST_ASSERT_EQUAL_INT(2, http_mock_perform_count());
+    TEST_ASSERT_EQUAL_INT(2, http_mock_close_count());
+}
+
+void test_ha_post_is_not_retried(void)
+{
+    setup();
+    http_mock_fail_next_performs(1);
+    int status = ha_post("/api/services/cover/toggle", "{}");
+
+    TEST_ASSERT_EQUAL_INT(-1, status);
+    TEST_ASSERT_EQUAL_INT(1, http_mock_perform_count());
+    TEST_ASSERT_EQUAL_INT(1, http_mock_close_count());
+}
+
 void run_ha_client_tests(void)
 {
+    RUN_TEST(test_requests_share_one_client);
+    RUN_TEST(test_get_after_post_sends_no_body);
+    RUN_TEST(test_ha_get_retries_once_on_new_connection);
+    RUN_TEST(test_ha_get_gives_up_after_retry);
+    RUN_TEST(test_ha_post_is_not_retried);
     RUN_TEST(test_ha_post_builds_correct_url);
     RUN_TEST(test_ha_post_sends_bearer_auth_header);
     RUN_TEST(test_ha_post_returns_status_code);

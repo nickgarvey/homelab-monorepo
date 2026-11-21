@@ -33,12 +33,13 @@ On boot the firmware:
 
 ## Prerequisites
 
-- **Thread border router** running on HA (e.g. the SkyConnect or a separate OTBR).
+- **Thread border router**: the `otbr` container in lydia's Home Assistant pod
+  (`modules/services/home-assistant.nix`).
 - **Thread operational dataset** stored in `secrets/thread.sops.yaml` (SOPS-encrypted
   with age).  The dataset hex TLV comes from the border router — see
   [Getting the Thread dataset](#getting-the-thread-dataset) below.
-- **Matter Server addon** on HA with `enable_test_net_dcl: true` (our devices use
-  the esp-matter test VID `0xFFF1`).
+- **Matter server**: the `matter-server` container in the same pod, started with
+  `--enable-test-net-dcl` (our devices use the esp-matter test VID `0xFFF1`).
 - **sops** and **age** available (provided by `nix develop .#esp32`).
 
 ## Flashing with Thread credentials
@@ -92,18 +93,15 @@ chip-tool pairing code-thread <node-id> hex:$DATASET MT:Y.K90AFN00KA0648G00 \
 The Thread operational dataset is a hex-encoded TLV blob that contains the network
 name, channel, PAN ID, network key, and other parameters.
 
-### From the HA OpenThread Border Router addon
+### From the OTBR container on lydia
 
 ```bash
-# SSH into HA
-ssh root@homeassistant.local
-
-# Get the active dataset hex
-ha addons info core_openthread_border_router
-# Or via the REST API:
-curl -s http://core-openthread-border-router:8081/node/dataset/active | python3 -c \
-    "import sys,json; print(json.load(sys.stdin)['TLVs'])"
+# Active dataset as hex TLVs (includes the network key)
+ssh lydia sudo podman exec otbr ot-ctl dataset active -x
 ```
+
+The OTBR REST API listens only on 127.0.0.1:8081 inside the pod, so other
+hosts cannot reach it.
 
 ### Updating the SOPS secret
 
@@ -158,6 +156,6 @@ fabric data).  The device will be in an uncommissioned state after erasing.
 ### Test attestation rejected
 
 Our devices use the esp-matter test VID (`0xFFF1`) and test DAC.  The Matter
-Server addon must have `enable_test_net_dcl: true` in its configuration to
-accept test attestation.  Production commissioners (Apple Home, Google Home)
+server must run with `--enable-test-net-dcl` (set in
+`modules/services/home-assistant.nix`) to accept test attestation.  Production commissioners (Apple Home, Google Home)
 will reject these devices.

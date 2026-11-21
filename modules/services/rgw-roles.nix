@@ -1,14 +1,17 @@
-# Declares the RGW STS roles that let k3s apps reach their S3 buckets with their SPIFFE identity, and reconciles them with radosgw-admin.
+# Declares the RGW STS roles that let workloads (k3s pods, NixOS host services) reach their S3 buckets with their SPIFFE identity, and reconciles them with radosgw-admin.
 #
-# Each app gets one role in the RGW account `k8s`. The role trusts exactly
-# the JWT-SVID spiffe://home.garvey.sh/ns/<namespace>/sa/<serviceAccount>
-# (audience rgw.home.garvey.sh, enforced by the OIDC provider registered for
-# spiffe-oidc.home.garvey.sh) and allows s3:* on buckets named
-# <bucketPrefix>*, nothing else; the app creates its own buckets. A read-only
-# role (access = "readonly") may only read and list, on its prefix or, with
-# no prefix, on every bucket of the account (the Ceph backup worker). A pod gets
-# credentials with AWS_WEB_IDENTITY_TOKEN_FILE + AWS_ROLE_ARN; see "S3 on Ceph
-# RGW" in k8s/manifests/spire/README.md.
+# Each app gets one role in the RGW account `k8s`. The role trusts exactly one
+# JWT-SVID subject: spiffe://home.garvey.sh/ns/<namespace>/sa/<serviceAccount>
+# for a pod, or spiffeID for anything else, such as a NixOS host service
+# (spiffe://home.garvey.sh/host/<host>/<service>, from
+# k8s/manifests/spire/host-entries.yaml). The audience, rgw.home.garvey.sh, is
+# enforced by the OIDC provider registered for spiffe-oidc.home.garvey.sh. The
+# role allows s3:* on buckets named <bucketPrefix>*, nothing else; the app
+# creates its own buckets. A read-only role (access = "readonly") may only read
+# and list, on its prefix or, with no prefix, on every bucket of the account
+# (the Ceph backup worker). A client gets credentials with
+# AWS_WEB_IDENTITY_TOKEN_FILE + AWS_ROLE_ARN; see "S3 on Ceph RGW" in
+# k8s/manifests/spire/README.md.
 #
 # RGW has no IAM permissions boundaries, so whatever can create roles is admin
 # of the account. Roles are therefore only made here, by radosgw-admin on a
@@ -33,8 +36,7 @@ let
       Effect = "Allow";
       Principal.Federated = [ "arn:aws:iam::${account}:oidc-provider/${issuer}" ];
       Action = [ "sts:AssumeRoleWithWebIdentity" ];
-      Condition.StringEquals."${issuer}:sub" =
-        "spiffe://${trustDomain}/ns/${app.namespace}/sa/${app.serviceAccount}";
+      Condition.StringEquals."${issuer}:sub" = app.spiffeID;
     }];
   };
   permissions = app: let p = if app.bucketPrefix == null then "" else app.bucketPrefix; in builtins.toJSON {
@@ -117,7 +119,7 @@ let
   };
 
   unit = {
-    description = "Reconcile RGW STS roles for k3s apps";
+    description = "Reconcile RGW STS roles";
     wants = [ "ceph-mon.target" ];
     after = [ "ceph-mon.target" "network-online.target" ];
     serviceConfig = {
@@ -128,12 +130,18 @@ let
 in
 {
   options.services.rgwRoles.apps = lib.mkOption {
-    description = "RGW STS roles for k3s apps, keyed by role name.";
+    description = "RGW STS roles, keyed by role name.";
     default = { };
-    type = lib.types.attrsOf (lib.types.submodule {
+    type = lib.types.attrsOf (lib.types.submodule ({ config, ... }: {
       options = {
-        namespace = lib.mkOption { type = lib.types.str; };
-        serviceAccount = lib.mkOption { type = lib.types.str; };
+        namespace = lib.mkOption { type = lib.types.nullOr lib.types.str; default = null; };
+        serviceAccount = lib.mkOption { type = lib.types.nullOr lib.types.str; default = null; };
+        spiffeID = lib.mkOption {
+          type = lib.types.strMatching "spiffe://${lib.escapeRegex trustDomain}/.+";
+          default = "spiffe://${trustDomain}/ns/${config.namespace}/sa/${config.serviceAccount}";
+          defaultText = "spiffe://home.garvey.sh/ns/<namespace>/sa/<serviceAccount>";
+          description = "The JWT-SVID subject the role trusts. Set it, or namespace and serviceAccount for a pod.";
+        };
         bucketPrefix = lib.mkOption {
           type = lib.types.nullOr (lib.types.strMatching "[a-z0-9][a-z0-9.-]{2,}");
           description = "The app may create and use every bucket whose name starts with this. null (read-only roles only): every bucket.";
@@ -144,7 +152,7 @@ in
           description = "readonly: get and list objects only, no writes, no bucket creation.";
         };
       };
-    });
+    }));
   };
 
   config = {
@@ -161,6 +169,8 @@ in
       # The valkey-operator S3 snapshotting prototype's backup controller
       # (~/valkey/s3-snapshotting, namespace valkey-testing; not in this repo).
       valkey-backup = { namespace = "valkey-testing"; serviceAccount = "valkey-backup"; bucketPrefix = "valkey-s3-testing"; };
+      # lydia's daily Home Assistant backup (modules/services/home-assistant-backup.nix).
+      homeassistant-backup = { spiffeID = "spiffe://home.garvey.sh/host/lydia/homeassistant-backup"; bucketPrefix = "homeassistant-backup"; };
     };
 
     assertions = [{

@@ -8,3 +8,9 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 # already contains ISRG Root X1 and X2, which is what HA's chain terminates at.
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_CMN=y
+
+# Offer TLS 1.3 as well as 1.2. Session tickets are left off: ESP-IDF 5.5's HTTP
+# client saves the session right after the handshake, before a TLS 1.3 server
+# sends its tickets, so it would never resume. ha_client keeps one connection
+# open instead, so handshakes are rare.
+CONFIG_MBEDTLS_SSL_PROTO_TLS1_3=y

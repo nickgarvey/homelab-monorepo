@@ -21,7 +21,7 @@ owns cert-manager and the services themselves.
 | Path | Names | Issued by | Config |
 |---|---|---|---|
 | cert-manager | `<name>.home.garvey.sh` and `<name>.garvey.sh` for cluster services | Let's Encrypt, DNS-01 via RFC2136 | `k8s/manifests/cert-manager/cluster-issuer-rfc2136-{prod,staging}.yaml`; names in `certManagerAcme`, `modules/networking/dns.nix` |
-| On-box ACME | `homeassistant.home.garvey.sh`, `garage.home.garvey.sh`, `storj-gateway.home.garvey.sh`, `rgw.home.garvey.sh`, `openbao.home.garvey.sh` (+ `openbao-<node>`), `incus.home.garvey.sh` | Let's Encrypt, DNS-01 via RFC2136 | HAOS itself / `security.acme` on lydia + wabbajack / `security.acme` on dragonsreach / `security.acme` on joor + zah + frul (Ceph RGW) / `security.acme` on fus + ro + dah (OpenBao, `docs/openbao.md`) / Incus's own ACME client on lydia (`modules/virtualisation/incus.nix`); TSIG ACLs in `modules/containers/knot-auth.nix` |
+| On-box ACME | `homeassistant.home.garvey.sh`, `garage.home.garvey.sh`, `storj-gateway.home.garvey.sh`, `rgw.home.garvey.sh`, `openbao.home.garvey.sh` (+ `openbao-<node>`), `incus.home.garvey.sh` | Let's Encrypt, DNS-01 via RFC2136 | `security.acme` on lydia (Home Assistant pod, `modules/services/home-assistant.nix`) / `security.acme` on lydia + wabbajack (garage) / `security.acme` on dragonsreach / `security.acme` on joor + zah + frul (Ceph RGW) / `security.acme` on fus + ro + dah (OpenBao, `docs/openbao.md`) / Incus's own ACME client on lydia (`modules/virtualisation/incus.nix`); TSIG ACLs in `modules/containers/knot-auth.nix` |
 
 Both write the challenge TXT straight into Knot with a TSIG key that may write only TXT at
 its own challenge names.
@@ -50,8 +50,8 @@ Onboarding a name: `k8s/manifests/cert-manager/ONBOARDING.md`.
 
 ### 2. On-box ACME against our own Knot
 
-For the things cert-manager cannot deliver a cert to — Home Assistant, which runs HAOS
-rather than NixOS, and the two S3 endpoints, which run in nspawn containers (garage on
+For the things cert-manager cannot deliver a cert to — Home Assistant, which runs in a
+podman pod on lydia and reads its cert from a bind mount, and the two S3 endpoints, which run in nspawn containers (garage on
 lydia and wabbajack, the Storj gateway on dragonsreach) — the box issues its own cert with
 DNS-01 by **RFC2136 dynamic update against our own Knot**.
 

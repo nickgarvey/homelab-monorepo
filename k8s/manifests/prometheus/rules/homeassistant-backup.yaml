@@ -1,0 +1,44 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: homeassistant-backup-alerts
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+    prometheus: prometheus
+spec:
+  groups:
+    - name: homeassistant-backup
+      rules:
+        # Daily at 08:00 UTC with up to 30 minutes of random delay.
+        # Metric: modules/services/home-assistant-backup.nix on lydia.
+        - alert: HomeAssistantBackupStale
+          expr: time() - max(homeassistant_backup_last_success_timestamp_seconds) > 26 * 3600
+          for: 1h
+          labels:
+            severity: critical
+          annotations:
+            summary: "No Home Assistant backup uploaded for {{ $value | humanizeDuration }}"
+            description: "The daily homeassistant-backup timer on lydia has not uploaded to the homeassistant-backup bucket on Ceph RGW. Check `journalctl -u homeassistant-backup` on lydia. See docs/home-assistant.md."
+
+        - alert: HomeAssistantBackupMetricsMissing
+          expr: absent(homeassistant_backup_last_success_timestamp_seconds)
+          for: 1h
+          labels:
+            severity: critical
+          annotations:
+            summary: "No Home Assistant backup metrics from lydia"
+            description: "lydia's vector agent is not pushing homeassistant_backup_* metrics. Check vector on lydia; while this fires, HomeAssistantBackupStale cannot."
+
+        # A backup that is far smaller than recent ones has probably lost data:
+        # an unmounted or emptied /fast/homeassistant still uploads fine.
+        - alert: HomeAssistantBackupShrunk
+          expr: |
+            max(homeassistant_backup_last_size_bytes)
+              < 0.5 * max(max_over_time(homeassistant_backup_last_size_bytes[7d]))
+          for: 1h
+          labels:
+            severity: critical
+          annotations:
+            summary: "Home Assistant backup is under half the size of the past week's largest"
+            description: "The last homeassistant-backup archive is {{ $value | humanize1024 }}B. Check that /fast/homeassistant on lydia is mounted and holds HA's data before trusting newer backups. See docs/home-assistant.md."

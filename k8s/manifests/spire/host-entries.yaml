@@ -15,3 +15,18 @@ spec:
   parentID: spiffe://home.garvey.sh/spire/agent/x509pop/lydia.home.garvey.sh
   selectors:
     - systemd:id:vector.service
+---
+# lydia's daily Home Assistant backup: an STS role in RGW
+# (modules/services/rgw-roles.nix) trusts this ID.
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterStaticEntry
+metadata:
+  name: host-lydia-homeassistant-backup
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  className: spire-spire
+  spiffeID: spiffe://home.garvey.sh/host/lydia/homeassistant-backup
+  parentID: spiffe://home.garvey.sh/spire/agent/x509pop/lydia.home.garvey.sh
+  selectors:
+    - systemd:id:homeassistant-backup.service

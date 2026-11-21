@@ -19,6 +19,7 @@ typedef int esp_err_t;
 #define ESP_ERR_NVS_NO_FREE_PAGES     0x1101
 #define ESP_ERR_NVS_NEW_VERSION_FOUND 0x1102
 #define ESP_ERROR_CHECK(x) do { esp_err_t _rc = (x); (void)_rc; } while (0)
+static inline const char *esp_err_to_name(esp_err_t err) { return err == ESP_OK ? "ESP_OK" : "ESP_ERR"; }
 
 /* ---- FreeRTOS base types ------------------------------------------------ */
 typedef int      BaseType_t;
@@ -140,7 +141,10 @@ esp_err_t esp_http_client_set_header(esp_http_client_handle_t client,
                                       const char *key, const char *value);
 esp_err_t esp_http_client_set_post_field(esp_http_client_handle_t client,
                                           const char *data, int len);
+esp_err_t esp_http_client_set_url(esp_http_client_handle_t client, const char *url);
+esp_err_t esp_http_client_set_user_data(esp_http_client_handle_t client, void *data);
 esp_err_t esp_http_client_perform(esp_http_client_handle_t client);
+esp_err_t esp_http_client_close(esp_http_client_handle_t client);
 int       esp_http_client_get_status_code(esp_http_client_handle_t client);
 esp_err_t esp_http_client_cleanup(esp_http_client_handle_t client);
 

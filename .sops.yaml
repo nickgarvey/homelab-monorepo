@@ -64,6 +64,22 @@ creation_rules:
       - *joor
       - *zah
       - *frul
+  # homeassistant: the Z-Wave network keys from the HAOS Z-Wave JS add-on, for
+  # Z-Wave JS UI in lydia's Home Assistant pod (modules/services/home-assistant.nix).
+  - path_regex: secrets/homeassistant\.yaml$
+    key_groups:
+    - age:
+      - *ngarvey
+      - *lydia
+  # homeassistant-acme: TSIG secret for the acme-homeassistant-lydia key (ACME
+  # DNS-01 for homeassistant.home.garvey.sh). dragonsreach holds it for Knot;
+  # lydia runs lego for Home Assistant (modules/services/home-assistant.nix).
+  - path_regex: secrets/homeassistant-acme\.yaml$
+    key_groups:
+    - age:
+      - *ngarvey
+      - *dragonsreach
+      - *lydia
   # frigate-acme: TSIG secret for the acme-frigate key (ACME DNS-01 for
   # frigate.home.garvey.sh). dragonsreach holds it for Knot; lydia runs lego
   # for the Frigate container (modules/containers/frigate.nix).

@@ -12,10 +12,20 @@
     ../../modules/virtualisation/incus-vms.nix
     ../../modules/virtualisation/incus-metrics.nix
     ../../modules/services/fancontrol.nix
+    ../../modules/services/home-assistant.nix
+    ../../modules/services/home-assistant-backup.nix
     ../../modules/services/netboot-server.nix
     ../../modules/services/pki-dns-cert.nix
     ../../modules/services/spire-agent.nix
   ];
+
+  # Home Assistant, with the Thread and Z-Wave sticks plugged into lydia. The
+  # pod has the `homeassistant` identity from lan-hosts.nix (the old HAOS box's
+  # MAC and addresses).
+  homelab.homeassistant = {
+    enable = true;
+    radios.enable = true;
+  };
 
   # Required so the garage container (on vmbr0) can route to its peer's
   # delegated /64 — crosses interfaces, needs IPv6 forwarding.
@@ -80,6 +90,13 @@
     fsType = "btrfs";
     options = [ "subvol=@incus" "nofail" ];
   };
+  # Home Assistant's state: HA config and database, Z-Wave JS, Matter server and
+  # OTBR data. One subvolume, so a snapshot captures all of it at one instant.
+  fileSystems."/fast/homeassistant" = {
+    device = "/dev/disk/by-label/fast";
+    fsType = "btrfs";
+    options = [ "compress=zstd" "subvol=@homeassistant" "nofail" ];
+  };
   fileSystems."/fast/longhorn" = {
     device = "/dev/disk/by-label/fast";
     fsType = "btrfs";
@@ -116,14 +133,23 @@
       };
       volume."/mnt/fast-root" = {
         subvolume."@media" = { snapshot_dir = ".snapshots"; };
+        # Also received onto the slow mirror, so a local copy survives losing
+        # the 980 PRO. The daily off-host copy is modules/services/home-assistant-backup.nix.
+        subvolume."@homeassistant" = {
+          snapshot_dir = ".snapshots";
+          target = "/mnt/slow-root/.received";
+          target_preserve_min = "2d";
+          target_preserve = "14d 8w";
+        };
       };
     };
   };
 
-  # btrbk does not create snapshot_dir itself.
+  # btrbk creates neither snapshot_dir nor the target directory itself.
   systemd.tmpfiles.rules = [
     "d /mnt/slow-root/.snapshots 0700 root root - -"
     "d /mnt/fast-root/.snapshots 0700 root root - -"
+    "d /mnt/slow-root/.received 0700 root root - -"
   ];
 
   homelab.incus = {
