@@ -77,6 +77,20 @@ Before picking one, list what is already taken:
 grep -rh lb-ipam-ips manifests/*/*.yaml | sed 's/.*: //' | tr -d '"' | sort
 ```
 
+**Never use `externalTrafficPolicy: Local`.** The L2 announcement elects any node
+for an LB IP, not only nodes running a backend, and a node with no local backend
+drops the traffic. Every Cilium rollout re-elects all of them, so a Local Service
+works until the lease moves (this took down `manifests/ipv4-gateway/` on
+2026-10-28).
+
+With the default `Cluster`, a node forwarding to a backend on another node SNATs
+to its own address, so the pod sees a node address, not the client's. A Service
+that needs the client's address (to log it, or to filter by it as
+`manifests/ipv4-gateway/` and `manifests/netconsole/` do) adds the annotation
+`service.cilium.io/forwarding-mode: dsr` (see `vendor/cilium/values.yaml`). The
+annotation only takes effect when the Service is created: to add or remove it,
+delete the Service and apply it again, which briefly takes it down.
+
 ## Pod ingress is default-deny
 
 Pod IPs are routable from the LAN, so `manifests/cilium/pod-ingress-default-deny.yaml`

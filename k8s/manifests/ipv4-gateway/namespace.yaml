@@ -1,0 +1,7 @@
+# Namespace for the HAProxy SNI router that gives IPv4 clients a path to the IPv6-only k8s services.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ipv4-gateway
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab

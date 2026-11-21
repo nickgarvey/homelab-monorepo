@@ -41,14 +41,16 @@ in rec {
     anki          = { v4 = []; v6 = [ "2001:470:482f:2::5003" ]; };
     # CouchDB for Obsidian LiveSync, and Grafana: Caddy sidecars terminate TLS
     # on 443 off these LB IPs (k8s/manifests/couchdb, k8s/manifests/grafana).
-    obsidian-livesync = { v4 = []; v6 = [ "2001:470:482f:2::5004" ]; };
+    # obsidian-livesync's A record is the IPv4 gateway (ipv4Gateway below), for
+    # IPv4-only LAN clients (Android): HAProxy routes the name to CouchDB by SNI.
+    obsidian-livesync = { v4 = [ ipv4Gateway.v4 ]; v6 = [ "2001:470:482f:2::5004" ]; };
     grafana       = { v4 = []; v6 = [ "2001:470:482f:2::5006" ]; };
     # Authelia (OIDC login for Grafana); Caddy sidecar terminates TLS on 443
-    # (k8s/manifests/authelia). The A record is the WAN front door, which only
-    # Claude's connector range can use (modules/containers/public-mcp-proxy.nix):
-    # it reaches the MCP gateway, which forwards just Authelia's discovery and
-    # token endpoints. LAN clients use the AAAA, as the router rejects LAN
-    # traffic to its own :443.
+    # (k8s/manifests/authelia). The A record is the WAN front door: the router
+    # forwards WAN :443 to the HAProxy SNI router (k8s/manifests/ipv4-gateway),
+    # which lets only Claude's connector range through, to the MCP gateway; that
+    # forwards just Authelia's discovery and token endpoints. LAN clients use
+    # the AAAA, as the router rejects LAN traffic to its own :443.
     auth          = { v4 = [ wanIPv4 ]; v6 = [ "2001:470:482f:2::5005" ]; };
     # SPIRE's OIDC discovery provider serves the trust domain's JWKS on 443 off
     # this LB IP (k8s/manifests/spire).
@@ -60,8 +62,10 @@ in rec {
     # write (k8s/manifests/prometheus).
     prometheus    = { v4 = []; v6 = [ "2001:470:482f:2::5009" ]; };
     # The Matrix Authentication Service, every Matrix login; it terminates TLS
-    # on 443 itself (k8s/manifests/matrix).
-    matrix-auth   = { v4 = []; v6 = [ "2001:470:482f:2::5011" ]; };
+    # on 443 itself (k8s/manifests/matrix). A record as for auth above, but
+    # HAProxy lets every WAN source through: Element X refreshes its tokens
+    # here from wherever the phone is.
+    matrix-auth   = { v4 = [ wanIPv4 ]; v6 = [ "2001:470:482f:2::5011" ]; };
     # Nightscout (CGM data from Loop); Caddy sidecar terminates TLS on 443
     # (k8s/manifests/nightscout).
     nightscout    = { v4 = []; v6 = [ "2001:470:482f:2::5012" ]; };
@@ -82,6 +86,16 @@ in rec {
   # door for mcp and auth above. Nothing updates it if the lease
   # changes; modules/router/wan-dns-drift.nix alerts when it no longer matches.
   wanIPv4 = "64.186.8.205";
+
+  # IPv4 front door for the IPv6-only k8s services: the router's Jool SIIT
+  # (modules/router/siit.nix) maps v4 1:1 onto v6, the HAProxy SNI router's LB
+  # address (k8s/manifests/ipv4-gateway). IPv4 clients reach HAProxy with
+  # source addresses inside translationPrefix (their IPv4 in the last 32 bits).
+  ipv4Gateway = {
+    v4 = "10.28.0.8";
+    v6 = "2001:470:482f:2::5014";
+    translationPrefix = "2001:470:482f:64::/96";
+  };
 
   # CNAMEs (targets are FQDNs with trailing dot).
   cnames = { };
@@ -111,9 +125,16 @@ in rec {
   # garvey.sh still resolves via the normal upstream (public) path.
   garveyShOverrides = {
     "oci.garvey.sh" = "2001:470:482f:2::5000";
-    "jellyfin.garvey.sh" = "2001:470:482f:2::5001";
+    # The A record is the IPv4 gateway (ipv4Gateway above): HAProxy routes the
+    # name to Jellyfin by SNI. IPv6 clients keep going straight to the LB.
+    "jellyfin.garvey.sh" = "${ipv4Gateway.v4},2001:470:482f:2::5001";
     "temporal.garvey.sh" = "2001:470:482f:2::5002";
-    # Synapse (k8s/manifests/matrix). Nothing public points at it yet.
-    "matrix.garvey.sh" = "2001:470:482f:2::5010";
+    # Synapse and MAS (k8s/manifests/matrix). Publicly, both have only an A
+    # record, wanIPv4, which HAProxy (k8s/manifests/ipv4-gateway) passes from
+    # the WAN. The router rejects LAN traffic to its own :443, so LAN clients
+    # get the IPv4 gateway (HAProxy routes both names by SNI) and the LB AAAA.
+    # Without an A here, blocky forwards A queries upstream and returns wanIPv4.
+    "matrix.garvey.sh" = "${ipv4Gateway.v4},2001:470:482f:2::5010";
+    "matrix-auth.home.garvey.sh" = "${ipv4Gateway.v4},2001:470:482f:2::5011";
   };
 }

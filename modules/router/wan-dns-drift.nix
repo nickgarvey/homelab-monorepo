@@ -17,7 +17,10 @@ let
   cfg = config.routerConfig;
 
   # The records that publish this router's WAN IPv4 to the public internet.
-  publishedRecords = [ "ns1.home.garvey.sh" "mcp.home.garvey.sh" "auth.home.garvey.sh" ];
+  publishedRecords = [
+    "ns1.home.garvey.sh" "mcp.home.garvey.sh" "auth.home.garvey.sh"
+    "matrix-auth.home.garvey.sh" "matrix.garvey.sh"
+  ];
 
   wanDnsCheck = pkgs.writeShellScript "wan-dns-check" ''
     set -u

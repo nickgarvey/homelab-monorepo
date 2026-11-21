@@ -186,11 +186,14 @@ stays a straight 443→443.
 
 ## Split-horizon DNS keeps the cert name honest
 
-A public name like `jellyfin.garvey.sh` resolves publicly to the WAN address. From inside
-the LAN, hairpinning out and back would be wasteful — but simply pointing clients at the
-internal IP would break TLS, because the cert is for the public name.
+A name like `jellyfin.garvey.sh` has no public A or AAAA record: nothing behind it is
+exposed on the WAN, and Cloudflare holds only its `_acme-challenge` CNAME. The name exists
+only on the LAN, where the router answers it with the service's internal address. Clients
+still verify TLS against it, because the cert is issued for that public name. A client
+that bypasses the router's DNS (for example a browser's secure DNS set to a custom
+provider) gets no answer.
 
-The fix is in `modules/networking/dns.nix`:
+The LAN records are in `modules/networking/dns.nix`:
 
 ```nix
 garveyShOverrides = {
@@ -201,6 +204,13 @@ garveyShOverrides = {
 
 blocky serves these from `customDNS`, so LAN clients reach the LoadBalancer directly **and
 still verify against the public name**. Add any future public-named service here.
+
+An override may also carry an IPv4 address before the IPv6 one, comma-separated
+(`jellyfin.garvey.sh` resolves to `10.28.0.8` and `2001:470:482f:2::5001`). The cluster is
+IPv6-only, so that address is the IPv4 gateway (`ipv4Gateway` in `dns.nix`): the router's
+Jool SIIT translates it to the HAProxy SNI router in `k8s/manifests/ipv4-gateway`, which
+passes TLS through untouched to the service named in the SNI. IPv4-only clients get the
+same cert check; the service also needs a route in HAProxy.
 
 ---
 

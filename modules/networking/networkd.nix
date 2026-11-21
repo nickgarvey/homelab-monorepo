@@ -22,8 +22,10 @@ let
     Gateway = h.ipv6;
   }) k3sNodes;
 
-  # ECMP routes for k8s LoadBalancer subnet — Cilium L2 announces LB IPs from
-  # any node, so spread traffic across all k3s nodes.
+  # ECMP routes for k8s LoadBalancer subnet, spread across all k3s nodes. Any
+  # node's Cilium accepts traffic for any LB IP and forwards it to a backend,
+  # so the node need not be the one L2-announcing it (and with
+  # externalTrafficPolicy Local it would have to run a backend itself).
   lbRoutes = map (h: {
     Destination = "2001:470:482f:2::/112";
     Gateway = h.ipv6;

@@ -16,6 +16,8 @@
 # Subnet plan inside 2001:470:482f::/48:
 #   :0::/64       main LAN (most hosts SLAAC + static here)
 #   :2::/64       k8s LB pool (Cilium L2 announce)
+#   :64::/96      SIIT translation prefix: IPv4 LAN clients of the k8s HAProxy
+#                 gateway, as seen in IPv6 (dns.nix ipv4Gateway, router/siit.nix)
 #   :100::/56     k3s pod CIDRs (/64 per node)
 #   :200::/56     per-host delegations (one /64 per host)
 {

@@ -6,8 +6,8 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: ngarvey-homelab
   annotations:
-    # Matched by the mcp AAAA record in modules/networking/dns.nix. The
-    # router's public IPv4 :443 forward targets this address too.
+    # Matched by the mcp AAAA record in modules/networking/dns.nix. WAN
+    # clients arrive through the HAProxy SNI router (manifests/ipv4-gateway).
     io.cilium/lb-ipam-ips: "2001:470:482f:2::5013"
 spec:
   type: LoadBalancer

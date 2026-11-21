@@ -20,10 +20,11 @@ in
         # Use /64 so the router knows subnet :0 is on-link.
         "${heCfg.routedPrefix}1/64"
         # NOTE: the router deliberately does NOT claim an address inside
-        # the LB /112 (2001:470:482f:2::/112). LAN hosts install an ECMP
-        # /112 route to that prefix via the k3s nodes (Cilium L2-announce
-        # targets); a router-side address in the same /112 would be
-        # shadowed by that ECMP and break reply paths. The LB subnet is
+        # the LB /112 (2001:470:482f:2::/112). networkd hosts that are not
+        # k3s nodes install an ECMP /112 route to that prefix via the k3s
+        # nodes (modules/networking/networkd.nix lbRoutes); a router-side
+        # address in the same /112 would be shadowed by that ECMP and
+        # break reply paths. The LB subnet is
         # made on-link for the router via the interface route below.
         #
         # Router-side container delegated /64. Mirrors lydia (200::/64) and
@@ -73,8 +74,8 @@ in
         # Cilium LB pool — on-link via br-lan so the router can
         # NDP-resolve LB IPs (announced from any k3s node via Cilium L2)
         # when forwarding from HE / Tailscale / WAN. Deliberately a
-        # route, not an address: an address would shadow LAN hosts'
-        # ECMP /112 for this prefix. See address block above.
+        # route, not an address: an address would shadow the networkd
+        # hosts' ECMP /112 for this prefix. See address block above.
         { Destination = "2001:470:482f:2::/112"; }
       ];
     };

@@ -1,0 +1,35 @@
+# IPv6 LoadBalancer for the HAProxy SNI router; the router's Jool SIIT maps one LAN IPv4 address 1:1 onto it.
+apiVersion: v1
+kind: Service
+metadata:
+  name: haproxy
+  namespace: ipv4-gateway
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+  annotations:
+    io.cilium/lb-ipam-ips: "2001:470:482f:2::5014"
+    # Set at creation only (vendor/cilium/values.yaml); changing it breaks the
+    # Service, so delete and re-apply it instead.
+    service.cilium.io/forwarding-mode: dsr
+spec:
+  type: LoadBalancer
+  # HAProxy's client classes (configmap.yaml) depend on the client's source
+  # address, and SNAT would replace it with a node address, which HAProxy
+  # would class as LAN: every route open to the WAN. DSR keeps it even when
+  # the announcing node forwards to a haproxy pod on another node. Cluster,
+  # not Local, because Cilium's L2 announcement elects any node, and with
+  # Local a node without a haproxy pod drops the traffic.
+  externalTrafficPolicy: Cluster
+  ipFamilies: [IPv6]
+  ipFamilyPolicy: SingleStack
+  selector:
+    app: haproxy
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP
+    - name: https
+      port: 443
+      targetPort: 443
+      protocol: TCP

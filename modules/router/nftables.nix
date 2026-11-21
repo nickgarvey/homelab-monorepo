@@ -5,6 +5,7 @@
 let
   cfg = config.routerConfig;
   heCfg = config.routerConfig.heTunnel;
+  ipv4Gateway = (import ../networking/dns.nix { inherit lib; }).ipv4Gateway;
 in
 {
   config = {
@@ -123,11 +124,12 @@ in
             iifname "${cfg.lanInterface}" oifname "${cfg.lanInterface}" ip6 daddr 2001:470:482f:200::/56 accept
             iifname "${cfg.lanInterface}" oifname "${cfg.lanInterface}" ip6 saddr 2001:470:482f:200::/56 accept
 
-            # LAN -> k8s LB pool (:2::/112). Known LAN hosts install ECMP
-            # /112 routes via the k3s nodes directly (see networkd.nix
-            # lbRoutes) and never hairpin. Transient clients — laptops,
+            # LAN -> k8s LB pool (:2::/112). networkd hosts that are not k3s
+            # nodes install ECMP /112 routes via the k3s nodes directly (see
+            # networkd.nix lbRoutes) and never hairpin. Everything else —
+            # the NetworkManager workstations (talos, dovahkiin),
             # phones, nspawn containers that only learn the /48 via RA —
-            # have no more-specific route, so their LB traffic arrives at
+            # has no more-specific route, so its LB traffic arrives at
             # the router and needs to be forwarded back out br-lan to the
             # k3s node that Cilium L2-announces the LB IP. Reply path is
             # direct k3s-node→client on-link, so only daddr is needed.
@@ -144,6 +146,8 @@ in
 
             # Allow forwarding of DNAT'd traffic (port forwards)
             iifname "${cfg.wanInterface}" oifname "${cfg.lanInterface}" ct status dnat accept
+            # WAN :443 forwarded to the IPv4 gateway leaves through the SIIT veth.
+            iifname "${cfg.wanInterface}" oifname "siit0" ct status dnat accept
 
             # LAN -> WAN: allow all outbound
             iifname "${cfg.lanInterface}" oifname "${cfg.wanInterface}" accept
@@ -157,6 +161,12 @@ in
             iifname "${cfg.lanInterface}" oifname "jool0" accept
             iifname "jool0" oifname "${cfg.wanInterface}" accept
             iifname "jool0" oifname "${cfg.lanInterface}" accept
+
+            # LAN <-> SIIT namespace (modules/router/siit.nix): IPv4 clients of
+            # the k8s gateway go in, their translated IPv6 comes back out to the
+            # LB on br-lan, and the replies take the reverse path.
+            iifname "${cfg.lanInterface}" oifname "siit0" accept
+            iifname "siit0" oifname "${cfg.lanInterface}" accept
 
             # LAN -> HE tunnel: outbound IPv6 from LAN allowed.
             # HE tunnel -> LAN: default-deny. Hosts on the LAN are reachable
@@ -209,14 +219,13 @@ in
             iifname "${cfg.wanInterface}" udp dport 53 dnat to 10.28.0.5:53
             iifname "${cfg.wanInterface}" tcp dport 53 dnat to 10.28.0.5:53
 
-            # WAN IPv4 :443 -> public-mcp-proxy container, which relays TLS
-            # untouched to the MCP gateway (modules/containers/public-mcp-proxy.nix).
-            # Only from Anthropic's published egress range: Claude's connector
-            # traffic comes from there and from nowhere else
-            # (https://claude.com/docs/connectors/building/authentication).
-            # Every other source is not DNAT'd, so it reaches the input chain,
-            # which rejects WAN :443.
-            iifname "${cfg.wanInterface}" ip saddr 160.79.104.0/21 tcp dport 443 dnat to 10.28.0.7:443
+            # WAN IPv4 :443 -> the IPv4 gateway (modules/router/siit.nix), which
+            # the SIIT translates to the HAProxy SNI router in k8s, from every
+            # source. HAProxy is the filter: WAN clients reach only the Matrix
+            # names (from anywhere) and the MCP gateway's names (only from
+            # Anthropic's connector egress range); see
+            # k8s/manifests/ipv4-gateway/configmap.yaml.
+            iifname "${cfg.wanInterface}" tcp dport 443 dnat to ${ipv4Gateway.v4}:443
           }
 
           chain postrouting {

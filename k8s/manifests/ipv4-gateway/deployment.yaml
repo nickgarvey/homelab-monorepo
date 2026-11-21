@@ -1,0 +1,78 @@
+# HAProxy SNI router in front of the IPv6-only services, the target of the router's IPv4 SIIT mapping.
+#
+# Runs as the image's non-root haproxy user and still binds 80/443: the pod
+# sets net.ipv4.ip_unprivileged_port_start=0 (a namespaced, Kubernetes-safe
+# sysctl that covers IPv6 sockets too), so no capability is needed. Stateless,
+# so two replicas, spread across nodes.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: haproxy
+  namespace: ipv4-gateway
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: haproxy
+  template:
+    metadata:
+      labels:
+        app: haproxy
+        app.kubernetes.io/managed-by: ngarvey-homelab
+      annotations:
+        # Bump to roll the pods when configmap.yaml changes.
+        config-revision: "4"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 99
+        runAsGroup: 99
+        sysctls:
+          - name: net.ipv4.ip_unprivileged_port_start
+            value: "0"
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: haproxy
+      containers:
+        - name: haproxy
+          image: docker.io/library/haproxy:3.4.7-alpine
+          args: ["-f", "/usr/local/etc/haproxy/haproxy.cfg"]
+          ports:
+            - containerPort: 80
+              name: http
+            - containerPort: 443
+              name: https
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          readinessProbe:
+            tcpSocket:
+              port: 443
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 443
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi
+          volumeMounts:
+            - name: config
+              mountPath: /usr/local/etc/haproxy
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: haproxy

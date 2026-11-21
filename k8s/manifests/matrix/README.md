@@ -5,10 +5,19 @@ The server name is `matrix.garvey.sh`, so IDs look like
 `@ngarvey:matrix.garvey.sh`; it was picked so the server can federate later,
 and it can never change without starting over.
 
-- **LAN only.** The Service's address is reachable from the LAN and nowhere
-  else: inbound IPv6 is default-deny at the router and no port is forwarded.
-  `matrix.garvey.sh` resolves to it only inside, through `garveyShOverrides`
-  in `modules/networking/dns.nix`; there is no public record.
+- **Reachable from the internet over IPv4 only.** From the WAN, Synapse and
+  MAS are reached through the router's WAN :443. The router passes that to
+  the HAProxy SNI router (`k8s/manifests/ipv4-gateway`), which lets
+  `matrix.garvey.sh` and `matrix-auth.home.garvey.sh` through from any
+  source. This lets the phone fetch messages, and refresh its tokens, off the
+  LAN. Publicly, both names have only an A record for the WAN address: for
+  `matrix.garvey.sh` in Cloudflare (set by hand), and for `matrix-auth` in
+  `modules/networking/dns.nix`. The router rejects LAN traffic to its own
+  :443, so on the LAN both names resolve (`garveyShOverrides`) to the IPv4
+  gateway, `10.28.0.8`, which HAProxy routes by SNI, and to the
+  LoadBalancer AAAA. Inbound IPv6 is still default-deny.
+  Authelia stays closed to the WAN (Anthropic's range only), so new logins
+  need the LAN or Tailscale. A signed-in phone only needs MAS.
 - **No federation.** Synapse serves only the client API (no federation
   listener), allows no remote servers and asks no key servers.
 - **TLS on 443 by a Caddy in Synapse's pod** (`caddy-configmap.yaml`), with a
@@ -60,18 +69,19 @@ record.
   homeserver `matrix.garvey.sh`; it opens MAS in the browser, then Authelia.
 - **Android:** Element X. Same homeserver; the login opens in the phone's
   browser.
-- **What a device needs.** `matrix.garvey.sh` has no public DNS record and
-  only an IPv6 address on the LAN. A device must use the router's DNS
-  (Android's Private DNS and browsers' secure DNS go around it) and have an
-  IPv6 route to the LAN; otherwise the app spins at "checking homeserver"
-  without a request ever reaching Synapse. `matrix-auth.home.garvey.sh` does
-  resolve publicly, so a half-working login points at the first name. Off
-  the LAN, nothing works until the phone's route to the LAN is up.
+- **What a device needs.** On the LAN, a device must use the router's DNS
+  (Android's Private DNS and browsers' secure DNS go around it). Public DNS
+  gives it the WAN address, which the router rejects from the LAN, and the
+  app spins at "checking homeserver" without a request ever reaching
+  Synapse. Off the LAN, a signed-in phone reaches both names over IPv4
+  through the WAN.
+  Signing in from scratch also needs Authelia, which only the LAN or
+  Tailscale reaches.
 - **Push notifications** (Element X): the app registers a pusher with
   Synapse for Element's push gateway (`matrix.org`'s Sygnal), which reaches
   the phone through Firebase. Synapse sends only room and event IDs
   (`push.include_content: false`); the phone then fetches the message from
-  Synapse, so it shows only once the phone can reach the LAN. The pushers
+  Synapse, through the WAN when it is away from home. The pushers
   Synapse holds:
   `kubectl -n postgres exec postgres-1 -c postgres -- psql -U postgres -d synapse -c 'select user_name, app_id, app_display_name, device_display_name, data from pushers'`.
 
@@ -124,6 +134,9 @@ From a LAN client:
 ```sh
 dig +short matrix.garvey.sh AAAA                       # 2001:470:482f:2::5010
 dig +short matrix-auth.home.garvey.sh AAAA             # 2001:470:482f:2::5011
+dig +short matrix.garvey.sh A                          # 10.28.0.8
+dig +short matrix-auth.home.garvey.sh A                # 10.28.0.8
+curl -4 -sS https://matrix.garvey.sh/_matrix/client/versions | head -c 200
 curl -sS https://matrix.garvey.sh/_matrix/client/versions | head -c 200
 curl -sS https://matrix.garvey.sh/.well-known/matrix/client
 # MAS as the issuer, from Synapse.

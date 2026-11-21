@@ -16,6 +16,7 @@ in
     ./wan-dns-drift.nix
     ./lan-ipv6.nix
     ./nat64.nix
+    ./siit.nix
     ./ntp.nix
     ./tailscale.nix
     ./agents.nix

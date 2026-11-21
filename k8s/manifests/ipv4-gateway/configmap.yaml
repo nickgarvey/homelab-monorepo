@@ -1,0 +1,108 @@
+# haproxy.cfg for the SNI router: 443 is TLS passthrough routed by SNI, 80 is HTTP routed by Host; unknown names are refused.
+#
+# Nothing is decrypted here: each service keeps terminating TLS in its own
+# Caddy sidecar with its own cert. Backends are Service DNS names, re-resolved
+# through the cluster resolver from the pod's resolv.conf.
+#
+# Client classes, by source address (the Service keeps it: DSR forwarding,
+# service.yaml). IPv4 clients arrive through the router's SIIT with their IPv4 address
+# embedded in 2001:470:482f:64::/96 (modules/networking/dns.nix ipv4Gateway):
+#   - LAN IPv6, and LAN IPv4 (10.28.0.0/16 -> 64::a1c:0/112): every route.
+#   - WAN IPv4 (anything else in the /96; the router forwards WAN :443 here from
+#     every source): the Matrix names (Synapse and MAS, k8s/manifests/matrix)
+#     from anywhere, so the phone can fetch messages off the LAN; and the MCP
+#     gateway's names, only from Anthropic's connector egress range
+#     160.79.104.0/21 (-> 64::a04f:6800/117). Everything else from the WAN is
+#     refused, so this is the only filter on WAN :443.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: haproxy
+  namespace: ipv4-gateway
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+data:
+  haproxy.cfg: |
+    global
+      log stdout format raw local0
+      maxconn 4096
+
+    defaults
+      log global
+      timeout connect 5s
+      timeout client 1h
+      timeout server 1h
+      # Long-lived streams (video, websockets) outlive the client/server timeouts.
+      timeout tunnel 12h
+
+    resolvers cluster
+      parse-resolv-conf
+      hold valid 10s
+
+    frontend tls
+      bind [::]:443
+      mode tcp
+      option tcplog
+      acl from_ipv4 src 2001:470:482f:64::/96
+      acl from_lan_ipv4 src 2001:470:482f:64::a1c:0/112
+      acl from_anthropic src 2001:470:482f:64::a04f:6800/117
+      acl sni_mcp req.ssl_sni -i mcp.home.garvey.sh auth.home.garvey.sh
+      acl sni_jellyfin req.ssl_sni -i jellyfin.garvey.sh
+      acl sni_couchdb req.ssl_sni -i obsidian-livesync.home.garvey.sh
+      acl sni_synapse req.ssl_sni -i matrix.garvey.sh
+      acl sni_mas req.ssl_sni -i matrix-auth.home.garvey.sh
+      # WAN: the Matrix names from anywhere, the MCP names from Anthropic only.
+      # Both checks wait for the ClientHello: with the Matrix names open to
+      # every source, nothing can be refused at accept.
+      tcp-request inspect-delay 5s
+      tcp-request content reject if from_ipv4 !from_lan_ipv4 !sni_synapse !sni_mas !sni_mcp
+      tcp-request content reject if from_ipv4 !from_lan_ipv4 sni_mcp !from_anthropic
+      tcp-request content accept if { req.ssl_hello_type 1 }
+      use_backend mcp-tls if sni_mcp
+      use_backend synapse-tls if sni_synapse
+      use_backend mas-tls if sni_mas
+      use_backend jellyfin-tls if sni_jellyfin
+      use_backend couchdb-tls if sni_couchdb
+      # No default_backend: a connection with an unknown or missing SNI is closed.
+
+    frontend http
+      bind [::]:80
+      mode http
+      option httplog
+      acl from_ipv4 src 2001:470:482f:64::/96
+      acl from_lan_ipv4 src 2001:470:482f:64::a1c:0/112
+      acl host_jellyfin req.hdr(host),field(1,:) -i jellyfin.garvey.sh
+      # The router forwards no WAN traffic to :80; refuse it here too.
+      tcp-request connection reject if from_ipv4 !from_lan_ipv4
+      # http-request rules run before use_backend, so refuse unknown hosts by
+      # listing every known one here.
+      http-request deny deny_status 421 unless host_jellyfin
+      use_backend jellyfin-http if host_jellyfin
+
+    backend jellyfin-tls
+      mode tcp
+      server jellyfin jellyfin.jellyfin.svc.cluster.local:443 resolvers cluster resolve-prefer ipv6 init-addr none
+
+    backend jellyfin-http
+      mode http
+      server jellyfin jellyfin.jellyfin.svc.cluster.local:80 resolvers cluster resolve-prefer ipv6 init-addr none
+
+    # CouchDB for Obsidian LiveSync; its Caddy sidecar terminates TLS.
+    backend couchdb-tls
+      mode tcp
+      server couchdb couchdb-https.couchdb.svc.cluster.local:443 resolvers cluster resolve-prefer ipv6 init-addr none
+
+    # Synapse's Caddy sidecar terminates TLS (k8s/manifests/matrix).
+    backend synapse-tls
+      mode tcp
+      server synapse synapse.matrix.svc.cluster.local:443 resolvers cluster resolve-prefer ipv6 init-addr none
+
+    # MAS terminates TLS itself (k8s/manifests/matrix/mas-configmap.yaml).
+    backend mas-tls
+      mode tcp
+      server mas mas.matrix.svc.cluster.local:443 resolvers cluster resolve-prefer ipv6 init-addr none
+
+    # The MCP gateway's Caddy serves both names (k8s/manifests/mcp/certificate.yaml).
+    backend mcp-tls
+      mode tcp
+      server mcp-gateway mcp-gateway.mcp.svc.cluster.local:443 resolvers cluster resolve-prefer ipv6 init-addr none
