@@ -93,6 +93,54 @@ spire-server:
               openshell.ai/component: supervisor
               openshell.ai/boundary-role: supervisor
 
+  # NixOS hosts' agents reach the server API at spire.home.garvey.sh:443 (the
+  # AAAA is in modules/networking/dns.nix). They verify the server by its SVID
+  # (spiffe://home.garvey.sh/spire/server) against pki/root.crt, so the
+  # address needs no other certificate.
+  service:
+    type: LoadBalancer
+    annotations:
+      io.cilium/lb-ipam-ips: "2001:470:482f:2::5016"
+
+  # k8s_psat (the chart default) attests the k3s nodes' agents. x509pop attests
+  # NixOS hosts by their <host>.home.garvey.sh certificate from OpenBao's hosts
+  # CA (modules/services/pki-dns-cert.nix). The bundle is a copy of
+  # pki/dns-ca.crt alone (the pki-root-copies flake check keeps it equal), not
+  # the root, which also signs every cluster certificate and SVID.
+  nodeAttestor:
+    x509POP:
+      enabled: true
+      mode: externalPKI
+      caBundle:
+        bundle: |
+          -----BEGIN CERTIFICATE-----
+          MIICRzCCAe2gAwIBAgIRAKCW0RMLBV7nJKJbX0+GiN0wCgYIKoZIzj0EAwIwJjEk
+          MCIGA1UEAwwbR2FydmV5IEhvbWVsYWIgUm9vdCBDQSAyMDI2MB4XDTI2MTAyNTE0
+          MzYzOFoXDTM2MTAyMjE0MzYzOFowJzElMCMGA1UEAxMcR2FydmV5IEhvbWVsYWIg
+          SG9zdHMgQ0EgMjAyNjBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABGLF9KKs+HdV
+          O12MdFDittG7tgh3wXq+ZAErx5x7L9ROXr4+JUTSuJRIbTngcm5fd5CgqOtM/Guj
+          0yjQSBTS8qmjgfowgfcwEgYDVR0TAQH/BAgwBgEB/wIBADAOBgNVHQ8BAf8EBAMC
+          AYYwHQYDVR0OBBYEFIOPgprSSbE5DKygjHAGzj8LqDV9MB8GA1UdIwQYMBaAFMOz
+          vK2YpprIDKGrh2UJq4NDEMJmMIGQBgNVHR4BAf8EgYUwgYKgODAQgg5ob21lLmdh
+          cnZleS5zaDARgQ9ub3RoaW5nLmludmFsaWQwEYYPbm90aGluZy5pbnZhbGlkoUYw
+          FIISazhzLmhvbWUuZ2FydmV5LnNoMAqHCAAAAAAAAAAAMCKHIAAAAAAAAAAAAAAA
+          AAAAAAAAAAAAAAAAAAAAAAAAAAAAMAoGCCqGSM49BAMCA0gAMEUCIDHDt8a9pncK
+          LisyvpqMd07DU3Gk7sebsoHeR04G/gi4AiEAjHaA8xRPDAWmA3v8Qi3MNGKMKF4a
+          077EzMfACuBgXjM=
+          -----END CERTIFICATE-----
+
+  # The agent ID comes from the certificate's CN, giving
+  # spiffe://home.garvey.sh/spire/agent/x509pop/<host>.home.garvey.sh. The
+  # default would include the fingerprint, which changes with every weekly
+  # renewal and would orphan the entries parented to the host. The chart
+  # renders agent_path_template only in spiffe mode; this is merged into its
+  # x509pop config.
+  unsupportedBuiltInPlugins:
+    nodeAttestor:
+      x509pop:
+        plugin_data:
+          agent_path_template: "/{{ .PluginName }}/{{ .Subject.CommonName }}"
+
   # The cluster services run on fus/ro/dah.
   nodeSelector: &controlPlaneSelector
     kubernetes.io/os: linux

@@ -24,7 +24,7 @@ on top of a component (issuers, StorageClasses, policies) live in
 | cloudnative-pg | chart, `cloudnative-pg/chart.env` | 0.29.1 (operator 1.30.1) | `kubectl apply --server-side -f vendor/cloudnative-pg/cloudnative-pg.yaml` |
 | plugin-barman-cloud | static, `plugin-barman-cloud/source.env` (`manifest.yaml` of cloudnative-pg/plugin-barman-cloud) | v0.15.1 | `kubectl apply --server-side -f vendor/plugin-barman-cloud/manifest.yaml` |
 | spire-crds | chart, `spire-crds/chart.env`; the CRDs of spire, apply first | 0.6.1 | `kubectl apply -f vendor/spire-crds/spire-crds.yaml` |
-| spire | chart, `spire/chart.env`; see `manifests/spire/README.md` | 0.30.3 (SPIRE 1.15.3) | `kubectl apply -f vendor/spire/spire.yaml` |
+| spire | chart, `spire/chart.env`; see `manifests/spire/README.md` | 0.31.0 (SPIRE 1.16.0) | `kubectl apply -f vendor/spire/spire.yaml` |
 
 Notes on the apply commands:
 

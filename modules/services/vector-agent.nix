@@ -34,6 +34,11 @@ in
       default = { };
       description = "Vector transform definitions, merged into services.vector.settings.transforms.";
     };
+    sinkInputs = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      description = "Components that already emit metric events (not log_to_metric transforms, which are wired automatically) to send to Prometheus.";
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -61,7 +66,7 @@ in
         transforms = config.homelab.metrics.transforms;
         sinks.prometheus_remote_write = {
           type = "prometheus_remote_write";
-          inputs = [ "disk_usage" ] ++ builtins.attrNames (
+          inputs = cfg.sinkInputs ++ builtins.attrNames (
             lib.filterAttrs (_: t: t.type == "log_to_metric") config.homelab.metrics.transforms
           );
           endpoint = "https://prometheus.home.garvey.sh/api/v1/write";
@@ -91,8 +96,9 @@ in
     };
 
     # The metric events feed the sink directly (there is no log_to_metric step),
-    # so this remap is wired to it by name above. It keeps only the ratio and
-    # renames the `host` tag to the `hostname` label the other metrics use.
+    # so this remap is wired to it through sinkInputs. It keeps only the ratio
+    # and renames the `host` tag to the `hostname` label the other metrics use.
+    homelab.metrics.sinkInputs = [ "disk_usage" ];
     homelab.metrics.transforms.disk_usage = {
       type = "remap";
       inputs = [ "disk" ];

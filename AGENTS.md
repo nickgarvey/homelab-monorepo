@@ -71,7 +71,7 @@ narrowest matching subdir; create a new one only when you have ≥2 related file
 | `router/` | Router subsystem (nftables, DHCP, DNS, IPv6 tunnel, NAT64). Exposes a `default.nix` — import the directory. |
 | `containers/` | systemd-nspawn container definitions. Common networking lives in `common.nix`. |
 | `microvm/` | MicroVM guest definitions. |
-| `virtualisation/` | VM hypervisors and their guests. Currently: `incus`, `incus-vms` (VMs a host owns: project, profile, client cert, creation from the seed image), `incus-guest` (baseline for NixOS guests in Incus VMs). |
+| `virtualisation/` | VM hypervisors and their guests. Currently: `incus`, `incus-vms` (VMs a host owns: project, profile, client cert, creation from the seed image), `incus-guest` (baseline for NixOS guests in Incus VMs), `incus-metrics` (Vector scrapes Incus /1.0/metrics with its JWT-SVID). |
 | `llms/` | LLM tooling. Currently: `hf-to-garage` (pushes HuggingFace repos to the `llm-models` bucket), `pi` (terminal coding agent). |
 | `home/` | home-manager config. Currently: `ngarvey` (imported by `common-workstation`), and the dotfiles it installs in `dotfiles/`. |
 

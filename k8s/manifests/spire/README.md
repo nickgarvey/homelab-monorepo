@@ -80,6 +80,36 @@ stays off (`modules/services/ceph.nix`; its connection is IPv4-only), and keys
 without an x5c chain, which is all SPIRE publishes, never use thumbprints. A
 change in the chain Let's Encrypt hands out therefore changes nothing.
 
+## NixOS hosts: `spire.home.garvey.sh:443`
+
+The server API also has a LoadBalancer, `2001:470:482f:2::5016:443` (AAAA in
+`modules/networking/dns.nix`), so agents on NixOS hosts can reach it. They
+verify the server by its SVID, `spiffe://home.garvey.sh/spire/server`, against
+`pki/root.crt`; the name carries no certificate of its own. Without an agent or
+admin SVID a caller may only attest or read the trust bundle.
+
+Hosts attest with x509pop, using their `<host>.home.garvey.sh` certificate from
+OpenBao's hosts CA (`modules/services/pki-dns-cert.nix`). The server trusts
+`pki/dns-ca.crt` alone (copied into `vendor/spire/values.yaml`; the
+`pki-root-copies` flake check keeps the copy equal), not the root, which also
+signs every cluster certificate and SVID. The agent ID comes from the certificate's CN:
+`spiffe://home.garvey.sh/spire/agent/x509pop/<host>.home.garvey.sh`. It stays
+the same across the weekly renewals (x509pop lets an agent re-attest), so
+registration entries parented to it survive them.
+
+Whoever can write a name's `_acme-challenge` in Knot can get a hosts-CA
+certificate for that name and attest as `x509pop/<name>`. That includes
+cert-manager for the `certManagerAcme` names. An agent ID grants nothing by
+itself: only entries parented to a host's exact ID give its workloads
+identities, and the k3s nodes' entries are parented to their `k8s_psat` IDs.
+
+The agent is `modules/services/spire-agent.nix` (needs `pki-dns-cert.nix` on
+the same host). Its Workload API socket is `/run/spire/agent/public/api.sock`,
+and it tells services apart by systemd unit. Entries for host services are
+ClusterStaticEntries in `host-entries.yaml`, with IDs
+`spiffe://home.garvey.sh/host/<host>/<service>` and selector
+`systemd:id:<unit>`. Hosts running an agent: lydia.
+
 ## S3 on Ceph RGW
 
 An app reaches its RGW buckets with its JWT-SVID instead of a static key: RGW's
@@ -115,6 +145,8 @@ kubectl apply -f manifests/spire/openbao-ca.yaml       # after the namespace exi
 kubectl apply -f manifests/spire/certificate.yaml   # after the namespace exists
 kubectl -n spire wait --for=condition=Ready certificate/spiffe-oidc-tls --timeout=5m
 kubectl apply -f vendor/spire/spire.yaml
+kubectl apply -f manifests/spire/network-policy.yaml
+kubectl apply -f manifests/spire/host-entries.yaml
 kubectl -n spire rollout status statefulset/spire-server
 kubectl -n spire rollout status daemonset/spire-agent
 kubectl -n spire rollout status deployment/spire-spiffe-oidc-discovery-provider
@@ -135,4 +167,9 @@ kubectl -n spire exec spire-server-0 -c spire-server -- spire-server agent list
 kubectl -n spire get certificaterequests   # SPIRE's CA request: Approved, Ready
 curl -s https://spiffe-oidc.home.garvey.sh/.well-known/openid-configuration
 curl -s https://spiffe-oidc.home.garvey.sh/keys      # kty RSA, n/e, no x5c
+# From a host: the server API answers (TLS with its SVID, URI SAN spire/server)
+openssl s_client -connect spire.home.garvey.sh:443 </dev/null 2>/dev/null | openssl x509 -noout -ext subjectAltName
+# Host agents (x509pop) and the entries parented to them
+kubectl -n spire exec spire-server-0 -c spire-server -- spire-server agent list
+kubectl -n spire exec spire-server-0 -c spire-server -- spire-server entry show -parentID spiffe://home.garvey.sh/spire/agent/x509pop/lydia.home.garvey.sh
 ```

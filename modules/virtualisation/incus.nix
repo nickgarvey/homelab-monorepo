@@ -5,23 +5,22 @@
 let
   cfg = config.homelab.incus;
 
-  # Prometheus in k3s reads /1.0/metrics with a JWT-SVID
-  # (k8s/manifests/prometheus/scrape-configs/incus.yaml). Incus checks
-  # the token against SPIRE's OIDC discovery provider (issuer, signature,
-  # expiry, audience), then this scriptlet decides. Every OIDC client comes
-  # here, and any pod can get a JWT-SVID for any audience, so the scriptlet
-  # checks the subject: Prometheus may read and nothing else. The endpoint
-  # needs can_view_metrics on the server, but Incus keeps each sample only if
-  # the caller has can_view on its instance (instance:<project>/<name>) or, for
-  # host-level samples, on the server: its can_view_metrics fallback is never
-  # reached through a scriptlet. So Prometheus can also read server and
-  # instance details through the API.
-  metricsReader = "spiffe://home.garvey.sh/ns/prometheus/sa/prometheus";
+  # The metricsReaders read /1.0/metrics with a JWT-SVID (audience
+  # incus.home.garvey.sh): this host's Vector (incus-metrics.nix). Incus
+  # checks the token against SPIRE's OIDC discovery provider (issuer,
+  # signature, expiry, audience), then this scriptlet decides. Every OIDC
+  # client comes here, and any workload can get a JWT-SVID for any audience,
+  # so the scriptlet checks the subject: the readers may read and nothing
+  # else. The endpoint needs can_view_metrics on the server, but Incus keeps
+  # each sample only if the caller has can_view on its instance
+  # (instance:<project>/<name>) or, for host-level samples, on the server: its
+  # can_view_metrics fallback is never reached through a scriptlet. So the
+  # readers can also read server and instance details through the API.
   authorizationScriptlet = ''
     def authorize(details, object, entitlement):
         return (
             details.Protocol == "oidc"
-            and details.Username == "${metricsReader}"
+            and details.Username in [${lib.concatMapStringsSep ", " (r: ''"${r}"'') cfg.metricsReaders}]
             and entitlement in ("can_view", "can_view_metrics")
             and (object == "server:incus" or object.startswith("instance:"))
         )
@@ -67,6 +66,12 @@ in
         Serve a Let's Encrypt certificate instead of Incus's self-signed one.
         Incus's own ACME client issues and renews it, by DNS-01 in Knot.
       '';
+    };
+
+    metricsReaders = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      description = "SPIFFE IDs whose JWT-SVIDs may read /1.0/metrics.";
     };
 
     adminUsers = lib.mkOption {

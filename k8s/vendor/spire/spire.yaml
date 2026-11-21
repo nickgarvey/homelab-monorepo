@@ -15,7 +15,7 @@ metadata:
     helm.sh/chart: spiffe-csi-driver-0.1.0
     app.kubernetes.io/name: spiffe-csi-driver
     app.kubernetes.io/instance: spire
-    app.kubernetes.io/version: "0.2.7"
+    app.kubernetes.io/version: "0.3.0"
     app.kubernetes.io/managed-by: Helm
 automountServiceAccountToken: false
 
@@ -30,7 +30,7 @@ metadata:
     helm.sh/chart: spiffe-oidc-discovery-provider-0.1.0
     app.kubernetes.io/name: spiffe-oidc-discovery-provider
     app.kubernetes.io/instance: spire
-    app.kubernetes.io/version: "1.15.3"
+    app.kubernetes.io/version: "1.16.0"
     app.kubernetes.io/managed-by: Helm
 
 ---
@@ -44,7 +44,7 @@ metadata:
     helm.sh/chart: "spire-agent-0.1.0"
     app.kubernetes.io/name: "agent"
     app.kubernetes.io/instance: "spire"
-    app.kubernetes.io/version: "1.15.3"
+    app.kubernetes.io/version: "1.16.0"
     app.kubernetes.io/managed-by: "Helm"
 
 ---
@@ -58,7 +58,7 @@ metadata:
     helm.sh/chart: spire-server-0.1.0
     app.kubernetes.io/name: server
     app.kubernetes.io/instance: spire
-    app.kubernetes.io/version: "1.15.3"
+    app.kubernetes.io/version: "1.16.0"
     app.kubernetes.io/managed-by: Helm
 
 ---
@@ -85,22 +85,18 @@ data:
       "jwt_issuer": "https://spiffe-oidc.home.garvey.sh",
       "log_format": "text",
       "log_level": "info",
-      "serving_cert_file": {
-        "addr": ":8443",
-        "cert_file_path": "/certs/tls.crt",
-        "key_file_path": "/certs/tls.key"
+      "serving_cert_source": {
+        "cert_file": {
+          "addr": ":8443",
+          "cert_file_path": "/certs/tls.crt",
+          "key_file_path": "/certs/tls.key"
+        }
       },
       "workload_api": {
         "socket_path": "/spiffe-workload-api/spire-agent.sock",
         "trust_domain": "home.garvey.sh"
       }
     }
-  spiffe-helper.conf: |
-    agent_address = "/spiffe-workload-api/spire-agent.sock"
-    cert_dir = "/certs"
-    svid_file_name = "tls.crt"
-    svid_key_file_name = "tls.key"
-    svid_bundle_file_name = "ca.pem"
 
 ---
 # Source: spire/charts/spire-agent/templates/configmap.yaml
@@ -154,6 +150,7 @@ data:
             "k8s": {
               "plugin_data": {
                 "disable_container_selectors": false,
+                "enable_namespace_labels": false,
                 "skip_kubelet_verification": true,
                 "use_new_container_locator": true,
                 "verbose_container_locator_logs": false
@@ -240,6 +237,17 @@ data:
                 ]
               }
             }
+          },
+          {
+            "x509pop": {
+              "plugin_data": {
+                "agent_path_template": "/{{ .PluginName }}/{{ .Subject.CommonName }}",
+                "ca_bundle_path": "/run/spire/data/x509pop-ca-bundle.pem",
+                "max_intermediates": 4,
+                "max_rsa_key_size": 8192,
+                "mode": "external_pki"
+              }
+            }
           }
         ],
         "UpstreamAuthority": [
@@ -311,10 +319,10 @@ data:
         helm.sh/chart: spire-server-0.1.0
         app.kubernetes.io/name: server
         app.kubernetes.io/instance: spire
-        app.kubernetes.io/version: "1.15.3"
+        app.kubernetes.io/version: "1.16.0"
         app.kubernetes.io/managed-by: Helm
     metrics:
-      bindAddress: 0.0.0.0:8082
+      bindAddress: "0"
     health:
       healthProbeBindAddress: 0.0.0.0:8083
     gcInterval: 1e+10
@@ -346,6 +354,33 @@ data:
       clusterSPIFFEIDs: true
       clusterStaticEntries: true
       clusterFederatedTrustDomains: true
+
+---
+# Source: spire/charts/spire-server/templates/x509pop-configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-server-x509pop-ca
+  namespace: spire
+data:
+  ca-bundle.pem: |
+    
+    -----BEGIN CERTIFICATE-----
+    MIICRzCCAe2gAwIBAgIRAKCW0RMLBV7nJKJbX0+GiN0wCgYIKoZIzj0EAwIwJjEk
+    MCIGA1UEAwwbR2FydmV5IEhvbWVsYWIgUm9vdCBDQSAyMDI2MB4XDTI2MTAyNTE0
+    MzYzOFoXDTM2MTAyMjE0MzYzOFowJzElMCMGA1UEAxMcR2FydmV5IEhvbWVsYWIg
+    SG9zdHMgQ0EgMjAyNjBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABGLF9KKs+HdV
+    O12MdFDittG7tgh3wXq+ZAErx5x7L9ROXr4+JUTSuJRIbTngcm5fd5CgqOtM/Guj
+    0yjQSBTS8qmjgfowgfcwEgYDVR0TAQH/BAgwBgEB/wIBADAOBgNVHQ8BAf8EBAMC
+    AYYwHQYDVR0OBBYEFIOPgprSSbE5DKygjHAGzj8LqDV9MB8GA1UdIwQYMBaAFMOz
+    vK2YpprIDKGrh2UJq4NDEMJmMIGQBgNVHR4BAf8EgYUwgYKgODAQgg5ob21lLmdh
+    cnZleS5zaDARgQ9ub3RoaW5nLmludmFsaWQwEYYPbm90aGluZy5pbnZhbGlkoUYw
+    FIISazhzLmhvbWUuZ2FydmV5LnNoMAqHCAAAAAAAAAAAMCKHIAAAAAAAAAAAAAAA
+    AAAAAAAAAAAAAAAAAAAAAAAAAAAAMAoGCCqGSM49BAMCA0gAMEUCIDHDt8a9pncK
+    LisyvpqMd07DU3Gk7sebsoHeR04G/gi4AiEAjHaA8xRPDAWmA3v8Qi3MNGKMKF4a
+    077EzMfACuBgXjM=
+    -----END CERTIFICATE-----
+    
 
 ---
 # Source: spire/charts/spire-agent/templates/roles.yaml
@@ -582,7 +617,7 @@ metadata:
     helm.sh/chart: spire-server-0.1.0
     app.kubernetes.io/name: server
     app.kubernetes.io/instance: spire
-    app.kubernetes.io/version: "1.15.3"
+    app.kubernetes.io/version: "1.16.0"
     app.kubernetes.io/managed-by: Helm
 spec:
   type: ClusterIP
@@ -602,14 +637,16 @@ kind: Service
 metadata:
   name: spire-server
   namespace: spire
+  annotations:
+    io.cilium/lb-ipam-ips: 2001:470:482f:2::5016
   labels:
     helm.sh/chart: spire-server-0.1.0
     app.kubernetes.io/name: server
     app.kubernetes.io/instance: spire
-    app.kubernetes.io/version: "1.15.3"
+    app.kubernetes.io/version: "1.16.0"
     app.kubernetes.io/managed-by: Helm
 spec:
-  type: ClusterIP
+  type: LoadBalancer
   ports:
     - name: grpc
       port: 443
@@ -630,7 +667,7 @@ metadata:
     helm.sh/chart: spiffe-csi-driver-0.1.0
     app.kubernetes.io/name: spiffe-csi-driver
     app.kubernetes.io/instance: spire
-    app.kubernetes.io/version: "0.2.7"
+    app.kubernetes.io/version: "0.3.0"
     app.kubernetes.io/managed-by: Helm
 spec:
   selector:
@@ -656,7 +693,7 @@ spec:
       containers:
         # This is the container which runs the SPIFFE CSI driver.
         - name: spiffe-csi-driver
-          image: "ghcr.io/spiffe/spiffe-csi-driver:0.2.7"
+          image: "ghcr.io/spiffe/spiffe-csi-driver:0.3.0"
           imagePullPolicy: IfNotPresent
           args: [
             "-workload-api-socket-dir", "/spire-agent-socket",
@@ -696,7 +733,7 @@ spec:
         # of all the little details required to register a CSI driver with
         # the kubelet.
         - name: node-driver-registrar
-          image: "registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.15.0"
+          image: "registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.18.0"
           imagePullPolicy: IfNotPresent
           securityContext:
             runAsNonRoot: false
@@ -759,7 +796,7 @@ metadata:
     helm.sh/chart: "spire-agent-0.1.0"
     app.kubernetes.io/name: "agent"
     app.kubernetes.io/instance: "spire"
-    app.kubernetes.io/version: "1.15.3"
+    app.kubernetes.io/version: "1.16.0"
     app.kubernetes.io/managed-by: "Helm"
     app.kubernetes.io/component: "default"
 spec:
@@ -776,7 +813,7 @@ spec:
     metadata:
       annotations:
         kubectl.kubernetes.io/default-container: spire-agent
-        checksum/config: "3da6ebbaf8fb9377479875609462adade1e635f1ceee45c4d16be536bb253848"
+        checksum/config: "6e929db030bcf0fc2a1da00428aecd93af2e0f1d8f2e0091a0d79878c884774c"
       labels:
         app.kubernetes.io/name: "agent"
         app.kubernetes.io/instance: "spire"
@@ -791,7 +828,7 @@ spec:
       
       initContainers:
         - name: ensure-alternate-names
-          image: "cgr.dev/chainguard/bash:latest@sha256:90041f375e30f41aa7e0390075d8a69dc61900771d52fa98d63ee5d03d866a58"
+          image: "cgr.dev/chainguard/bash:latest@sha256:6386ad6bd017a549585d3833b654b5aa9da70bf231d4701c689b6b908f26725f"
           imagePullPolicy: "IfNotPresent"
           command: ["sh", "-xc"]
           args:
@@ -815,7 +852,7 @@ spec:
             runAsGroup: 0
       containers:
         - name: "spire-agent"
-          image: "ghcr.io/spiffe/spire-agent:1.15.3"
+          image: "ghcr.io/spiffe/spire-agent:1.16.0"
           imagePullPolicy: "IfNotPresent"
           args: ["-config", "/opt/spire/conf/agent/agent.conf"]
           securityContext:
@@ -894,7 +931,7 @@ metadata:
     helm.sh/chart: spiffe-oidc-discovery-provider-0.1.0
     app.kubernetes.io/name: spiffe-oidc-discovery-provider
     app.kubernetes.io/instance: spire
-    app.kubernetes.io/version: "1.15.3"
+    app.kubernetes.io/version: "1.16.0"
     app.kubernetes.io/managed-by: Helm
 spec:
   replicas: 1
@@ -905,7 +942,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/config: 5ddf82ba2d17dcc65eb553fe14e0ce5f592e01d9ecae85e69392a951219287f5
+        checksum/config: cd94fdfada0bbdc83a3983a331f506280208de5b4171639c3ea26eaebb1c7411
       labels:
         app.kubernetes.io/name: spiffe-oidc-discovery-provider
         app.kubernetes.io/instance: spire
@@ -916,12 +953,11 @@ spec:
       serviceAccountName: spire-spiffe-oidc-discovery-provider
       securityContext:
         {}
-      initContainers:
       containers:
         - name: spiffe-oidc-discovery-provider
           securityContext:
             {}
-          image: "ghcr.io/spiffe/oidc-discovery-provider:1.15.3"
+          image: "ghcr.io/spiffe/oidc-discovery-provider:1.16.0"
           imagePullPolicy: IfNotPresent
           args:
             - -config
@@ -993,7 +1029,7 @@ metadata:
     helm.sh/chart: spire-server-0.1.0
     app.kubernetes.io/name: server
     app.kubernetes.io/instance: spire
-    app.kubernetes.io/version: "1.15.3"
+    app.kubernetes.io/version: "1.16.0"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/component: server
 spec:
@@ -1008,9 +1044,9 @@ spec:
     metadata:
       annotations:
         kubectl.kubernetes.io/default-container: spire-server
-        checksum/config: 0fdca24576b6679962e19eb555d5e74fe6fea44adae05192ffac727dc9cfa60b
+        checksum/config: 369b6432cfec4275230c6a5873206913d95185cf03c52bcc6f1a60a574667969
         checksum/config2: 01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b
-        checksum/config3: 789ed87793a5155426a02d1dad903f217167df123c5654bd55481738d06edd6b
+        checksum/config3: f47aef126c4e00f344fa6f83fd2e92fd1d7fe55407674bb6f5e763bae0df57f2
         checksum/configTornjak: 01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b
       labels:
         app.kubernetes.io/name: server
@@ -1028,7 +1064,7 @@ spec:
       
       initContainers:
         - name: chown
-          image: "busybox:1.37.0-uclibc"
+          image: "docker.io/library/busybox:1.38.0-uclibc"
           imagePullPolicy: IfNotPresent
           command: ["sh", "-c"]
           args:
@@ -1046,7 +1082,7 @@ spec:
         - name: spire-server
           securityContext:
             {}
-          image: "ghcr.io/spiffe/spire-server:1.15.3"
+          image: "ghcr.io/spiffe/spire-server:1.16.0"
           imagePullPolicy: IfNotPresent
           args:
             - -expandEnv
@@ -1087,6 +1123,10 @@ spec:
             - name: spire-data
               mountPath: /run/spire/data
               readOnly: false
+            - name: x509pop-ca-bundle
+              mountPath: /run/spire/data/x509pop-ca-bundle.pem
+              subPath: ca-bundle.pem
+              readOnly: true
             - name: spire-psat
               mountPath: /var/run/secrets/tokens
             - name: vault-ca
@@ -1098,7 +1138,7 @@ spec:
         - name: spire-controller-manager
           securityContext:
             {}
-          image: "ghcr.io/spiffe/spire-controller-manager:0.8.0"
+          image: "ghcr.io/spiffe/spire-controller-manager:0.8.1"
           imagePullPolicy: IfNotPresent
           args:
             - --config=controller-manager-config.yaml
@@ -1160,6 +1200,9 @@ spec:
           emptyDir: {}
         - name: spire-controller-manager-tmp
           emptyDir: {}
+        - name: x509pop-ca-bundle
+          configMap:
+            name: spire-server-x509pop-ca
         - name: controller-manager-config
           configMap:
             name: spire-controller-manager

@@ -10,9 +10,11 @@
     ../../modules/microvm/smb.nix
     ../../modules/virtualisation/incus.nix
     ../../modules/virtualisation/incus-vms.nix
+    ../../modules/virtualisation/incus-metrics.nix
     ../../modules/services/fancontrol.nix
     ../../modules/services/netboot-server.nix
     ../../modules/services/pki-dns-cert.nix
+    ../../modules/services/spire-agent.nix
   ];
 
   # Required so the garage container (on vmbr0) can route to its peer's

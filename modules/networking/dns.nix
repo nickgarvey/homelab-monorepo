@@ -55,6 +55,9 @@ in rec {
     # SPIRE's OIDC discovery provider serves the trust domain's JWKS on 443 off
     # this LB IP (k8s/manifests/spire).
     spiffe-oidc   = { v4 = []; v6 = [ "2001:470:482f:2::5007" ]; };
+    # The SPIRE server API, for NixOS hosts' agents; it presents its SVID, not
+    # a certificate for this name (k8s/manifests/spire).
+    spire         = { v4 = []; v6 = [ "2001:470:482f:2::5016" ]; };
     # Celler Nix binary cache; Caddy sidecar terminates TLS on 443
     # (k8s/manifests/celler).
     celler        = { v4 = []; v6 = [ "2001:470:482f:2::5008" ]; };

@@ -1,0 +1,17 @@
+# Registration entries for services on NixOS hosts (modules/services/spire-agent.nix).
+# Each is parented to the host's x509pop agent ID, which comes from its pki-dns
+# certificate CN and so survives renewals, and selects the service by its
+# systemd unit. Host workload IDs are spiffe://home.garvey.sh/host/<host>/<service>.
+# className must match the controller manager's (watchClassless is false).
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterStaticEntry
+metadata:
+  name: host-lydia-vector
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  className: spire-spire
+  spiffeID: spiffe://home.garvey.sh/host/lydia/vector
+  parentID: spiffe://home.garvey.sh/spire/agent/x509pop/lydia.home.garvey.sh
+  selectors:
+    - systemd:id:vector.service
