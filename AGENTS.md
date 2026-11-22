@@ -17,7 +17,7 @@ homelab-esp32-devices).
 | `k8s/` | Kubernetes manifests for the k3s cluster, applied by hand (no in-cluster GitOps controller). | `k8s/AGENTS.md` |
 | `firmware/` | ESP32 device firmware (ESP-IDF) and its dev shell. | — |
 | `agents/` | Agents run in OpenShell sandboxes on k3s: per-agent image, sandbox policy, provider profile and instructions. | `agents/README.md` |
-| `hardware/` | PCB designs, one directory per board: atopile sources, the KiCad project, layout scripts and fab outputs. Tools are in `nix develop .#pcb`. | — |
+| `hardware/` | PCB designs, one directory per board: the circuit in SKiDL, the KiCad project, layout scripts and fab outputs. Tools are in `nix develop .#pcb`. | — |
 | `pki/` | The private root CA: its certificate, its sops-encrypted key, and the scripts that create it and sign intermediates. | `pki/README.md` |
 
 ## The flake
@@ -32,7 +32,7 @@ so `nix run .#deploy` and `nix build .#<pkg>` work from anywhere in the repo.
   jq. The `openshell` CLI is left out (a from-source Rust build that no binary
   cache has); get it with `nix shell .#openshell`.
   The only other shells are `.#esp32` (ESP-IDF; needed for anything in
-  `firmware/`), `.#pcb` (atopile, KiCad, Freerouting; needed for anything in
+  `firmware/`), `.#pcb` (SKiDL, KiCad, Freerouting; needed for anything in
   `hardware/`) and `.#makernexus`.
 - There is one `nixpkgs`. Two inputs keep their own locked nixpkgs on purpose:
   `nixpkgs-esp-dev` (pins ESP-IDF for the firmware) and `nixos-raspberrypi`

@@ -1,0 +1,5 @@
+# SKiDL run artifacts (the netlist itself is committed)
+*.erc
+*.log
+*_sklib.py
+__pycache__/
