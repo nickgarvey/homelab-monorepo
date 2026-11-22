@@ -19,5 +19,6 @@ in
     };
 
     makernexus = import ./makernexus.nix { inherit pkgs; };
+    pcb = import ./pcb.nix { inherit pkgs; };
   };
 }
