@@ -218,7 +218,7 @@ def stitch_islands(board):
                 while x < bb.GetRight():
                     at = pcbnew.VECTOR2I(x, y)
                     if outline.PointInside(at) and bot.HitTestFilledArea(pcbnew.B_Cu, at) \
-                            and clear_of(board, at, mm(0.3), skip_net=code):
+                            and clear_of(board, at, mm(0.3), skip_net=code, avoid_silk=True):
                         via(board, at, gnd)
                         placed = changed = True
                         break
@@ -229,7 +229,7 @@ def stitch_islands(board):
         fill(board)
 
 
-def clear_of(board, at, radius, layers=(pcbnew.F_Cu, pcbnew.B_Cu), skip_net=None):
+def clear_of(board, at, radius, layers=(pcbnew.F_Cu, pcbnew.B_Cu), skip_net=None, avoid_silk=False):
     """True if a disc of `radius` (internal units) at `at` keeps 0.2 mm from every pad, track,
     via, rule area and the board edge, ignoring items on skip_net. SMD pads on skip_net still
     block: a via in a pad wicks solder away from the joint."""
@@ -251,6 +251,13 @@ def clear_of(board, at, radius, layers=(pcbnew.F_Cu, pcbnew.B_Cu), skip_net=None
         for z in fp.Zones():
             if z.GetIsRuleArea() and z.Outline().Collide(at, margin):
                 return False
+        # silkscreen text, for vias that may go anywhere: the fab clips silk around untented vias
+        for text in (fp.Reference(), fp.Value()) if avoid_silk else ():
+            if text.IsVisible() and text.GetLayer() == pcbnew.F_SilkS:
+                bb = text.GetBoundingBox()
+                bb.Inflate(radius)
+                if bb.Contains(at):
+                    return False
     for z in board.Zones():
         if z.GetIsRuleArea() and z.Outline().Collide(at, margin):
             return False
@@ -313,7 +320,7 @@ def stitching(board):
         x = l + 2.0
         while x < ANTENNA_X:
             at = pt(x, y)
-            if clear_of(board, at, mm(0.3), skip_net=code):
+            if clear_of(board, at, mm(0.3), skip_net=code, avoid_silk=True):
                 via(board, at, gnd)
             x += 4.0
         y += 4.0
