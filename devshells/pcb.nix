@@ -20,4 +20,6 @@ pkgs.mkShell {
   # Where SKiDL looks up KiCad library symbols and footprints.
   KICAD9_SYMBOL_DIR = "${kicadLibs.symbols}/share/kicad/symbols";
   KICAD9_FOOTPRINT_DIR = "${kicadLibs.footprints}/share/kicad/footprints";
+  # Where kicad-cli finds the 3D models the footprints reference, for 3D renders and exports.
+  KICAD10_3DMODEL_DIR = "${kicadLibs.packages3d}/share/kicad/3dmodels";
 }
