@@ -26,6 +26,7 @@ OUT = HERE / "fab"
 CORRECTIONS = [
     (r"^SOT-23$", 180, (0.0, 0.0)),
     (r"^USB_C_Receptacle_HRO_TYPE-C-31-M-12", 0, (0.0, -1.571)),
+    (r"^LIS2DW12_LGA-12", 270, (0.0, 0.0)),
 ]
 CHECK_IN_PREVIEW = {"U1", "U2", "U3", "U4"}
 HAND_SOLDERED = {"BT1", "J2"}  # through-hole, soldered after assembly
