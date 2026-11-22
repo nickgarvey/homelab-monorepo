@@ -1,6 +1,6 @@
 # laundry-sensor
 
-Battery-powered vibration sensor for the washer: ESP32-C6 module, ADXL362
+Battery-powered vibration sensor for the washer: ESP32-C6 module, LIS2DW12
 accelerometer, SHT40, 2×AA through a TPS63900 buck-boost, reporting over
 Matter/Thread. Firmware lives in `firmware/devices/laundry-sensor/`.
 
@@ -8,7 +8,7 @@ Work in `nix develop .#pcb`.
 
 - `circuit.py`: the circuit in SKiDL. `python3 circuit.py` runs ERC and writes `laundry-sensor.net`.
 - `report.py`: prints the parts list and every net as Markdown, for review.
-- `gen_footprints.py`: writes footprints KiCad's libraries lack (ADXL362) into `footprints/laundry.pretty`.
+- `gen_footprints.py`: writes footprints KiCad's libraries lack (LIS2DW12) into `footprints/laundry.pretty`.
 - `build_pcb.py`: writes `laundry-sensor.kicad_pcb` from the circuit: footprints, nets, placement, outline.
 - `check.sh [dir]`: design-rule check summary plus top/bottom SVG renders.
 - `route_pcb.py`: routes the board in place (run after `build_pcb.py`): net classes, the TPS63900
@@ -22,8 +22,9 @@ Work in `nix develop .#pcb`.
 
 1. Upload `fab/laundry-sensor-gerbers.zip`. 2 layers, 1.6 mm, 87×36 mm; defaults otherwise
    (lead-free HASL is fine; ENIG is flatter for the 0.5 mm-pitch LGA and WSON).
-2. Turn on PCB Assembly, top side, Economic. Upload the BOM and CPL.
-3. In the placement preview, check pin 1 of U1 (TPS63900), U3 (ADXL362) and U4 (SHT40), and the
+2. Turn on PCB Assembly, top side, Standard (JLC places the ESP32 module only with Standard).
+   Edge rails added by JLC go on the long sides; snap them off after assembly. Upload the BOM and CPL.
+3. In the placement preview, check pin 1 of U1 (TPS63900), U3 (LIS2DW12) and U4 (SHT40), and the
    outline of U2 (ESP32-C6 module). Their rotations and origins come from fitting the EasyEDA
    footprints to KiCad's, but JLC can keep its own per-part rotation.
 4. BT1 (battery holder, back side) and J2 (PPK2 header) are through-hole and not in the BOM:

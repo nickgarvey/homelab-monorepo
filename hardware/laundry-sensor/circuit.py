@@ -1,4 +1,4 @@
-# Laundry vibration sensor netlist (SKiDL): ESP32-C6-MINI-1, ADXL362, SHT40, 2xAA through a TPS63900.
+# Laundry vibration sensor netlist (SKiDL): ESP32-C6-MINI-1, LIS2DW12, SHT40, 2xAA through a TPS63900.
 # Run in `nix develop .#pcb`: python3 circuit.py  ->  laundry-sensor.net, ERC report on stdout.
 from pathlib import Path
 
@@ -175,29 +175,29 @@ r_cc1, r_cc2 = R("5.1k"), R("5.1k")
 r_cc1[1, 2] += j_usb["CC1"], gnd
 r_cc2[1, 2] += j_usb["CC2"], gnd
 
-# --- ADXL362 (SPI) -----------------------------------------------------------
+# --- LIS2DW12 accelerometer (4-wire SPI) -------------------------------------
 P = Pin.types
 u_acc = Part(
-    name="ADXL362", tool=SKIDL, ref_prefix="U", dest=skidl.NETLIST,
-    footprint="laundry:ADXL362_LGA-16_3x3.25mm_P0.5mm", fields={"LCSC": "C59641"},
+    name="LIS2DW12", tool=SKIDL, ref_prefix="U", dest=skidl.NETLIST,
+    footprint="laundry:LIS2DW12_LGA-12_2x2mm_P0.5mm", fields={"LCSC": "C189624"},
     pins=[
-        Pin(num=1, name="VDDIO", func=P.PWRIN), Pin(num=2, name="NC1", func=P.NOCONNECT),
-        Pin(num=3, name="RES3", func=P.NOCONNECT), Pin(num=4, name="SCLK", func=P.INPUT),
-        Pin(num=5, name="RES5", func=P.NOCONNECT), Pin(num=6, name="MOSI", func=P.INPUT),
-        Pin(num=7, name="MISO", func=P.OUTPUT), Pin(num=8, name="CS", func=P.INPUT),
-        Pin(num=9, name="INT2", func=P.OUTPUT), Pin(num=10, name="RES10", func=P.NOCONNECT),
-        Pin(num=11, name="INT1", func=P.OUTPUT), Pin(num=12, name="GND12", func=P.PWRIN),
-        Pin(num=13, name="GND13", func=P.PWRIN), Pin(num=14, name="VS", func=P.PWRIN),
-        Pin(num=15, name="NC15", func=P.NOCONNECT), Pin(num=16, name="GND16", func=P.PWRIN),
+        Pin(num=1, name="SCLK", func=P.INPUT), Pin(num=2, name="CS", func=P.INPUT),
+        Pin(num=3, name="MISO", func=P.OUTPUT), Pin(num=4, name="MOSI", func=P.INPUT),
+        Pin(num=5, name="NC", func=P.NOCONNECT), Pin(num=6, name="GND6", func=P.PWRIN),
+        Pin(num=7, name="RES", func=P.PWRIN), Pin(num=8, name="GND8", func=P.PWRIN),
+        Pin(num=9, name="VDD", func=P.PWRIN), Pin(num=10, name="VDDIO", func=P.PWRIN),
+        Pin(num=11, name="INT2", func=P.OUTPUT), Pin(num=12, name="INT1", func=P.OUTPUT),
     ],
 )
-u_acc["VDDIO", "VS"] += v3
-u_acc["GND12", "GND13", "GND16"] += gnd
-u_acc["RES3", "RES5", "RES10"] += NC   # datasheet: reserved, leave open or tie to GND; open routes cleanly
-c_acc_vs, c_acc_io = C("100nF"), C("100nF")
-c_acc_vs[1, 2] += v3, gnd
+u_acc["VDD", "VDDIO"] += v3
+u_acc["GND6", "GND8", "RES"] += gnd  # datasheet: RES connects to GND
+u_acc["NC"] += NC
+c_acc_vdd, c_acc_io = C("100nF"), C("100nF")
+c_acc_vdd[1, 2] += v3, gnd
 c_acc_io[1, 2] += v3, gnd
 
+# CS has an internal pull-up (about 20k at 3.3 V), which holds it high while the C6 sleeps.
+# CS high also enables the I2C interface; firmware sets I2C_DISABLE (CTRL2) at start-up.
 spi = {name: Net(f"ACC_{name}") for name in ("CS", "SCLK", "MOSI", "MISO", "INT1", "INT2")}
 for name, net in spi.items():
     u_acc[name] += net
@@ -205,10 +205,8 @@ u_mcu["IO18"] += spi["CS"]
 u_mcu["IO19"] += spi["SCLK"]
 u_mcu["IO20"] += spi["MOSI"]
 u_mcu["IO21"] += spi["MISO"]
-u_mcu["IO0"] += spi["INT1"]   # activity/inactivity: deep-sleep wake (LP GPIO)
-u_mcu["IO1"] += spi["INT2"]   # FIFO watermark: light-sleep wake
-r_cs = R("100k")              # holds CS high while the C6 sleeps
-r_cs[1, 2] += v3, spi["CS"]
+u_mcu["IO0"] += spi["INT1"]   # wake-up/activity: deep-sleep wake (LP GPIO)
+u_mcu["IO1"] += spi["INT2"]   # FIFO threshold: light-sleep wake
 
 # --- SHT40 (I2C 0x44) --------------------------------------------------------
 u_rh = Part("Sensor_Humidity", "SHT4x", value="SHT40-AD1B", fields={"LCSC": "C2909890"})

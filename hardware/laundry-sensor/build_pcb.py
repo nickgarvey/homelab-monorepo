@@ -37,16 +37,16 @@ PLACE = {
     "R6": (63.0, -1.6, 0),
     "C4": (64.8, -1.6, 90),
     "R8": (56.0, 10.5, 90),
-    # accelerometer
-    "U3": (34.0, 7.5, 0),
-    "C8": (34.6, 4.9, 0),      # VS decoupling, above the top pin row (keeps the side columns free)
-    "C9": (31.0, 4.9, 0),      # VDDIO decoupling, off the pin-1 corner
-    "R13": (36.6, 10.6, 90),
+    # accelerometer: turned 180 so the SPI pins (1-4) face the module and VDD/VDD_IO (9, 10) face
+    # their capacitors on the left, +3V3 pad toward the part
+    "U3": (34.0, 7.5, 180),
+    "C8": (31.7, 7.95, 180),   # VDD decoupling
+    "C9": (31.7, 9.05, 180),   # VDD_IO decoupling
     # humidity sensor
     "U4": (20.0, -6.0, 0),
     "C10": (20.0, -3.8, 0),
-    "R14": (17.5, -6.6, 90),
-    "R15": (22.5, -6.6, 90),
+    "R13": (17.5, -6.6, 90),
+    "R14": (22.5, -6.6, 90),
     # USB CC
     "R11": (-1.8, 5.0, 90),
     "R12": (-1.8, 10.0, 90),
@@ -152,8 +152,8 @@ def tidy_silk(board):
             v.SetTextThickness(pcbnew.FromMM(0.15))
             if prefix == "SW":  # label above the button, clear of the board edge
                 v.SetPosition(fp.GetPosition() + pcbnew.VECTOR2I(0, pcbnew.FromMM(-2.6)))
-        if ref == "U3":  # label below the part: C8 sits above it
-            fp.Reference().SetPosition(fp.GetPosition() + pcbnew.VECTOR2I(0, pcbnew.FromMM(2.4)))
+        if ref == "U3":  # label above the part: its capacitors sit to the left
+            fp.Reference().SetPosition(fp.GetPosition() + pcbnew.VECTOR2I(0, pcbnew.FromMM(-2.2)))
         for t in (fp.Reference(),):
             t.SetTextSize(pcbnew.VECTOR2I(pcbnew.FromMM(1.0), pcbnew.FromMM(1.0)))
             t.SetTextThickness(pcbnew.FromMM(0.15))

@@ -168,10 +168,10 @@ def power_stage(board):
 
 
 def sht40_supply(board):
-    """SHT40 VDD (pad 3) sits between its GND pad and the pour; give it a direct run to R15's
+    """SHT40 VDD (pad 3) sits between its GND pad and the pour; give it a direct run to R14's
     +3V3 pad, which the router then connects onward."""
     a = pad(board, "U4", "3").GetPosition()
-    b = pad(board, "R15", "1").GetPosition()
+    b = pad(board, "R14", "1").GetPosition()
     mid = pcbnew.VECTOR2I(a.x + mm(0.6), a.y)
     path(board, pad(board, "U4", "3").GetNet(), [a, mid, b], 0.2)
 
@@ -258,6 +258,12 @@ def clear_of(board, at, radius, layers=(pcbnew.F_Cu, pcbnew.B_Cu), skip_net=None
                 bb.Inflate(radius)
                 if bb.Contains(at):
                     return False
+    for d in board.GetDrawings() if avoid_silk else ():
+        if d.GetClass() == "PCB_TEXT" and d.GetLayer() == pcbnew.F_SilkS:
+            bb = d.GetBoundingBox()
+            bb.Inflate(radius)
+            if bb.Contains(at):
+                return False
     for z in board.Zones():
         if z.GetIsRuleArea() and z.Outline().Collide(at, margin):
             return False

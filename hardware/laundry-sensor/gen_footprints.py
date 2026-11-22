@@ -1,6 +1,7 @@
 # Writes our own footprints into footprints/laundry.pretty.
-# ADXL362 (LGA-16, 3.25 x 3 mm): land pattern from Figure 52 of the ADXL362 datasheet (Rev. B):
-# 0.8 x 0.3 mm pads on 0.5 mm pitch, 3.5 mm across the long-side pads, 3.35 mm across the short-side pads.
+# LIS2DW12 (LGA-12, 2 x 2 mm): package from Figure 18 of the LIS2DW12 datasheet (DS11811 Rev 9):
+# 0.275 x 0.25 mm terminals on 0.5 mm pitch, centred 0.7625 mm from the body centre. Each land is
+# the terminal lengthened 0.1 mm outward, which keeps 0.25 mm between neighbouring lands.
 from pathlib import Path
 
 OUT = Path(__file__).parent / "footprints" / "laundry.pretty"
@@ -16,40 +17,39 @@ def line(x1, y1, x2, y2, layer, width):
             f'(stroke (width {width}) (type solid)) (layer "{layer}"))\n')
 
 
-def adxl362():
+def box(half, layer, width):
+    h = half
+    return [line(-h, -h, h, -h, layer, width), line(h, -h, h, h, layer, width),
+            line(h, h, -h, h, layer, width), line(-h, h, -h, -h, layer, width)]
+
+
+def lis2dw12():
+    # Top view, y down: pins 1-4 left column top to bottom, 5-6 bottom row left to right,
+    # 7-10 right column bottom to top, 11-12 top row right to left (datasheet Figure 2, mirrored).
+    c, length, width = 0.8125, 0.375, 0.25
     pads = []
-    # Pins 1-5: left column, top to bottom. Pins 9-13: right column, bottom to top.
-    for i, y in enumerate([-1.0, -0.5, 0.0, 0.5, 1.0]):
-        pads.append(pad(1 + i, -1.35, y, 0.8, 0.3))
-        pads.append(pad(13 - i, 1.35, y, 0.8, 0.3))
-    # Pins 6-8: bottom row, left to right. Pins 14-16: top row, right to left.
-    for i, x in enumerate([-0.5, 0.0, 0.5]):
-        pads.append(pad(6 + i, x, 1.275, 0.3, 0.8))
-        pads.append(pad(16 - i, x, -1.275, 0.3, 0.8))
-    bx, by = 1.625, 1.5  # half body: 3.25 mm along the 3-pad sides, 3.0 mm along the 5-pad sides
-    body = [
-        line(-bx, -by, bx, -by, "F.Fab", 0.1), line(bx, -by, bx, by, "F.Fab", 0.1),
-        line(bx, by, -bx, by, "F.Fab", 0.1), line(-bx, by, -bx, -by, "F.Fab", 0.1),
-    ]
-    cy = 1.95
-    court = [
-        line(-2.0, -cy, 2.0, -cy, "F.CrtYd", 0.05), line(2.0, -cy, 2.0, cy, "F.CrtYd", 0.05),
-        line(2.0, cy, -2.0, cy, "F.CrtYd", 0.05), line(-2.0, cy, -2.0, -cy, "F.CrtYd", 0.05),
-    ]
-    silk = [line(-1.9, -1.85, -1.4, -1.85, "F.SilkS", 0.12)]  # pin 1 marker
+    for i, y in enumerate([-0.75, -0.25, 0.25, 0.75]):
+        pads.append(pad(1 + i, -c, y, length, width))
+        pads.append(pad(10 - i, c, y, length, width))
+    for i, x in enumerate([-0.25, 0.25]):
+        pads.append(pad(5 + i, x, c, width, length))
+        pads.append(pad(12 - i, x, -c, width, length))
+    silk = [line(-1.3, -1.2, -0.9, -1.2, "F.SilkS", 0.12)]  # pin 1 marker
     return (
-        '(footprint "ADXL362_LGA-16_3x3.25mm_P0.5mm"\n'
+        '(footprint "LIS2DW12_LGA-12_2x2mm_P0.5mm"\n'
         '\t(version 20241229)\n\t(generator "gen_footprints.py")\n\t(layer "F.Cu")\n'
-        '\t(descr "ADXL362 LGA-16 3x3.25mm, land pattern per datasheet Figure 52")\n'
+        '\t(descr "ST LIS2DW12 LGA-12 2x2mm, lands from datasheet Figure 18 terminals + 0.1 mm outward")\n'
         '\t(attr smd)\n'
-        '\t(property "Reference" "REF**" (at 0 -2.6 0) (layer "F.SilkS") '
+        '\t(property "Reference" "REF**" (at 0 -1.9 0) (layer "F.SilkS") '
         '(effects (font (size 0.8 0.8) (thickness 0.12))))\n'
-        '\t(property "Value" "ADXL362" (at 0 2.6 0) (layer "F.Fab") '
+        '\t(property "Value" "LIS2DW12" (at 0 1.9 0) (layer "F.Fab") '
         '(effects (font (size 0.8 0.8) (thickness 0.12))))\n'
-        + "".join(body + court + silk + pads) + ")\n"
+        + "".join(box(1.0, "F.Fab", 0.1) + box(1.3, "F.CrtYd", 0.05) + silk + pads) + ")\n"
     )
 
 
 if __name__ == "__main__":
     OUT.mkdir(parents=True, exist_ok=True)
-    (OUT / "ADXL362_LGA-16_3x3.25mm_P0.5mm.kicad_mod").write_text(adxl362())
+    for old in OUT.glob("*.kicad_mod"):
+        old.unlink()
+    (OUT / "LIS2DW12_LGA-12_2x2mm_P0.5mm.kicad_mod").write_text(lis2dw12())
