@@ -31,12 +31,12 @@ PLACE = {
     # module support
     "C5": (67.5, -1.8, 0),
     "C6": (66.2, 0.0, 0),
-    "R7": (61.0, -1.0, 90),
+    "R5": (61.0, -1.0, 90),
     "C7": (59.6, -1.0, 90),
-    "R5": (63.0, -3.0, 0),
-    "R6": (63.0, -1.6, 0),
+    "R3": (63.0, -3.0, 0),
+    "R4": (63.0, -1.6, 0),
     "C4": (64.8, -1.6, 90),
-    "R8": (56.0, 10.5, 90),
+    "R6": (56.0, 10.5, 90),
     # accelerometer: turned 180 so the SPI pins (1-4) face the module and VDD/VDD_IO (9, 10) face
     # their capacitors on the left, +3V3 pad toward the part
     "U3": (34.0, 7.5, 180),
@@ -45,18 +45,18 @@ PLACE = {
     # humidity sensor
     "U4": (20.0, -6.0, 0),
     "C10": (20.0, -3.8, 0),
-    "R13": (17.5, -6.6, 90),
-    "R14": (22.5, -6.6, 90),
+    "R11": (17.5, -6.6, 90),
+    "R12": (22.5, -6.6, 90),
     # USB CC
-    "R11": (-1.8, 5.0, 90),
-    "R12": (-1.8, 10.0, 90),
+    "R9": (-1.8, 5.0, 90),
+    "R10": (-1.8, 10.0, 90),
     # buttons, LED
     "SW1": (12.0, 22.6, 0),
     "SW2": (20.0, 22.6, 0),
     "SW3": (38.0, 22.6, 0),
-    "R9": (41.8, 22.6, -90),   # +3V3 pad toward the board interior
+    "R7": (41.8, 22.6, -90),   # +3V3 pad toward the board interior
     "D2": (45.0, 23.0, 0),
-    "R10": (45.0, 21.2, 0),
+    "R8": (45.0, 21.2, 0),
     # test pads
     "TP1": (30.0, -8.0, 0),
     "TP2": (34.0, -8.0, 0),
@@ -126,12 +126,9 @@ def place_power_stage(board):
     put(board, "C1", vin[0] + side_vin * 1.9, row_y - up * 0.6, 90, first_pad_toward=(0, up))
     put(board, "C3", vout[0] - side_vin * 1.9, row_y - up * 0.6, 90, first_pad_toward=(0, up))
     put(board, "C2", vin[0] + side_vin * 3.9, row_y - up * 0.6, 90, first_pad_toward=(0, up))
-    # CFG resistors under the opposite pin row (EN, SEL, CFG1-3).
-    # Fanned out to 1.3 mm pitch: the pins are on 0.5 mm.
-    cx, cy = pad_xy(u1, "4")
-    step = 1.3 if pad_xy(u1, "5")[0] > cx else -1.3
-    for i, ref in enumerate(("R2", "R3", "R4")):
-        put(board, ref, cx + (i - 1) * step, cy - up * 2.3, 90, first_pad_toward=(0, up))
+    # CFG1 resistor under the opposite pin row (EN, SEL, CFG1-3), straight below CFG1 (pin 3).
+    cx, cy = pad_xy(u1, "3")
+    put(board, "R2", cx, cy - up * 2.3, 90, first_pad_toward=(0, up))
 
 
 def tidy_silk(board):
@@ -233,7 +230,7 @@ def main():
                 pad.SetNet(net(pin_net[pad.GetNumber()]))
         board.Add(fp)
 
-        if part.ref in ("L1", "C1", "C2", "C3", "R2", "R3", "R4"):
+        if part.ref in ("L1", "C1", "C2", "C3", "R2"):
             pass  # placed relative to U1 below
         elif part.ref == "BT1":
             fp.Flip(fp.GetPosition(), pcbnew.FLIP_DIRECTION_TOP_BOTTOM)

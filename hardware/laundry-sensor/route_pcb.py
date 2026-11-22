@@ -156,6 +156,10 @@ def power_stage(board):
     gnd = p["8"].GetNet()
     # GND pin 8 into the exposed pad, two vias in the pad to the bottom pour.
     track(board, P(*xy["8"]), P(*xy["11"]), 0.25, net=gnd)
+    # CFG2 and CFG3 (pins 4, 5) are tied to GND: straight into the exposed pad beside them.
+    for n in ("4", "5"):
+        q = pad(board, "U1", n).GetPosition()
+        track(board, q, pcbnew.VECTOR2I(q.x, p["11"].GetPosition().y), 0.25, net=gnd)
     ex, ey = xy["11"]
     for dx in (-0.45, 0.45):
         via(board, P(ex + dx, ey), gnd)
@@ -168,10 +172,10 @@ def power_stage(board):
 
 
 def sht40_supply(board):
-    """SHT40 VDD (pad 3) sits between its GND pad and the pour; give it a direct run to R14's
+    """SHT40 VDD (pad 3) sits between its GND pad and the pour; give it a direct run to R12's
     +3V3 pad, which the router then connects onward."""
     a = pad(board, "U4", "3").GetPosition()
-    b = pad(board, "R14", "1").GetPosition()
+    b = pad(board, "R12", "1").GetPosition()
     mid = pcbnew.VECTOR2I(a.x + mm(0.6), a.y)
     path(board, pad(board, "U4", "3").GetNet(), [a, mid, b], 0.2)
 

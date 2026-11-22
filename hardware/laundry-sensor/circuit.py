@@ -16,15 +16,12 @@ set_default_tool(KICAD9)
 # --- footprints -------------------------------------------------------------
 R0402 = "Resistor_SMD:R_0402_1005Metric"
 C0402 = "Capacitor_SMD:C_0402_1005Metric"
-C0603 = "Capacitor_SMD:C_0603_1608Metric"
 C0805 = "Capacitor_SMD:C_0805_2012Metric"
 
 # LCSC numbers for JLC assembly.
 LCSC = {
-    "100nF": "C1525", "1uF": "C52923", "10uF": "C19702",
-    "22uF_0805": "C45783",
-    "0": "C17168", "1k": "C11702", "5.1k": "C25905", "10k": "C25744",
-    "16.2k": "C27176", "36.5k": "C25887", "100k": "C25741", "10M": "C144806",
+    "100nF": "C1525", "22uF_0805": "C45783",
+    "5.1k": "C25905", "10k": "C25744", "36.5k": "C25887", "100k": "C25741", "10M": "C144806",
 }
 
 
@@ -87,16 +84,14 @@ u_reg["EN"] += vin
 u_reg["SEL"] += vin            # SEL high: VO(2) from CFG1
 u_reg["GND"] += gnd            # pin 8 and the exposed pad
 r_cfg1 = R("36.5k")            # CFG1 36.5k -> VO(2) = 3.3 V (datasheet Table 7-2)
-r_cfg2 = R("0")                # CFG2 0R   -> no input current limit
-r_cfg3 = R("16.2k")            # CFG3 16.2k -> VO(1) = 3.3 V as well (Table 7-3)
 r_cfg1[1, 2] += u_reg["CFG1"], gnd
-r_cfg2[1, 2] += u_reg["CFG2"], gnd
-r_cfg3[1, 2] += u_reg["CFG3"], gnd
+u_reg["CFG2"] += gnd           # CFG2 0 ohm -> no input current limit (Table 7-2)
+u_reg["CFG3"] += gnd           # CFG3 only sets VO(1), used when SEL is low; SEL is tied high
 l1 = Part("Device", "L", value="2.2uH", footprint="Inductor_SMD:L_1008_2520Metric",
           fields={"LCSC": "C1017131"})
 l1[1, 2] += u_reg["LX1"], u_reg["LX2"]
 u_reg["VOUT"] += v3
-c_in = C("10uF", C0603)
+c_in = C("22uF_0805", C0805)
 c_in_bulk = C("22uF_0805", C0805)
 c_out = C("22uF_0805", C0805)  # 0603 22 uF falls below 10 uF effective at 3.3 V
 for c in (c_in, c_in_bulk):
@@ -120,10 +115,10 @@ c_mcu = C("100nF")
 c_mcu_bulk[1, 2] += v3, gnd
 c_mcu[1, 2] += v3, gnd
 
-# EN: RC reset delay (module datasheet: 10k / 1uF) and RESET button.
+# EN: RC reset delay, 10 ms like the module datasheet's 10k / 1uF, from values already on the board.
 en = Net("EN")
 u_mcu["EN"] += en
-r_en, c_en = R("10k"), C("1uF")
+r_en, c_en = R("100k"), C("100nF")
 r_en[1, 2] += v3, en
 c_en[1, 2] += en, gnd
 
@@ -153,7 +148,7 @@ u_mcu["IO2"] += vbat_sense
 
 # LED on GPIO14.
 led = Part("Device", "LED", value="red", footprint="LED_SMD:LED_0603_1608Metric", fields={"LCSC": "C2286"})
-r_led = R("1k")
+r_led = R("5.1k")  # about 0.26 mA: dim but visible
 led_a = Net("LED_A")
 r_led[1, 2] += u_mcu["IO14"], led_a
 led["A"] += led_a
