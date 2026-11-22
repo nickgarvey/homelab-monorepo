@@ -7,10 +7,14 @@
 #   ssh wabbajack 'sudo systemd-run --unit=riemann-full --collect --uid=$USER \
 #     -p WorkingDirectory=$HOME/riemann -p Environment=HOME=$HOME/riemann/home \
 #     -p LimitNOFILE=524288 -p MemoryMax=110G -p Nice=10 \
+#     -p AllowedCPUs=0-14,16-30 -p CPUWeight=idle \
 #     /run/current-system/sw/bin/nix shell nixpkgs#{bash,coreutils,gnugrep,gnused,findutils,gnutar,gzip,curl,git,time,elan,ripgrep} \
 #     -c bash $HOME/riemann/full.sh'
 #   ssh wabbajack 'sudo journalctl -fu riemann-full -o cat'        # follow it
 #   ssh wabbajack 'cat ~/riemann/RESULT'                           # the verdict
+#
+# CPUs 15 and 31 (one physical core) stay free for the host; CPUWeight=idle lets anything else
+# on the host go first on the rest.
 #
 # Every step resumes: a rerun skips the download if the archive's hash matches, and Lake rebuilds
 # only modules not yet compiled. RESULT starts with PASS only if every step ran to the end.
@@ -114,12 +118,17 @@ timed "lake exe cache get" ../cache-get.log lake exe cache get
 
 # --- 5. Build. The janitor deletes each module's .setup.json once the module is built (about 1 TB
 # otherwise, per the leanprover-community verification notes), and logs progress and disk use.
+# The subshell turns off errexit: under set -e and pipefail, a pass whose last file was not yet
+# built returned false and silently ended the loop.
 (
-  while sleep 300; do
-    find .lake/build/ir -name '*.setup.json' 2>/dev/null | while IFS= read -r f; do
+  set +e +o pipefail
+  while sleep 120; do
+    while IFS= read -r f; do
       t=".lake/build/lib/lean/${f#.lake/build/ir/}"
-      [ "${t%.setup.json}.trace" -nt "$f" ] && rm -f "$f"
-    done
+      if [ "${t%.setup.json}.trace" -nt "$f" ]; then
+        rm -f -- "$f"
+      fi
+    done < <(find .lake/build/ir -name '*.setup.json' 2>/dev/null)
     echo "progress: $(grep -oE '^. \[[0-9]+/[0-9]+\]' ../build.log 2>/dev/null | tail -1); disk used in $R: $(du -sh "$R" 2>/dev/null | cut -f1); free on /: $(df -h --output=avail / | tail -1)"
   done
 ) &
