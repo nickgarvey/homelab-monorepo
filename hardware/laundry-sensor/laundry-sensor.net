@@ -2,7 +2,7 @@
   (version "D")
   (design
     (source "circuit.py")
-    (date "11/22/2026 12:23 AM")
+    (date "11/22/2026 12:03 PM")
     (tool "SKiDL (2.2.1)")
     (sheet
       (number 1)
@@ -150,14 +150,14 @@
       (ref "C3")
       (value "22uF")
       (description "Unpolarized capacitor")
-      (footprint "Capacitor_SMD:C_0603_1608Metric")
+      (footprint "Capacitor_SMD:C_0805_2012Metric")
       (fields
         (field
-          (name "LCSC") "C59461")
+          (name "LCSC") "C45783")
         (field
           (name "Description") "Unpolarized capacitor")
         (field
-          (name "Footprint") "Capacitor_SMD:C_0603_1608Metric")
+          (name "Footprint") "Capacitor_SMD:C_0805_2012Metric")
         (field
           (name "Datasheet"))
         (field

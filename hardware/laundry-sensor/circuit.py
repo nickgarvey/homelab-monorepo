@@ -22,7 +22,7 @@ C0805 = "Capacitor_SMD:C_0805_2012Metric"
 # LCSC numbers for JLC assembly.
 LCSC = {
     "100nF": "C1525", "1uF": "C52923", "10uF": "C19702",
-    "22uF_0603": "C59461", "22uF_0805": "C45783",
+    "22uF_0805": "C45783",
     "0": "C17168", "1k": "C11702", "5.1k": "C25905", "10k": "C25744",
     "16.2k": "C27176", "36.5k": "C25887", "100k": "C25741", "10M": "C144806",
 }
@@ -98,7 +98,7 @@ l1[1, 2] += u_reg["LX1"], u_reg["LX2"]
 u_reg["VOUT"] += v3
 c_in = C("10uF", C0603)
 c_in_bulk = C("22uF_0805", C0805)
-c_out = C("22uF_0603", C0603)
+c_out = C("22uF_0805", C0805)  # 0603 22 uF falls below 10 uF effective at 3.3 V
 for c in (c_in, c_in_bulk):
     c[1, 2] += vin, gnd
 c_out[1, 2] += v3, gnd

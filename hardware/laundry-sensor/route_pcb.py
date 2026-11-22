@@ -9,8 +9,8 @@ import pcbnew
 
 HERE = Path(__file__).parent
 PCB = HERE / "laundry-sensor.kicad_pcb"
-BOARD = (-12.0, -10.5, 63.0, 25.5)
-ANTENNA_X = 57.6  # the module's antenna keepout starts here
+BOARD = (-12.0, -10.5, 75.0, 25.5)
+ANTENNA_X = 69.6  # the module's antenna keepout starts here
 POWER_NETS = ("VIN", "VBAT", "BAT+", "VBUS")
 # Items created here stay referenced for the whole run: a SWIG wrapper that goes out of scope can
 # free an object the board still points at.
@@ -26,11 +26,12 @@ def pt(x, y):
 
 
 def rules(board):
-    # JLCPCB 2-layer standard capability is 0.1 mm track/space and 0.3 mm drill. Net classes ask
-    # for 0.15 mm and up; Freerouting necks down to ~0.11 mm only where it enters fine-pitch pins.
+    # JLCPCB 2-layer: 0.127 mm (5 mil) track and space at the conservative reading of their
+    # capabilities, 0.3 mm drill. Freerouting necks traces into fine-pitch pins; widen_necks lifts
+    # those back to the minimum.
     ds = board.GetDesignSettings()
-    ds.m_TrackMinWidth = mm(0.1)
-    ds.m_MinClearance = mm(0.15)
+    ds.m_TrackMinWidth = mm(0.127)
+    ds.m_MinClearance = mm(0.2)
     ds.m_ViasMinSize = mm(0.6)
     ds.m_MinThroughDrill = mm(0.3)
     ds.m_CopperEdgeClearance = mm(0.3)
@@ -41,7 +42,7 @@ def net_classes(board):
     ns = board.GetDesignSettings().m_NetSettings
     default = ns.GetDefaultNetclass()
     default.SetTrackWidth(mm(0.15))
-    default.SetClearance(mm(0.15))
+    default.SetClearance(mm(0.2))
     default.SetViaDiameter(mm(0.6))
     default.SetViaDrill(mm(0.3))
     power = pcbnew.NETCLASS("Power")
@@ -55,7 +56,7 @@ def net_classes(board):
     # +3V3 reaches the module's 0.8 mm-pitch pads; 0.3 mm still carries its ~300 mA TX peaks easily.
     rail = pcbnew.NETCLASS("Rail")
     rail.SetTrackWidth(mm(0.3))
-    rail.SetClearance(mm(0.15))
+    rail.SetClearance(mm(0.2))
     rail.SetViaDiameter(mm(0.6))
     rail.SetViaDrill(mm(0.3))
     ns.SetNetclass("Rail", rail)
@@ -175,7 +176,7 @@ def sht40_supply(board):
     path(board, pad(board, "U4", "3").GetNet(), [a, mid, b], 0.2)
 
 
-def widen_necks(board, minimum=0.1):
+def widen_necks(board, minimum=0.127):
     for t in board.GetTracks():
         if t.GetClass() == "PCB_TRACK" and t.GetWidth() < mm(minimum):
             t.SetWidth(mm(minimum))
@@ -230,7 +231,8 @@ def stitch_islands(board):
 
 def clear_of(board, at, radius, layers=(pcbnew.F_Cu, pcbnew.B_Cu), skip_net=None):
     """True if a disc of `radius` (internal units) at `at` keeps 0.2 mm from every pad, track,
-    via, rule area and the board edge, ignoring items on skip_net."""
+    via, rule area and the board edge, ignoring items on skip_net. SMD pads on skip_net still
+    block: a via in a pad wicks solder away from the joint."""
     margin = radius + mm(0.2)
     l, t, r, b = (mm(v) for v in BOARD)
     if not (l + margin + mm(0.3) < at.x < r - margin - mm(0.3) and t + margin + mm(0.3) < at.y < b - margin - mm(0.3)):
@@ -240,6 +242,8 @@ def clear_of(board, at, radius, layers=(pcbnew.F_Cu, pcbnew.B_Cu), skip_net=None
     for fp in board.GetFootprints():
         for q in fp.Pads():
             if q.GetNetCode() == skip_net:
+                if q.GetAttribute() == pcbnew.PAD_ATTRIB_SMD and q.HitTest(at, radius + mm(0.05)):
+                    return False
                 continue
             if any(q.IsOnLayer(ly) for ly in layers) or q.GetAttribute() in (pcbnew.PAD_ATTRIB_PTH, pcbnew.PAD_ATTRIB_NPTH):
                 if q.HitTest(at, margin):

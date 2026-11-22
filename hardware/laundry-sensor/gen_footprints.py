@@ -1,5 +1,5 @@
-# Writes the footprints that KiCad's libraries lack into footprints/laundry.pretty.
-# ADXL362 (LGA-16, 3 x 3.25 mm): land pattern from Figure 52 of the ADXL362 datasheet (Rev. B):
+# Writes our own footprints into footprints/laundry.pretty.
+# ADXL362 (LGA-16, 3.25 x 3 mm): land pattern from Figure 52 of the ADXL362 datasheet (Rev. B):
 # 0.8 x 0.3 mm pads on 0.5 mm pitch, 3.5 mm across the long-side pads, 3.35 mm across the short-side pads.
 from pathlib import Path
 
@@ -26,7 +26,7 @@ def adxl362():
     for i, x in enumerate([-0.5, 0.0, 0.5]):
         pads.append(pad(6 + i, x, 1.275, 0.3, 0.8))
         pads.append(pad(16 - i, x, -1.275, 0.3, 0.8))
-    bx, by = 1.5, 1.625  # half body: 3.0 x 3.25 mm
+    bx, by = 1.625, 1.5  # half body: 3.25 mm along the 3-pad sides, 3.0 mm along the 5-pad sides
     body = [
         line(-bx, -by, bx, -by, "F.Fab", 0.1), line(bx, -by, bx, by, "F.Fab", 0.1),
         line(bx, by, -bx, by, "F.Fab", 0.1), line(-bx, by, -bx, -by, "F.Fab", 0.1),

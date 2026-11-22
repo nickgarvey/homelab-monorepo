@@ -28,9 +28,8 @@ CORRECTIONS = [
     (r"^ADXL362_LGA-16", 270, (0.0, 0.0)),                       # pin 1 top-left, like QFN
     (r"^Sensirion_DFN-4", 270, (0.0, 0.0)),                      # like DFN
     (r"^ESP32-C6-MINI-1$", 0, (0.0, -2.7)),                      # body centre, not pad centre
-    (r"^SW_SPST_TS-1088", 0, (0.0, -0.975)),                     # body centre, not pad centre
 ]
-CHECK_IN_PREVIEW = {"U1", "U2", "U3", "U4", "SW1", "SW2", "SW3"}
+CHECK_IN_PREVIEW = {"U1", "U2", "U3", "U4"}
 HAND_SOLDERED = {"BT1", "J2"}  # through-hole, soldered after assembly
 LAYERS = "F.Cu,B.Cu,F.Paste,B.Paste,F.SilkS,B.SilkS,F.Mask,B.Mask,Edge.Cuts"
 
@@ -51,7 +50,8 @@ def gerbers():
     run("gerbers", "-o", f"{g}/", "-l", LAYERS, "--subtract-soldermask", "--no-x2", "--no-netlist",
         "--check-zones")
     run("drill", "-o", f"{g}/", "--format", "excellon", "--excellon-units", "mm",
-        "--excellon-zeros-format", "decimal", "--excellon-oval-format", "alternate")
+        "--excellon-zeros-format", "decimal", "--excellon-oval-format", "alternate",
+        "--excellon-separate-th")
     with zipfile.ZipFile(OUT / "laundry-sensor-gerbers.zip", "w", zipfile.ZIP_DEFLATED) as z:
         for f in sorted(g.iterdir()):
             z.write(f, f.name)

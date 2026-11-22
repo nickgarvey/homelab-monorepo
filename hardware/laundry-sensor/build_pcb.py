@@ -3,7 +3,7 @@
 #
 # Board layout (top view, mm, y down). The 2xAA holder is on the back and fills x -2.9..57.2.
 # x < -3: USB-C and the PPK2 header (their through-hole legs cannot sit over the holder).
-# x > 57.5: the module's antenna, with no battery metal under it and no copper on the board.
+# x > 69.6: the module's antenna, at the right edge, 12 mm clear of the cells (holder ends at 57.2).
 import builtins
 import os
 from pathlib import Path
@@ -16,11 +16,11 @@ HERE = Path(__file__).parent
 KICAD_FP = Path(os.environ["KICAD9_FOOTPRINT_DIR"])
 LOCAL_FP = {"laundry": HERE / "footprints" / "laundry.pretty"}
 
-BOARD = (-12.0, -10.5, 63.0, 25.5)  # left, top, right, bottom
+BOARD = (-12.0, -10.5, 75.0, 25.5)  # left, top, right, bottom
 
 # ref: (x, y, rotation_deg) on the top side. Rotation is KiCad's (counter-clockwise positive).
 PLACE = {
-    "U2": (52.0, 7.5, -90),    # module, antenna toward +x, antenna edge at the board edge
+    "U2": (64.0, 7.5, -90),    # module, antenna toward +x, antenna edge at the board edge
     "J1": (-8.3, 7.5, -90),    # USB-C, mouth at the left edge
     "J2": (-6.0, 15.5, 0),     # PPK2 jumper
     # power
@@ -29,14 +29,14 @@ PLACE = {
     "D1": (2.5, 4.0, 0),
     "U1": (9.0, 11.0, 90),   # VIN/LX1/GND/LX2/VOUT row faces up, toward L1
     # module support
-    "C5": (55.5, -1.8, 0),
-    "C6": (54.2, 0.0, 0),
-    "R7": (49.0, -1.0, 90),
-    "C7": (47.6, -1.0, 90),
-    "R5": (51.0, -3.0, 0),
-    "R6": (51.0, -1.6, 0),
-    "C4": (52.8, -1.6, 90),
-    "R8": (44.0, 10.5, 90),
+    "C5": (67.5, -1.8, 0),
+    "C6": (66.2, 0.0, 0),
+    "R7": (61.0, -1.0, 90),
+    "C7": (59.6, -1.0, 90),
+    "R5": (63.0, -3.0, 0),
+    "R6": (63.0, -1.6, 0),
+    "C4": (64.8, -1.6, 90),
+    "R8": (56.0, 10.5, 90),
     # accelerometer
     "U3": (34.0, 7.5, 0),
     "C8": (34.6, 4.9, 0),      # VS decoupling, above the top pin row (keeps the side columns free)
@@ -59,10 +59,10 @@ PLACE = {
     "R10": (45.0, 21.2, 0),
     # test pads
     "TP1": (30.0, -8.0, 0),
-    "TP2": (33.0, -8.0, 0),
-    "TP3": (36.0, -8.0, 0),
-    "TP4": (39.0, -8.0, 0),
-    "TP5": (42.0, -8.0, 0),
+    "TP2": (34.0, -8.0, 0),
+    "TP3": (38.0, -8.0, 0),
+    "TP4": (42.0, -8.0, 0),
+    "TP5": (46.0, -8.0, 0),
 }
 HOLDER_PLUS = (0.0, 15.0)  # BT1 pad 1 (+); the holder is flipped onto the back
 HOLES = [(-9.4, -7.9), (-9.4, 22.9)]
@@ -85,8 +85,8 @@ def load_fp(fpid):
 def setup_rules(board):
     # JLCPCB 2-layer capabilities, with margin.
     ds = board.GetDesignSettings()
-    ds.m_TrackMinWidth = pcbnew.FromMM(0.15)
-    ds.m_MinClearance = pcbnew.FromMM(0.15)
+    ds.m_TrackMinWidth = pcbnew.FromMM(0.127)
+    ds.m_MinClearance = pcbnew.FromMM(0.2)
     ds.m_ViasMinSize = pcbnew.FromMM(0.6)
     ds.m_MinThroughDrill = pcbnew.FromMM(0.3)
     ds.m_CopperEdgeClearance = pcbnew.FromMM(0.3)
@@ -146,15 +146,15 @@ def tidy_silk(board):
             fp.Reference().SetVisible(False)
             v = fp.Value()
             v.SetLayer(pcbnew.F_SilkS)
-            v.SetTextSize(pcbnew.VECTOR2I(pcbnew.FromMM(0.8), pcbnew.FromMM(0.8)))
-            v.SetTextThickness(pcbnew.FromMM(0.12))
+            v.SetTextSize(pcbnew.VECTOR2I(pcbnew.FromMM(1.0), pcbnew.FromMM(1.0)))
+            v.SetTextThickness(pcbnew.FromMM(0.15))
             if prefix == "SW":  # label above the button, clear of the board edge
                 v.SetPosition(fp.GetPosition() + pcbnew.VECTOR2I(0, pcbnew.FromMM(-2.6)))
         if ref == "U3":  # label below the part: C8 sits above it
             fp.Reference().SetPosition(fp.GetPosition() + pcbnew.VECTOR2I(0, pcbnew.FromMM(2.4)))
         for t in (fp.Reference(),):
-            t.SetTextSize(pcbnew.VECTOR2I(pcbnew.FromMM(0.8), pcbnew.FromMM(0.8)))
-            t.SetTextThickness(pcbnew.FromMM(0.12))
+            t.SetTextSize(pcbnew.VECTOR2I(pcbnew.FromMM(1.0), pcbnew.FromMM(1.0)))
+            t.SetTextThickness(pcbnew.FromMM(0.15))
 
 
 def sht40_keepout(board):
