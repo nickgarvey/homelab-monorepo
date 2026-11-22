@@ -2,7 +2,7 @@
   (version "D")
   (design
     (source "circuit.py")
-    (date "11/21/2026 11:15 PM")
+    (date "11/21/2026 11:54 PM")
     (tool "SKiDL (2.2.1)")
     (sheet
       (number 1)
@@ -371,7 +371,7 @@
         (field
           (name "SKiDL Tag") "D2")
         (field
-          (name "SKiDL Line") "circuit.py:153"))
+          (name "SKiDL Line") "circuit.py:155"))
       (libsource
         (lib "Device")
         (part "LED"))
@@ -397,7 +397,7 @@
         (field
           (name "SKiDL Tag") "J1")
         (field
-          (name "SKiDL Line") "circuit.py:161"))
+          (name "SKiDL Line") "circuit.py:163"))
       (libsource
         (lib "Connector")
         (part "USB_C_Receptacle_USB2.0_16P"))
@@ -449,7 +449,7 @@
         (field
           (name "SKiDL Tag") "L1")
         (field
-          (name "SKiDL Line") "circuit.py:93"))
+          (name "SKiDL Line") "circuit.py:95"))
       (libsource
         (lib "Device")
         (part "L"))
@@ -891,7 +891,7 @@
         (field
           (name "SKiDL Tag") "SW1")
         (field
-          (name "SKiDL Line") "circuit.py:130"))
+          (name "SKiDL Line") "circuit.py:132"))
       (libsource
         (lib "Switch")
         (part "SW_Push"))
@@ -917,7 +917,7 @@
         (field
           (name "SKiDL Tag") "SW2")
         (field
-          (name "SKiDL Line") "circuit.py:130"))
+          (name "SKiDL Line") "circuit.py:132"))
       (libsource
         (lib "Switch")
         (part "SW_Push"))
@@ -943,7 +943,7 @@
         (field
           (name "SKiDL Tag") "SW3")
         (field
-          (name "SKiDL Line") "circuit.py:130"))
+          (name "SKiDL Line") "circuit.py:132"))
       (libsource
         (lib "Switch")
         (part "SW_Push"))
@@ -1076,20 +1076,20 @@
       (ref "U1")
       (value "TPS63900")
       (description "Buck-Boost Converter, 1.8-5.5V Input Voltage, 0.4A Switch Current, Adjustable 1.8-5V Output Voltage, WSON-10")
-      (footprint "Package_SON:WSON-10-1EP_2.5x2.5mm_P0.5mm_EP1.2x2mm_ThermalVias")
+      (footprint "Package_SON:WSON-10-1EP_2.5x2.5mm_P0.5mm_EP1.2x2mm")
       (fields
         (field
           (name "LCSC") "C1518762")
         (field
           (name "Description") "Buck-Boost Converter, 1.8-5.5V Input Voltage, 0.4A Switch Current, Adjustable 1.8-5V Output Voltage, WSON-10")
         (field
-          (name "Footprint") "Package_SON:WSON-10-1EP_2.5x2.5mm_P0.5mm_EP1.2x2mm_ThermalVias")
+          (name "Footprint") "Package_SON:WSON-10-1EP_2.5x2.5mm_P0.5mm_EP1.2x2mm")
         (field
           (name "Datasheet") "https://www.ti.com/lit/ds/symlink/tps63900.pdf")
         (field
           (name "SKiDL Tag") "U1")
         (field
-          (name "SKiDL Line") "circuit.py:82"))
+          (name "SKiDL Line") "circuit.py:83"))
       (libsource
         (lib "Regulator_Switching")
         (part "TPS63900"))
@@ -1115,7 +1115,7 @@
         (field
           (name "SKiDL Tag") "U2")
         (field
-          (name "SKiDL Line") "circuit.py:113"))
+          (name "SKiDL Line") "circuit.py:115"))
       (libsource
         (lib "RF_Module")
         (part "ESP32-C6-MINI-1"))
@@ -1141,7 +1141,7 @@
         (field
           (name "SKiDL Tag") "U3")
         (field
-          (name "SKiDL Line") "circuit.py:178"))
+          (name "SKiDL Line") "circuit.py:180"))
       (libsource
         (lib "NO_LIB")
         (part "ADXL362"))
@@ -1167,7 +1167,7 @@
         (field
           (name "SKiDL Tag") "U4")
         (field
-          (name "SKiDL Line") "circuit.py:212"))
+          (name "SKiDL Line") "circuit.py:214"))
       (libsource
         (lib "Sensor_Humidity")
         (part "SHT4x"))

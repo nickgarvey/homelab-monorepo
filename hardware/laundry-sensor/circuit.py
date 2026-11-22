@@ -79,7 +79,9 @@ d1["A"] += vbus
 d1["K"] += vin
 
 # --- TPS63900 buck-boost, 3.3 V out -----------------------------------------
-u_reg = Part("Regulator_Switching", "TPS63900", fields={"LCSC": "C1518762"})
+# Footprint without the 0.2 mm thermal vias (below JLC standard drill); low current, no heat to spread.
+u_reg = Part("Regulator_Switching", "TPS63900", fields={"LCSC": "C1518762"},
+             footprint="Package_SON:WSON-10-1EP_2.5x2.5mm_P0.5mm_EP1.2x2mm")
 u_reg["VIN"] += vin
 u_reg["EN"] += vin
 u_reg["SEL"] += vin            # SEL high: VO(2) from CFG1

@@ -3,3 +3,7 @@
 *.log
 *_sklib.py
 __pycache__/
+out/
+laundry-sensor-backups/
+fp-info-cache
+*.kicad_prl
