@@ -22,6 +22,7 @@ let
   obsidian-sync-mcp = import ./obsidian-sync-mcp/outputs.nix { inherit nixpkgs system; };
   anki-mcp = import ./anki-mcp/outputs.nix { inherit nixpkgs system; };
   pocket-dmg = import ./pocket-dmg/outputs.nix { inherit nixpkgs system; };
+  riemann-proof = import ./riemann-proof/outputs.nix { inherit nixpkgs system; };
 
   # The deploy binary, built from ./deploy. buildGoModule runs `go test`
   # as part of the build, so this derivation is also the test check.
@@ -131,6 +132,8 @@ in
     anki-mcp = anki-mcp.package;
     anki-mcp-image = anki-mcp.image;
     pocket-dmg = pocket-dmg.package;
+    riemann-proof = riemann-proof.package;
+    riemann-proof-check = riemann-proof.check;
   };
 
   checks.${system} = {
