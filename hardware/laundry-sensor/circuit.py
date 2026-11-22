@@ -182,10 +182,10 @@ u_acc = Part(
     footprint="laundry:ADXL362_LGA-16_3x3.25mm_P0.5mm", fields={"LCSC": "C59641"},
     pins=[
         Pin(num=1, name="VDDIO", func=P.PWRIN), Pin(num=2, name="NC1", func=P.NOCONNECT),
-        Pin(num=3, name="RES3", func=P.PASSIVE), Pin(num=4, name="SCLK", func=P.INPUT),
-        Pin(num=5, name="RES5", func=P.PASSIVE), Pin(num=6, name="MOSI", func=P.INPUT),
+        Pin(num=3, name="RES3", func=P.NOCONNECT), Pin(num=4, name="SCLK", func=P.INPUT),
+        Pin(num=5, name="RES5", func=P.NOCONNECT), Pin(num=6, name="MOSI", func=P.INPUT),
         Pin(num=7, name="MISO", func=P.OUTPUT), Pin(num=8, name="CS", func=P.INPUT),
-        Pin(num=9, name="INT2", func=P.OUTPUT), Pin(num=10, name="RES10", func=P.PASSIVE),
+        Pin(num=9, name="INT2", func=P.OUTPUT), Pin(num=10, name="RES10", func=P.NOCONNECT),
         Pin(num=11, name="INT1", func=P.OUTPUT), Pin(num=12, name="GND12", func=P.PWRIN),
         Pin(num=13, name="GND13", func=P.PWRIN), Pin(num=14, name="VS", func=P.PWRIN),
         Pin(num=15, name="NC15", func=P.NOCONNECT), Pin(num=16, name="GND16", func=P.PWRIN),
@@ -193,7 +193,7 @@ u_acc = Part(
 )
 u_acc["VDDIO", "VS"] += v3
 u_acc["GND12", "GND13", "GND16"] += gnd
-u_acc["RES3", "RES5", "RES10"] += gnd   # datasheet: reserved, leave open or tie to GND
+u_acc["RES3", "RES5", "RES10"] += NC   # datasheet: reserved, leave open or tie to GND; open routes cleanly
 c_acc_vs, c_acc_io = C("100nF"), C("100nF")
 c_acc_vs[1, 2] += v3, gnd
 c_acc_io[1, 2] += v3, gnd

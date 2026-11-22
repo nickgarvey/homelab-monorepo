@@ -11,3 +11,6 @@ Work in `nix develop .#pcb`.
 - `gen_footprints.py`: writes footprints KiCad's libraries lack (ADXL362) into `footprints/laundry.pretty`.
 - `build_pcb.py`: writes `laundry-sensor.kicad_pcb` from the circuit: footprints, nets, placement, outline.
 - `check.sh [dir]`: design-rule check summary plus top/bottom SVG renders.
+- `route_pcb.py`: routes the board in place (run after `build_pcb.py`): net classes, the TPS63900
+  loops by hand, a via from every SMD GND pad, Freerouting for the rest, then ground pours on both
+  layers with stitching vias. Freerouting varies between runs, so it keeps the best of up to five.

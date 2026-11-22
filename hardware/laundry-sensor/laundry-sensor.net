@@ -2,7 +2,7 @@
   (version "D")
   (design
     (source "circuit.py")
-    (date "11/21/2026 11:54 PM")
+    (date "11/22/2026 12:23 AM")
     (tool "SKiDL (2.2.1)")
     (sheet
       (number 1)
@@ -1587,10 +1587,6 @@
         (pintype "PASSIVE"))
       (node
         (ref "U3")
-        (pin "10")
-        (pintype "PASSIVE"))
-      (node
-        (ref "U3")
         (pin "12")
         (pintype "POWER-IN"))
       (node
@@ -1601,14 +1597,6 @@
         (ref "U3")
         (pin "16")
         (pintype "POWER-IN"))
-      (node
-        (ref "U3")
-        (pin "3")
-        (pintype "PASSIVE"))
-      (node
-        (ref "U3")
-        (pin "5")
-        (pintype "PASSIVE"))
       (node
         (ref "U4")
         (pin "4")

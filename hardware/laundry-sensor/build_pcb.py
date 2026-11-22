@@ -39,9 +39,9 @@ PLACE = {
     "R8": (44.0, 10.5, 90),
     # accelerometer
     "U3": (34.0, 7.5, 0),
-    "C8": (31.2, 6.5, 90),
-    "C9": (31.2, 8.5, 90),
-    "R13": (37.0, 5.0, 90),
+    "C8": (34.6, 4.9, 0),      # VS decoupling, above the top pin row (keeps the side columns free)
+    "C9": (31.0, 4.9, 0),      # VDDIO decoupling, off the pin-1 corner
+    "R13": (36.6, 10.6, 90),
     # humidity sensor
     "U4": (20.0, -6.0, 0),
     "C10": (20.0, -3.8, 0),
@@ -54,7 +54,7 @@ PLACE = {
     "SW1": (12.0, 22.6, 0),
     "SW2": (20.0, 22.6, 0),
     "SW3": (38.0, 22.6, 0),
-    "R9": (41.8, 22.6, 90),
+    "R9": (41.8, 22.6, -90),   # +3V3 pad toward the board interior
     "D2": (45.0, 23.0, 0),
     "R10": (45.0, 21.2, 0),
     # test pads
@@ -150,9 +150,33 @@ def tidy_silk(board):
             v.SetTextThickness(pcbnew.FromMM(0.12))
             if prefix == "SW":  # label above the button, clear of the board edge
                 v.SetPosition(fp.GetPosition() + pcbnew.VECTOR2I(0, pcbnew.FromMM(-2.6)))
+        if ref == "U3":  # label below the part: C8 sits above it
+            fp.Reference().SetPosition(fp.GetPosition() + pcbnew.VECTOR2I(0, pcbnew.FromMM(2.4)))
         for t in (fp.Reference(),):
             t.SetTextSize(pcbnew.VECTOR2I(pcbnew.FromMM(0.8), pcbnew.FromMM(0.8)))
             t.SetTextThickness(pcbnew.FromMM(0.12))
+
+
+def sht40_keepout(board):
+    """Replace the SHT4x footprint's no-copper area (whole body, pads excepted) with one covering
+    the strip between its pad columns. Same intent, no copper under the sensor, but the pads can
+    be reached from outside: Freerouting cannot honour the footprint's pads-allowed exception."""
+    u4 = board.FindFootprintByReference("U4")
+    for z in list(u4.Zones()):
+        u4.Remove(z)
+    c = u4.GetPosition()
+    z = pcbnew.ZONE(board)
+    z.SetIsRuleArea(True)
+    z.SetDoNotAllowTracks(True)
+    z.SetDoNotAllowVias(True)
+    z.SetDoNotAllowZoneFills(True)
+    z.SetLayer(pcbnew.F_Cu)
+    o = z.Outline()
+    o.NewOutline()
+    for dx, dy in ((-0.4, -0.75), (0.4, -0.75), (0.4, 0.75), (-0.4, 0.75)):
+        o.Append(c.x + pcbnew.FromMM(dx), c.y + pcbnew.FromMM(dy))
+    board.Add(z)
+    return z
 
 
 def outline(board):
@@ -214,10 +238,11 @@ def main():
         board.Add(h)
 
     place_power_stage(board)
+    keep = sht40_keepout(board)  # noqa: F841  (keeps the SWIG object alive until saved)
     tidy_silk(board)
     outline(board)
     out = HERE / "laundry-sensor.kicad_pcb"
-    board.Save(str(out))
+    pcbnew.SaveBoard(str(out), board)  # also writes the rules into laundry-sensor.kicad_pro
     print("wrote", out)
 
 
