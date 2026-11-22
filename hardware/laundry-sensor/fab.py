@@ -2,10 +2,12 @@
 # BOM and CPL. Run in `nix develop .#pcb` after route_pcb.py.
 #
 # JLC places each part by its EasyEDA footprint, whose zero rotation and origin differ from
-# KiCad's for some packages. CORRECTIONS holds those differences. Where JLC's own preview has been
-# observed (kicad-jlcpcb-tools, tests/fixtures/jlcfootprint/truth.csv) the value comes from there;
-# the rest follow the package conventions in JLCKicadTools' cpl_rotations_db.csv and need a look in
-# JLC's placement preview when ordering (CHECK_IN_PREVIEW).
+# KiCad's for some packages. CORRECTIONS holds those differences, found by fitting each polarized
+# part's EasyEDA footprint (by LCSC number) to the KiCad one pad by pad. SOT-23 and the USB-C
+# entries also match JLC's preview as observed in kicad-jlcpcb-tools
+# (tests/fixtures/jlcfootprint/truth.csv). The TPS63900 (WSON-10), the SHT40 (DFN-4) and the
+# ESP32-C6-MINI-1 need none: pin 1 and the origin (pad-centre) agree with KiCad. JLC can still hold
+# its own per-part rotation, so the placement preview is the final check (CHECK_IN_PREVIEW).
 import csv
 import math
 import re
@@ -22,12 +24,9 @@ OUT = HERE / "fab"
 
 # Footprint name pattern: (added rotation in degrees, origin offset in mm in the footprint's frame).
 CORRECTIONS = [
-    (r"^SOT-23$", 180, (0.0, 0.0)),                              # observed
-    (r"^USB_C_Receptacle_HRO_TYPE-C-31-M-12", 0, (0.0, -1.571)),  # observed
-    (r"^WSON-", 270, (0.0, 0.0)),                                # like DFN/VSON/USON
-    (r"^ADXL362_LGA-16", 270, (0.0, 0.0)),                       # pin 1 top-left, like QFN
-    (r"^Sensirion_DFN-4", 270, (0.0, 0.0)),                      # like DFN
-    (r"^ESP32-C6-MINI-1$", 0, (0.0, -2.7)),                      # body centre, not pad centre
+    (r"^SOT-23$", 180, (0.0, 0.0)),
+    (r"^USB_C_Receptacle_HRO_TYPE-C-31-M-12", 0, (0.0, -1.571)),
+    (r"^ADXL362_LGA-16", 270, (0.0, 0.0)),
 ]
 CHECK_IN_PREVIEW = {"U1", "U2", "U3", "U4"}
 HAND_SOLDERED = {"BT1", "J2"}  # through-hole, soldered after assembly

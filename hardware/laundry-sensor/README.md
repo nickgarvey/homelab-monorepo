@@ -24,7 +24,7 @@ Work in `nix develop .#pcb`.
    (lead-free HASL is fine; ENIG is flatter for the 0.5 mm-pitch LGA and WSON).
 2. Turn on PCB Assembly, top side, Economic. Upload the BOM and CPL.
 3. In the placement preview, check pin 1 of U1 (TPS63900), U3 (ADXL362) and U4 (SHT40), and the
-   outline of U2 (ESP32-C6 module). These rotations and origins follow package
-   conventions; the others match what JLC's preview has been seen to do.
+   outline of U2 (ESP32-C6 module). Their rotations and origins come from fitting the EasyEDA
+   footprints to KiCad's, but JLC can keep its own per-part rotation.
 4. BT1 (battery holder, back side) and J2 (PPK2 header) are through-hole and not in the BOM:
    solder them by hand. Fit a jumper on J2 unless a PPK2 is connected.
