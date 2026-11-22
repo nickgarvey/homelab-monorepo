@@ -16,7 +16,7 @@ HERE = Path(__file__).parent
 KICAD_FP = Path(os.environ["KICAD9_FOOTPRINT_DIR"])
 LOCAL_FP = {"laundry": HERE / "footprints" / "laundry.pretty"}
 
-BOARD = (-12.0, -10.5, 75.0, 25.5)  # left, top, right, bottom
+BOARD = (-12.0, -11.5, 75.0, 25.5)  # left, top, right, bottom
 
 # ref: (x, y, rotation_deg) on the top side. Rotation is KiCad's (counter-clockwise positive).
 PLACE = {

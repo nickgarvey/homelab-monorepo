@@ -9,7 +9,7 @@ import pcbnew
 
 HERE = Path(__file__).parent
 PCB = HERE / "laundry-sensor.kicad_pcb"
-BOARD = (-12.0, -10.5, 75.0, 25.5)
+BOARD = (-12.0, -11.5, 75.0, 25.5)
 ANTENNA_X = 69.6  # the module's antenna keepout starts here
 POWER_NETS = ("VIN", "VBAT", "BAT+", "VBUS")
 # Items created here stay referenced for the whole run: a SWIG wrapper that goes out of scope can

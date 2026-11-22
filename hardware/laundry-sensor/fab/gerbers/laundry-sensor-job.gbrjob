@@ -5,7 +5,7 @@
       "Application": "Pcbnew",
       "Version": "10.0.8"
     },
-    "CreationDate": "2026-11-22T15:29:33-08:00"
+    "CreationDate": "2026-11-22T15:35:38-08:00"
   },
   "GeneralSpecs": {
     "ProjectId": {
@@ -15,7 +15,7 @@
     },
     "Size": {
       "X": 87.1,
-      "Y": 36.1
+      "Y": 37.1
     },
     "LayerNumber": 2,
     "BoardThickness": 1.6,

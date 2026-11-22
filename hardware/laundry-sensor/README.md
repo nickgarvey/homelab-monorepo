@@ -20,7 +20,7 @@ Work in `nix develop .#pcb`.
 
 ## Ordering from JLCPCB
 
-1. Upload `fab/laundry-sensor-gerbers.zip`. 2 layers, 1.6 mm, 87×36 mm; defaults otherwise
+1. Upload `fab/laundry-sensor-gerbers.zip`. 2 layers, 1.6 mm, 87×37 mm; defaults otherwise
    (lead-free HASL is fine; ENIG is flatter for the 0.5 mm-pitch LGA and WSON).
 2. Turn on PCB Assembly, top side, Standard (JLC places the ESP32 module only with Standard).
    Edge rails added by JLC go on the long sides; snap them off after assembly. Upload the BOM and CPL.
