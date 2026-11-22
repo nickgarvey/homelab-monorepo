@@ -9648,6 +9648,17 @@
 		(layer "Edge.Cuts")
 		(uuid "a6995724-4eb4-48af-8968-f56973ff1c93")
 	)
+	(gr_text "Garvey Designs - Laundry Sensor v1"
+		(at 49 17.7 0)
+		(layer "F.SilkS")
+		(uuid "ca0f8cd6-fa44-4620-9af6-60998060299c")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
 	(segment
 		(start -4.2302 9.2748)
 		(end -3.8507 9.2748)

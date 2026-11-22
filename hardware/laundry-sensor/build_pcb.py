@@ -66,6 +66,8 @@ PLACE = {
 }
 HOLDER_PLUS = (0.0, 15.0)  # BT1 pad 1 (+); the holder is flipped onto the back
 HOLES = [(-9.4, -7.9), (-9.4, 22.9)]
+# Board name on the top silkscreen, centred at (x, y): the clear strip above the USER button and LED.
+BRANDING = ("Garvey Designs - Laundry Sensor v1", 49.0, 17.7)
 
 
 def mm(x, y):
@@ -157,6 +159,18 @@ def tidy_silk(board):
             t.SetTextThickness(pcbnew.FromMM(0.15))
 
 
+def branding(board):
+    text, x, y = BRANDING
+    t = pcbnew.PCB_TEXT(board)
+    t.SetText(text)
+    t.SetLayer(pcbnew.F_SilkS)
+    t.SetTextSize(pcbnew.VECTOR2I(pcbnew.FromMM(1.0), pcbnew.FromMM(1.0)))
+    t.SetTextThickness(pcbnew.FromMM(0.15))
+    t.SetPosition(mm(x, y))
+    board.Add(t)
+    return t
+
+
 def sht40_keepout(board):
     """Replace the SHT4x footprint's no-copper area (whole body, pads excepted) with one covering
     the strip between its pad columns. Same intent, no copper under the sensor, but the pads can
@@ -240,6 +254,7 @@ def main():
     place_power_stage(board)
     keep = sht40_keepout(board)  # noqa: F841  (keeps the SWIG object alive until saved)
     tidy_silk(board)
+    label = branding(board)  # noqa: F841  (keeps the SWIG object alive until saved)
     outline(board)
     out = HERE / "laundry-sensor.kicad_pcb"
     pcbnew.SaveBoard(str(out), board)  # also writes the rules into laundry-sensor.kicad_pro
