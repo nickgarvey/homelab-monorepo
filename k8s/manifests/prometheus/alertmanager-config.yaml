@@ -54,6 +54,21 @@ stringData:
           repeat_interval: 24h
           continue: false
 
+        # Release checks (rules/release-watch.yaml): each new release is a new
+        # alert (label latest), so it emails at once. A standing plain release
+        # repeats every 5 days (Alertmanager's default 120h retention of
+        # notification state caps it), one fixing a security advisory daily.
+        - receiver: 'email'
+          matchers:
+            - alertname = ReleaseWatchBehind
+          repeat_interval: 120h
+          continue: false
+        - receiver: 'email'
+          matchers:
+            - alertname = ReleaseWatchSecurityFix
+          repeat_interval: 24h
+          continue: false
+
     receivers:
       - name: 'cronitor-heartbeat'
         webhook_configs:

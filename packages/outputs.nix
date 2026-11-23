@@ -13,6 +13,7 @@ let
   celler-pkg = import ./celler/outputs.nix { inherit nixpkgs celler system; };
   temporal-server = import ./temporal-server/outputs.nix { inherit nixpkgs system; };
   ceph-backup-worker = import ./ceph-backup-worker/outputs.nix { inherit nixpkgs system; };
+  release-watch = import ./release-watch/outputs.nix { inherit nixpkgs system; };
   anki-sync-server-image = import ./anki-sync-server/outputs.nix { inherit nixpkgs system; };
   longhorn-backup-pruner = import ./longhorn-backup-pruner/outputs.nix { inherit nixpkgs system; };
   env-from-files = import ./env-from-files/outputs.nix { inherit nixpkgs system; };
@@ -118,6 +119,8 @@ in
     temporal-server-image = temporal-server.image;
     ceph-backup-worker = ceph-backup-worker.package;
     ceph-backup-worker-image = ceph-backup-worker.image;
+    release-watch = release-watch.package;
+    release-watch-image = release-watch.image;
     longhorn-backup-pruner = longhorn-backup-pruner.package;
     longhorn-backup-pruner-image = longhorn-backup-pruner.image;
     env-from-files = env-from-files.package;
@@ -147,6 +150,7 @@ in
     deploy-tests = deploy;
     temporal-server-tests = temporal-server.package;
     ceph-backup-worker-tests = ceph-backup-worker.package;
+    release-watch-tests = release-watch.package;
     anki-mcp-tests = anki-mcp.package;
     pocket-dmg-tests = pocket-dmg.package;
     glkvm-cert-tests = glkvm-cert.package;

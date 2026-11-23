@@ -1,0 +1,98 @@
+# The release-watch worker (packages/release-watch): the ReleaseWatch
+# workflow on task queue release-watch, Temporal namespace release-watch,
+# daily from the Schedule release-watch. It compares the image each watched
+# Deployment runs with its project's GitHub releases and advisories
+# (api.github.com, IPv4-only, through DNS64/NAT64), and exports the newest
+# successful run's findings on 9090 for pod-monitor.yaml.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: release-watch
+  namespace: release-watch
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: release-watch
+  template:
+    metadata:
+      labels:
+        app: release-watch
+        app.kubernetes.io/managed-by: ngarvey-homelab
+    spec:
+      serviceAccountName: release-watch
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+      initContainers:
+        # Native sidecar: starts before the worker and keeps its SVID files
+        # fresh. Same user as the worker, which reads them (mode 0600).
+        - name: spiffe-helper
+          image: ghcr.io/spiffe/spiffe-helper:0.11.0
+          restartPolicy: Always
+          args: ["-config", "/etc/spiffe-helper/helper.conf"]
+          volumeMounts:
+            - name: spiffe-workload-api
+              mountPath: /spiffe-workload-api
+              readOnly: true
+            - name: spiffe-helper-config
+              mountPath: /etc/spiffe-helper
+              readOnly: true
+            - name: svid
+              mountPath: /run/spiffe
+          startupProbe:
+            httpGet:
+              path: /ready
+              port: 8081
+            periodSeconds: 2
+            failureThreshold: 60
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: 8081
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+      containers:
+        - name: worker
+          image: oci.garvey.sh/release-watch:5ck695g7jwzpgcwfsdixka8xsgiihkbc
+          args:
+            - --temporal-cert=/run/spiffe/svid.pem
+            - --temporal-key=/run/spiffe/svid_key.pem
+            - --temporal-ca=/run/spiffe/bundle.pem
+          ports:
+            - name: metrics
+              containerPort: 9090
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: svid
+              mountPath: /run/spiffe
+              readOnly: true
+          resources:
+            requests:
+              cpu: 5m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+      volumes:
+        - name: spiffe-workload-api
+          csi:
+            driver: csi.spiffe.io
+            readOnly: true
+        - name: spiffe-helper-config
+          configMap:
+            name: release-watch-spiffe-helper
+        - name: svid
+          emptyDir:
+            medium: Memory

@@ -1,0 +1,17 @@
+# Scrapes the worker (port 9090, in-cluster only under the pod ingress
+# default-deny): homelab_release_watch_* and the Temporal SDK's metrics. The
+# rules are in manifests/prometheus/rules/release-watch.yaml.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: release-watch
+  namespace: release-watch
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  selector:
+    matchLabels:
+      app: release-watch
+  podMetricsEndpoints:
+    - port: metrics
+      interval: 60s

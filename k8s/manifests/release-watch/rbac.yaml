@@ -1,0 +1,30 @@
+# The worker lists the pods of each watched image's namespace, for the image
+# they run (packages/release-watch/internal/watch/check.go, Targets): one Role
+# and RoleBinding per namespace. list cannot be limited by name or label.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: release-watch
+  namespace: authelia
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: release-watch
+  namespace: authelia
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: release-watch
+subjects:
+  - kind: ServiceAccount
+    name: release-watch
+    namespace: release-watch

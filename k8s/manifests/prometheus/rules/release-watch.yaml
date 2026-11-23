@@ -1,0 +1,63 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: release-watch-alerts
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+    prometheus: prometheus
+spec:
+  groups:
+    - name: release-watch
+      rules:
+        # Hand-bumped images (authelia) compared daily with their GitHub
+        # releases and advisories by the worker in manifests/release-watch
+        # (scraped). The metrics are from its newest successful run. Each
+        # alert carries the latest release as a label, so a new release
+        # is a new alert and a new email; alertmanager-config.yaml sets how
+        # often a standing one repeats. Runs are in the Temporal UI,
+        # namespace release-watch.
+        - alert: ReleaseWatchSecurityFix
+          expr: |
+            (homelab_release_watch_security_fixes > 0)
+            * on (name, repo) group_left (running, latest) homelab_release_watch_info
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "{{ $labels.name }} {{ $labels.latest }} fixes {{ $value }} published security advisories that affect the running {{ $labels.running }}"
+            description: "Bump the image (k8s/manifests/{{ $labels.name }}/). The advisories are in the newest ReleaseWatch run's result (Temporal UI, namespace release-watch) and at https://github.com/{{ $labels.repo }}/security/advisories."
+
+        - alert: ReleaseWatchBehind
+          expr: |
+            (homelab_release_watch_behind == 1
+              unless on (name, repo) homelab_release_watch_security_fixes > 0)
+            * on (name, repo) group_left (running, latest) homelab_release_watch_info
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.name }} {{ $labels.latest }} is out; the cluster runs {{ $labels.running }}"
+            description: "No published advisory that affects {{ $labels.running }} is fixed by it. Release notes: https://github.com/{{ $labels.repo }}/releases/tag/{{ $labels.latest }}"
+
+        # A day plus slack. The worker retries a failed check for about 2h
+        # (GitHub rate limits), so this means a whole day without a result.
+        - alert: ReleaseWatchStale
+          expr: time() - homelab_release_watch_last_success_timestamp_seconds > 26 * 3600
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "No successful release check for {{ $value | humanizeDuration }}"
+            description: "The last ReleaseWatch runs failed or did not run: Schedule release-watch and the runs in the Temporal UI (namespace release-watch), `kubectl -n release-watch logs deploy/release-watch -c worker`. Until this recovers a new release raises no alert."
+
+        # The worker is down, cannot read Temporal at start, or no run has
+        # ever succeeded. Silence would look like being up to date.
+        - alert: ReleaseWatchMetricsMissing
+          expr: absent(homelab_release_watch_last_success_timestamp_seconds)
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: "No release-watch metrics for an hour"
+            description: "`kubectl -n release-watch get pods` and `kubectl -n release-watch logs deploy/release-watch -c worker`; the runs are in the Temporal UI (namespace release-watch). Until this recovers a new release raises no alert."

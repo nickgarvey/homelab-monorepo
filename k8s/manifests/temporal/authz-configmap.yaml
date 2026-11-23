@@ -35,3 +35,7 @@ data:
       spiffe://home.garvey.sh/ns/ceph-backup/sa/ceph-backup-worker:
         namespaces:
           ceph-backup: write
+      # The release-watch worker (manifests/release-watch), in its Temporal namespace.
+      spiffe://home.garvey.sh/ns/release-watch/sa/release-watch:
+        namespaces:
+          release-watch: write
