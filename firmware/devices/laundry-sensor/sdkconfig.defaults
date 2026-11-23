@@ -1,0 +1,74 @@
+# Target
+CONFIG_IDF_TARGET="esp32c6"
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# Stack sizes (Matter needs more)
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+CONFIG_CHIP_TASK_STACK_SIZE=8192
+
+# Thread: a minimal (sleepy) end device; it never becomes a router.
+CONFIG_OPENTHREAD_ENABLED=y
+CONFIG_OPENTHREAD_MTD=y
+CONFIG_IEEE802154_ENABLED=y
+CONFIG_OPENTHREAD_SRP_CLIENT=y
+CONFIG_OPENTHREAD_DNS_CLIENT=y
+CONFIG_OPENTHREAD_LOG_LEVEL_DYNAMIC=n
+CONFIG_OPENTHREAD_LOG_LEVEL_NOTE=y
+CONFIG_OPENTHREAD_CLI=n
+CONFIG_OPENTHREAD_CONSOLE_ENABLE=n
+CONFIG_OPENTHREAD_BORDER_ROUTER=n
+
+# WiFi disabled (Thread-only device)
+CONFIG_ESP_WIFI_ENABLED=n
+CONFIG_ENABLE_WIFI_STATION=n
+
+# BLE disabled (on-network commissioning via Thread, no BLE needed)
+CONFIG_BT_ENABLED=n
+
+# Matter
+CONFIG_CHIP_PROJECT_CONFIG="main/CHIPProjectConfig.h"
+CONFIG_ENABLE_EXTENDED_DISCOVERY=y
+# Use platform DNS-SD (SRP via border router) instead of minimal mDNS.
+# With USE_MINIMAL_MDNS=y the device broadcasts mDNS directly on the Thread
+# interface; HA on Ethernet never sees it. With USE_MINIMAL_MDNS=n, the SRP
+# client registers with the border router, which proxies the service to HA.
+CONFIG_USE_MINIMAL_MDNS=n
+
+# LWIP for Thread/Matter
+CONFIG_LWIP_IPV6_NUM_ADDRESSES=8
+CONFIG_LWIP_MULTICAST_PING=y
+CONFIG_LWIP_IPV6_AUTOCONFIG=y
+# Route hooks needed for ENABLE_ROUTE_HOOK (RIO support) and proper IPv6 gw
+CONFIG_LWIP_HOOK_IP6_ROUTE_DEFAULT=y
+CONFIG_LWIP_HOOK_ND6_GET_GW_DEFAULT=y
+
+# mbedTLS (Matter needs HKDF)
+CONFIG_MBEDTLS_HKDF_C=y
+
+# NVS
+CONFIG_NVS_FLASH=y
+
+
+# NVS
+CONFIG_NVS_FLASH=y
+
+# Sleepy end device: short-idle-time ICD. The chip polls its Thread parent every 5 s and reports
+# its own changes as they happen; with no change it reports at least every 5 min so Home
+# Assistant keeps it available. (Long-idle-time needs the check-in protocol on the client.)
+CONFIG_ENABLE_ICD_SERVER=y
+CONFIG_ICD_SLOW_POLL_INTERVAL_MS=5000
+CONFIG_ICD_FAST_POLL_INTERVAL_MS=200
+CONFIG_ICD_IDLE_MODE_INTERVAL_SEC=300
+CONFIG_ICD_ACTIVE_MODE_INTERVAL_MS=1000
+CONFIG_ICD_ACTIVE_MODE_THRESHOLD_MS=1000
+
+# Automatic light sleep between polls (esp_pm_configure in main.cpp).
+CONFIG_PM_ENABLE=y
+CONFIG_FREERTOS_USE_TICKLESS_IDLE=y
+CONFIG_IEEE802154_SLEEP_ENABLE=y
+CONFIG_ESP_PHY_MAC_BB_PD=y
+# Stay awake while a USB host is attached, so logs and flashing work; on batteries there is none.
+CONFIG_USJ_NO_AUTO_LS_ON_CONNECTION=y

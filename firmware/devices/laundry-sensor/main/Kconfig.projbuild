@@ -1,0 +1,52 @@
+menu "Laundry Sensor"
+
+    choice LAUNDRY_BOARD
+        prompt "Board"
+        default LAUNDRY_BOARD_PCB
+        help
+            The hardware the firmware runs on.
+
+        config LAUNDRY_BOARD_PCB
+            bool "Laundry sensor PCB (hardware/laundry-sensor)"
+            help
+                LIS2DW12 on SPI, SHT40 on I2C, LED on GPIO14, USER button on GPIO3,
+                battery divider on GPIO2.
+
+        config LAUNDRY_BOARD_FEATHER
+            bool "Adafruit ESP32-C6 Feather, no sensors (development)"
+            help
+                Simulated accelerometer, SHT40 and battery. The BOOT button starts and
+                stops a simulated wash; holding it factory-resets. Red LED on GPIO15.
+    endchoice
+
+    config DEVICE_PRODUCT_NAME
+        string "Matter product name"
+        default "Laundry Sensor"
+
+    config DEVICE_VENDOR_NAME
+        string "Matter vendor name"
+        default "Homelab"
+
+    config VIBRATION_THRESHOLD_MG
+        int "Vibration threshold (mg)"
+        default 90
+        help
+            A batch of samples counts as vibrating if any sample is at least this far from
+            the batch mean. Also the accelerometer's wake-up threshold (rounded up to a
+            multiple of 31.25 mg).
+
+    config BUCKET_THRESHOLD
+        int "Vibrating seconds in the last 120 for Running"
+        default 15
+
+    config STOP_DELAY_MIN
+        int "Minutes below the Running threshold before Stopped"
+        default 10
+        help
+            Long enough to ride out fill and soak pauses without a false "done".
+
+    config ENV_REPORT_INTERVAL_MIN
+        int "Minutes between temperature, humidity and battery reports"
+        default 15
+
+endmenu

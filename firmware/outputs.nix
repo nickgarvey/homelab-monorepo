@@ -144,6 +144,73 @@
   freezerFirmwareFake = makeFreezerFirmware { useFakeSensor = true; };
 
   # --------------------------------------------------------------------------
+  # laundry-sensor (hardware/laundry-sensor PCB; feather = bare Feather, simulated sensors)
+  # --------------------------------------------------------------------------
+
+  laundryComponents = pkgs.stdenv.mkDerivation {
+    name = "laundry-sensor-idf-components";
+    src = cleanSrc ./.;
+    outputHashAlgo = "sha256";
+    outputHashMode = "recursive";
+    outputHash = "sha256-mDDkHhsZzr7DjnYfuRdY62JXmAy1I+KEpGVaaAGU9ZI="; # laundry-components
+    nativeBuildInputs = [ esp-idf-full ];
+    phases = [ "unpackPhase" "buildPhase" ];
+    buildPhase = ''
+      cd devices/laundry-sensor
+      export HOME=$TMPDIR
+      export IDF_COMPONENT_MANAGER_CACHE_DIR=$TMPDIR/idf-component-cache
+      idf.py reconfigure || true
+      if [ ! -d managed_components ]; then
+        echo "ERROR: managed_components not created by idf.py reconfigure"
+        exit 1
+      fi
+      cp -r managed_components $out
+    '';
+  };
+
+  makeLaundryFirmware = { feather ? false }: pkgs.stdenv.mkDerivation {
+    name = if feather then "laundry-sensor-feather-firmware" else "laundry-sensor-firmware";
+    src = cleanSrc ./.;
+    nativeBuildInputs = [ esp-idf-full pkgs.cmake pkgs.ninja ];
+
+    dontConfigure = true;
+    postUnpack = ''
+      cp -r ${laundryComponents} $sourceRoot/devices/laundry-sensor/managed_components
+      chmod -R u+w $sourceRoot/devices/laundry-sensor/managed_components
+    '';
+    buildPhase = ''
+      export HOME=$TMPDIR
+      CACHE_DIR="$TMPDIR/.cache/Espressif/ComponentManager"
+      mkdir -p "$CACHE_DIR"
+      for src_dir in ${laundryComponents}/*/; do
+        name=$(basename "$src_dir")
+        version=$(grep -m1 '^version:' "$src_dir/idf_component.yml" \
+                  | sed 's/.*version: *//; s/"//g; s/[[:space:]]//g')
+        hash=$(cat "$src_dir/.component_hash")
+        cache_name="''${name}_''${version}_''${hash:0:8}"
+        cp -r "$src_dir" "$CACHE_DIR/$cache_name"
+      done
+      ${pkgs.lib.optionalString feather ''
+        cat devices/laundry-sensor/sdkconfig.feather >> devices/laundry-sensor/sdkconfig.defaults
+      ''}
+      idf.py -C devices/laundry-sensor reconfigure
+      idf.py -C devices/laundry-sensor build
+    '';
+    installPhase = ''
+      mkdir -p $out/bootloader $out/partition_table
+      cp devices/laundry-sensor/build/laundry_sensor.bin $out/
+      cp devices/laundry-sensor/build/laundry_sensor.elf $out/
+      cp devices/laundry-sensor/build/bootloader/bootloader.bin $out/bootloader/
+      cp devices/laundry-sensor/build/partition_table/partition-table.bin $out/partition_table/
+      cp devices/laundry-sensor/build/flash_args $out/ 2>/dev/null || true
+      cp devices/laundry-sensor/build/flasher_args.json $out/ 2>/dev/null || true
+    '';
+  };
+
+  laundryFirmware        = makeLaundryFirmware {};
+  laundryFirmwareFeather = makeLaundryFirmware { feather = true; };
+
+  # --------------------------------------------------------------------------
   # garage-opener
   # --------------------------------------------------------------------------
 
@@ -315,6 +382,22 @@
     ];
   };
 
+  checkLaundry = mkFirmwareCheck {
+    name = "laundry-sensor";
+    firmware = laundryFirmware;
+    binName = "laundry_sensor";
+    chip = "esp32c6";
+    nmTool = "riscv32-esp-elf-nm";
+    symbols = [
+      "app_main"
+      "lis2dw12_init"
+      "lis2dw12_read_fifo"
+      "vibration_monitor_tick"
+      "sht40_read"
+      "board_battery_mv"
+    ];
+  };
+
   checkGarage = mkFirmwareCheck {
     name = "garage-opener";
     firmware = garageFirmware;
@@ -363,6 +446,9 @@ in {
     freezer-temp-sensor      = freezerFirmware;
     freezer-temp-sensor-fake = freezerFirmwareFake;
     freezer-temp-sensor-components = freezerComponents;
+    laundry-sensor = laundryFirmware;
+    laundry-sensor-feather = laundryFirmwareFeather;
+    laundry-sensor-components = laundryComponents;
     garage-opener = garageFirmware;
     garage-opener-components = garageComponents;
     firmware-tests = tests;
@@ -371,6 +457,7 @@ in {
   checks.${system} = {
     unit-tests = tests;
     freezer-temp-sensor = checkFreezer;
+    laundry-sensor = checkLaundry;
     garage-opener = checkGarage;
     flash-script = flashScriptTests;
   };

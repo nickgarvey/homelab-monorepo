@@ -12,6 +12,7 @@ Build behaviour:
 Usage (from firmware/, inside nix develop .#esp32):
   nix develop .#esp32 --command python3 scripts/flash.py devices/freezer-temp-sensor
   nix develop .#esp32 --command python3 scripts/flash.py --fake-sensor devices/freezer-temp-sensor
+  nix develop .#esp32 --command python3 scripts/flash.py --fake-sensor --thread --erase devices/laundry-sensor
   nix develop .#esp32 --command python3 scripts/flash.py --method esp-prog devices/freezer-temp-sensor
   nix develop .#esp32 --command python3 scripts/flash.py --method esp-prog-2 devices/freezer-temp-sensor
   nix develop .#esp32 --command python3 scripts/flash.py --erase devices/freezer-temp-sensor
@@ -646,7 +647,8 @@ def main() -> None:
     parser.add_argument(
         "--fake-sensor",
         action="store_true",
-        help="flash the fake sine-wave sensor build (freezer-temp-sensor only)",
+        help="flash the simulated-sensor build: freezer-temp-sensor (sine wave) or "
+             "laundry-sensor (bare Feather, BOOT button starts a simulated wash)",
     )
     parser.add_argument(
         "--thread",
@@ -672,17 +674,21 @@ def main() -> None:
     if not device_dir.is_dir():
         die(f"device directory not found: {device_dir}")
 
-    if args.fake_sensor and device_dir.name != "freezer-temp-sensor":
-        die("--fake-sensor is only valid for freezer-temp-sensor")
+    fake_packages = {
+        "freezer-temp-sensor": "freezer-temp-sensor-fake",
+        "laundry-sensor": "laundry-sensor-feather",
+    }
+    if args.fake_sensor and device_dir.name not in fake_packages:
+        die("--fake-sensor is only valid for " + " and ".join(fake_packages))
 
     package_name = device_dir.name
     if args.fake_sensor:
-        package_name = "freezer-temp-sensor-fake"
+        package_name = fake_packages[device_dir.name]
 
     print(f"Device:  {device_dir.name}")
     print(f"Method:  {args.method}")
     if args.fake_sensor:
-        print(f"Sensor:  fake (sine-wave)")
+        print(f"Sensor:  simulated ({package_name})")
     print()
 
     build_dir = build(package_name)

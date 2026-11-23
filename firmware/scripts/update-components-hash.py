@@ -9,6 +9,7 @@ correct hash from the error output, and patches outputs.nix in place.
 Usage:
     ./scripts/update-components-hash.py freezer-temp-sensor
     ./scripts/update-components-hash.py garage-opener
+    ./scripts/update-components-hash.py laundry-sensor
 """
 
 import re
@@ -22,6 +23,7 @@ FLAKE = REPO_ROOT / "outputs.nix"
 # Map package name → marker comment in outputs.nix
 DEVICES = {
     "freezer-temp-sensor": "# freezer-components",
+    "laundry-sensor": "# laundry-components",
     "garage-opener": "# garage-components",
 }
 

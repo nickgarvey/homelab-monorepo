@@ -12,6 +12,8 @@ set(COMMON_SRC
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/neopixel/src/neopixel.c
 )
 
+set(LAUNDRY_MAIN ${CMAKE_CURRENT_SOURCE_DIR}/../devices/laundry-sensor/main)
+
 set(MOCK_SRC
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/wifi_mocks.c
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/http_mocks.c
@@ -21,6 +23,14 @@ set(MOCK_SRC
 )
 
 set(TEST_SRC
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_lis2dw12.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_vibration_monitor.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_sht40_battery.c
+    ${LAUNDRY_MAIN}/lis2dw12.c
+    ${LAUNDRY_MAIN}/vibration_monitor.c
+    ${LAUNDRY_MAIN}/sht40.c
+    ${LAUNDRY_MAIN}/battery.c
+    ${LAUNDRY_MAIN}/fake_accel.c
     ${CMAKE_CURRENT_SOURCE_DIR}/test_wifi_manager.c
     ${CMAKE_CURRENT_SOURCE_DIR}/test_ha_client.c
     ${CMAKE_CURRENT_SOURCE_DIR}/test_neopixel.c
@@ -42,6 +52,7 @@ target_include_directories(run_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/ha_client/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/neopixel/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../devices/freezer-temp-sensor/main
+    ${LAUNDRY_MAIN}
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks
 )
 

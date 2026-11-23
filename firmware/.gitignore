@@ -6,3 +6,6 @@ managed_components/
 # Secrets — ignore contents of any secrets/ dir, but allow SOPS-encrypted files
 **/secrets/*
 !**/secrets/*.sops.*
+
+# Second ESP-IDF build directories (e.g. build-feather/)
+build-*/

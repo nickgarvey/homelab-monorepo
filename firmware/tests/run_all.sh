@@ -34,4 +34,5 @@ echo "========================================="
 nix build --no-link \
   .#checks.x86_64-linux.garage-opener \
   .#checks.x86_64-linux.freezer-temp-sensor \
+  .#checks.x86_64-linux.laundry-sensor \
   .#checks.x86_64-linux.flash-script
