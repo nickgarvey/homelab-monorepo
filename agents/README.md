@@ -228,7 +228,7 @@ data. The CLI is documented in `habit-helper/README.md`.
 
 The pi coding agent (`pkgs.pi-coding-agent`), on litellm's model `pi`
 (DeepSeek V4 Flash; `k8s/manifests/litellm/`). `pi/models.json` also lists
-`qwen3.8-flash-next`, whose backend, llama.cpp on wabbajack, is off. litellm
+`qwen3.8-flash-next`, which has no backend: nothing on wabbajack serves it. litellm
 is the only thing the agent can reach, and
 only pi's `node` can reach it, and only for `GET /v1/models` and
 `POST /v1/chat/completions`. It cannot fetch packages, clone repositories or

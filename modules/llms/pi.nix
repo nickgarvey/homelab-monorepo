@@ -1,8 +1,8 @@
 # pi, a terminal coding agent, wired end to end for the ngarvey user: the
 # package, its settings.json, its hosted-LLM credentials and the model list for
-# the self-hosted inference servers: wabbajack's llama.cpp on every workstation
-# (the server is off, hosts/wabbajack/configuration.nix), plus the local ninfer
-# server on a host that runs one.
+# the self-hosted inference servers: the `wabbajack` provider on every
+# workstation (wabbajack runs no inference server at present, so it has no
+# backend), plus the local ninfer server on a host that runs one.
 #
 # Wired in via modules/desktop/common-workstation.nix, so every workstation gets
 # it. The only per-host knob is homelab.pi.ninfer.enable. The home-manager NixOS

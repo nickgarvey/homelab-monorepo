@@ -13,7 +13,7 @@
 
   # Build helper for talos (modules/core/nix-builder.nix), its only one.
   # Ceph at -j32 peaked at 64 GB here, so 2 jobs x 16 cores fit under 96G with
-  # room for garage. llama.cpp is off so the memory is free (below).
+  # room for garage.
   homelab.nixBuilder.memoryMax = "96G";
   homelab.nixBuilder.cores = 16;
   # Required so the garage container (on vmbr0) can route to its peer's
@@ -64,55 +64,15 @@
   # nixos-common has no AMD GPU support. hiPrio wins the bin/btop collision.
   environment.systemPackages = [ (lib.hiPrio pkgs.btop-rocm) ];
 
-  # --- llama.cpp (Vulkan on the iGPU) ---
-  # The amdgpu GTT limit defaults to about half of RAM (~62 GB), too small for
-  # the ~90 GB weights plus KV cache. Raise it to ~124 GiB.
+  # The amdgpu GTT limit defaults to about half of RAM (~62 GB), too small to
+  # hold a large model's weights on the iGPU (~90 GB plus KV cache for
+  # Qwen3.8-Flash-Next under llama.cpp). Raise it to ~124 GiB. No inference
+  # server runs here at present; this keeps the host ready for one.
   boot.kernelParams = [
     "amdgpu.gttsize=126976"
     "ttm.pages_limit=32505856"
     "ttm.page_pool_size=32505856"
   ];
-
-  # Qwen3.8-Flash-Next (125B MoE, 6B active). llama-server pulls the split GGUF
-  # from HuggingFace into /var/cache/llama-cpp on first start.
-  # Off: wabbajack's memory goes to Nix builds. While it is off, the things
-  # that point here have no backend: litellm's qwen3.8-flash-next
-  # (k8s/manifests/litellm/configmap.yaml), which the pi agent type lists as
-  # its second model after `pi` (DeepSeek), and the `wabbajack` provider in
-  # the workstations' pi (modules/llms/pi-models.json).
-  services.llama-cpp = {
-    enable = false;
-    package = pkgs.llama-cpp-vulkan;
-    openFirewall = true;
-    settings = {
-      host = "::";
-      port = 8080;
-      hf-repo = "unsloth/Qwen3.8-Flash-Next-GGUF:UD-Q3_K_XL";
-      alias = "qwen3.8-flash-next";
-      ctx-size = 262144;
-      n-gpu-layers = 999;
-      flash-attn = "on";
-      # Unified memory: with mmap the weights would sit in both page cache and GTT.
-      load-mode = "none";
-      parallel = 1;
-      jinja = true;
-      metrics = true;
-      # Qwen's recommended thinking-mode sampling (model card).
-      temp = 1.0;
-      top-p = 0.95;
-      top-k = 20;
-      min-p = 0.0;
-    };
-  };
-  systemd.services.llama-cpp = lib.mkIf config.services.llama-cpp.enable {
-    # The first start downloads the model.
-    wants = [ "network-online.target" ];
-    after = [ "network-online.target" ];
-    # Mesa writes its shader cache under $XDG_CACHE_HOME; $HOME is unwritable.
-    environment.XDG_CACHE_HOME = "/var/cache/llama-cpp";
-    # DynamicUser needs the render group to open /dev/dri/renderD128.
-    serviceConfig.SupplementaryGroups = [ "render" "video" ];
-  };
 
   boot.binfmt.emulatedSystems = [ "aarch64-linux" ];
 
