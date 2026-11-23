@@ -34,7 +34,7 @@ spec:
             value: "443"
       containers:
         - name: mas
-          image: oci.garvey.sh/matrix-authentication-service:1.26.0-acw64l2
+          image: oci.garvey.sh/matrix-authentication-service:1.29.0-kl3dagx
           # Applies pending migrations and syncs the config (the Authelia
           # provider) into the database at start.
           args: [server]
