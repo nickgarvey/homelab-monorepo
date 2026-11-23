@@ -373,9 +373,11 @@ creation_rules:
       - *ngarvey
       - *paper
   # ESP32 firmware secrets (wifi, thread, ha). `workstation` and dovahkiin are
-  # the machines that build and flash the devices.
+  # the machines that build and flash the devices; `ngarvey` lets flash.py decrypt
+  # them as the user, without the root-owned workstation key.
   - path_regex: firmware/secrets/.*\.sops\.yaml$
     key_groups:
     - age:
+      - *ngarvey
       - *workstation
       - *dovahkiin
