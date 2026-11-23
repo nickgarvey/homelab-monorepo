@@ -20,4 +20,4 @@ spec:
             severity: warning
           annotations:
             summary: "No Nightscout metrics from the metrics collector"
-            description: "The metrics collector is down or cannot read the Nightscout API (Nightscout down, or the token in manifests/metrics-collector/secret.yaml revoked). Check `kubectl -n metrics-collector logs deploy/metrics-collector`."
+            description: "The metrics collector is down or cannot read the Nightscout API (Nightscout down, or the token revoked: nightscout-token, from OpenBao, in secrets/openbao/metrics-collector/metrics-collector.yaml). Check `kubectl -n metrics-collector logs deploy/metrics-collector`."

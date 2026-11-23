@@ -1,8 +1,8 @@
 # RBD volumes on the external Ceph cluster (joor/zah/frul,
 # modules/services/ceph.nix): pool `kubernetes`, 3 copies, any node can mount.
 # The cluster's only default StorageClass: a PVC that names no class lands
-# here, and so is covered by the Ceph backups
-# (modules/services/ceph-backup.nix).
+# here, and so is covered by the Ceph backups (manifests/ceph-backup,
+# docs/ceph-backup.md).
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:

@@ -232,9 +232,11 @@ creation_rules:
     - age:
       - *ngarvey
   # ceph-backup: the Garage key for the `ceph-backup` bucket and the Kopia
-  # repository password. joor runs the backups (modules/services/ceph-backup.nix);
-  # ngarvey is here so the backups can be restored from any machine if joor is
-  # gone: without the password the repository is unreadable.
+  # repository password. joor holds it for the restore tools
+  # (modules/services/ceph-restore.nix); the backup worker on k3s has its own
+  # copy (k8s/secrets/openbao/ceph-backup/). ngarvey is here so the backups can
+  # be restored from any machine if joor is gone: without the password the
+  # repository is unreadable.
   - path_regex: secrets/ceph-backup.yaml
     key_groups:
     - age:

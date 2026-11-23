@@ -38,7 +38,7 @@ chip-tool discover commissionables
 ### Prerequisites
 
 1. **Thread operational dataset** — hex-encoded TLV from the border router.
-   Stored in `secrets/thread-info.txt` (the `Active dataset TLVs` line).
+   Stored as `THREAD_DATASET_TLV` in `secrets/thread.sops.yaml`.
 
 2. **Setup pin code** and **discriminator** — from the device's QR payload.
    For the freezer-temp-sensor: pin=`20202021`, discriminator=`3840`.

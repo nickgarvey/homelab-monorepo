@@ -1,7 +1,7 @@
-// Package backup is the CephBackup workflow and its activities: a port of
-// the bash job in modules/services/ceph-backup.nix, item for item. The
-// activities shell out to rbd, ceph, rados, mount, rclone and kopia, and keep
-// that job's mount paths and Kopia sources, so snapshot history continues.
+// Package backup is the CephBackup workflow and its activities. The
+// activities shell out to rbd, ceph, rados, mount, rclone and kopia. Their
+// mount paths and Kopia sources are those of the bash job that made the
+// repository's earliest snapshots, so the snapshot history is one series.
 package backup
 
 import (

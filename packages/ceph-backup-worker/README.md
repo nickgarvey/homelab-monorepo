@@ -1,10 +1,10 @@
 # ceph-backup-worker
 
 A Temporal worker that backs up everything stored in Ceph to the Kopia
-repository on Garage and copies that repository to Storj. It is a port of the
-bash job in `modules/services/ceph-backup.nix`, item for item: same mount
-paths, Kopia sources, tags and `root@ceph-backup` identity, so snapshot
-history continues. Recovery is unchanged: `docs/ceph-backup.md`.
+repository on Garage and copies that repository to Storj. Its mount paths,
+Kopia sources, tags and `root@ceph-backup` identity are those of the bash job
+that made the repository's earliest snapshots, so the snapshot history is one
+series. Recovery: `docs/ceph-backup.md`.
 
 Built here:
 
