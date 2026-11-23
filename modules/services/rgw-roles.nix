@@ -169,9 +169,6 @@ in
       # The static pages server (k8s/manifests/pages) reads the bucket `pages`;
       # uploads use the RGW user pages-upload, not a role.
       pages = { namespace = "pages"; serviceAccount = "pages"; bucketPrefix = "pages"; access = "readonly"; };
-      # The valkey-operator S3 snapshotting prototype's backup controller
-      # (~/valkey/s3-snapshotting, namespace valkey-testing; not in this repo).
-      valkey-backup = { namespace = "valkey-testing"; serviceAccount = "valkey-backup"; bucketPrefix = "valkey-s3-testing"; };
       # lydia's daily Home Assistant backup (modules/services/home-assistant-backup.nix).
       homeassistant-backup = { spiffeID = "spiffe://home.garvey.sh/host/lydia/homeassistant-backup"; bucketPrefix = "homeassistant-backup"; };
     };
