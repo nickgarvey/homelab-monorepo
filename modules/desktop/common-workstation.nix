@@ -68,15 +68,11 @@ in
     ../services/smb-automount.nix
     ../services/cephfs-mount.nix
     ../home/ngarvey.nix
-    ../llms/hf-to-garage.nix
     ../llms/pi.nix
     ./zot-push.nix
     ./celler-push.nix
     inputs.sops-nix.nixosModules.sops
   ];
-
-  # Manual HuggingFace → garage llm-models bucket upload tool.
-  homelab.hfToGarage.enable = true;
 
   # pi coding agent for the ngarvey user.
   homelab.pi.enable = true;

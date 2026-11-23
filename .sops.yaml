@@ -199,19 +199,6 @@ creation_rules:
       - *joor
       - *zah
       - *frul
-  # llm-models: dedicated garage S3 key for the LLM model store.
-  #   - dovahkiin + wabbajack present their own host keys; dovahkiin runs the
-  #     hf-to-garage upload tool. wabbajack has no consumer of this secret.
-  #   - `workstation` is the identity talos presents (same one that decrypts
-  #     garage.yaml).
-  # ngarvey is included so the secret can be edited.
-  - path_regex: secrets/llm-models.yaml
-    key_groups:
-    - age:
-      - *ngarvey
-      - *workstation
-      - *dovahkiin
-      - *wabbajack
   - path_regex: secrets/dragonsreach.yaml
     key_groups:
     - age:
