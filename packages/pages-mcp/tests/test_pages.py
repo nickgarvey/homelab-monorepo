@@ -80,6 +80,7 @@ def test_http_app(pages):
                                           "clientInfo": {"name": "test", "version": "0"}})
         assert init.status_code == 200, init.text
         assert "permanent" in init.json()["result"]["instructions"]
+        assert "claude-code" in init.json()["result"]["instructions"]
 
         tools = {t["name"]: t for t in rpc(client, "tools/list").json()["result"]["tools"]}
         assert set(tools) == {"list_pages", "read_page", "create_page"}

@@ -70,7 +70,7 @@ spec:
       containers:
         - name: pages-mcp
           # packages/pages-mcp: the tag is the package's store hash.
-          image: oci.garvey.sh/pages-mcp:f6kqvcy9vmfqw7m3zjbaa0d28wi2kwcz
+          image: oci.garvey.sh/pages-mcp:vnalzsk3s8d8p6z4vhn7pgkza3rrqw43
           ports:
             - containerPort: 8000
               name: http

@@ -24,13 +24,16 @@ it is finished and the path is the one you want, and tell the user that it
 will stay. A path that already exists is refused: pick a new one (e.g. add
 -v2) rather than expecting to replace a file.
 
-Every new file goes in <origin>/<topic>/, where <origin> is where the page
-comes from (e.g. a project or the conversation's subject area) and <topic> is
-what it is about:
+Every new file goes in <origin>/<topic>/. <origin> names the app you are
+running in, the one creating the page: claude-web, claude-desktop,
+claude-code, claude-duet, codex-desktop, and so on (lowercase, product then
+surface). <topic> is what the page is about:
 
-- <origin>/<topic>/<page>.html for a single page, e.g. homelab/ceph/osd-latency.html
+- <origin>/<topic>/<page>.html for a single page, e.g.
+  claude-code/homelab/ceph-osd-latency.html
 - <origin>/<topic>/<subfolder>/... for a page with several files, e.g.
-  homelab/ceph/rebalance/index.html with homelab/ceph/rebalance/style.css
+  claude-web/travel/japan-2026/index.html with
+  claude-web/travel/japan-2026/style.css
 
 Never at the top level or directly under <origin>, and no index.html directly
 under <origin>/<topic>/. The server refuses those paths. Look at list_pages
@@ -70,8 +73,9 @@ def build(pages: store.Pages, allowed_hosts: list[str]) -> Any:
 
     @mcp.tool(annotations=CREATE)
     def create_page(path: str, content: str) -> dict[str, Any]:
-        """Create a new file at <origin>/<topic>/<page>.html or <origin>/<topic>/<subfolder>/..., such as
-        "homelab/ceph/osd-latency.html" or "homelab/ceph/rebalance/index.html" (folders are created as
+        """Create a new file at <origin>/<topic>/<page>.html or <origin>/<topic>/<subfolder>/..., where
+        <origin> is the app you run in (claude-web, claude-code, claude-duet, codex-desktop, ...), such as
+        "claude-code/homelab/ceph-osd-latency.html" or "claude-web/travel/japan-2026/index.html" (folders are created as
         needed; nothing at the top level or directly under <origin>, no index.html directly under
         <origin>/<topic>/), and return its URL. PERMANENT: the file cannot be changed or deleted afterwards through
         this server, and an existing path is refused. Allowed: .html .htm .css .js .mjs .json .svg .txt .md

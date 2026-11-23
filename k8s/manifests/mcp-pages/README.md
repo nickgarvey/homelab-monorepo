@@ -11,6 +11,8 @@ The pages MCP server (`packages/pages-mcp`) at
   `.svg`, `.json`, `.md`, …, up to 5 MB), only at `<origin>/<topic>/<page>`
   or `<origin>/<topic>/<subfolder>/...`: nothing at the top level or directly
   under `<origin>`, and no `index.html` directly under `<origin>/<topic>/`.
+  `<origin>` is the app creating the page (`claude-web`, `claude-code`,
+  `claude-duet`, `codex-desktop`, ...).
 
 Nothing it creates can be changed or deleted through it. Its RGW role
 `pages-mcp` (`modules/services/rgw-roles.nix`, access `create`) has no delete

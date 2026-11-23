@@ -56,8 +56,8 @@ def check_path(path: str) -> str:
 
 
 LAYOUT = ("New files go in <origin>/<topic>/: either <origin>/<topic>/<page>.html or inside a subfolder, "
-          "<origin>/<topic>/<subfolder>/... . <origin> is where the page comes from (e.g. the project or "
-          "conversation's subject area), <topic> what it is about. Nothing at the top level, directly under "
+          "<origin>/<topic>/<subfolder>/... . <origin> is the app creating the page (claude-web, "
+          "claude-desktop, claude-code, claude-duet, codex-desktop, ...), <topic> what it is about. Nothing at the top level, directly under "
           "<origin>, and no index.html directly under <origin>/<topic>/.")
 
 
