@@ -1,5 +1,6 @@
 # The public gateway's Caddyfile: OAuth discovery and JWT checks for the MCP
-# modules, plus the slice of Authelia that Anthropic's servers must reach.
+# modules. Anthropic's servers reach Authelia itself, through the HAProxy SNI
+# router (k8s/manifests/ipv4-gateway).
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -69,26 +70,3 @@ data:
       }
     }
 
-    # Anthropic's servers fetch Authelia's discovery documents and call its
-    # token endpoint; nothing else of Authelia is served here. The login
-    # portal and /api/oidc/authorization are opened by the user's browser on
-    # the LAN, through Authelia's own LoadBalancer.
-    https://auth.home.garvey.sh {
-      tls /certs/tls.crt /certs/tls.key
-
-      @authelia path /.well-known/openid-configuration /.well-known/oauth-authorization-server /api/oidc/token
-      handle @authelia {
-        # Authelia derives its issuer from the Host header and rejects any
-        # host but its own. For an HTTPS upstream Caddy sends the upstream's
-        # address as Host, so it is set back to auth.home.garvey.sh here.
-        reverse_proxy https://authelia-https.authelia.svc.cluster.local {
-          header_up Host {host}
-          transport http {
-            tls_server_name auth.home.garvey.sh
-          }
-        }
-      }
-      handle {
-        respond 404
-      }
-    }

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Smoke test for the MCP gateway (k8s/manifests/mcp): discovery metadata, the
-# 401 handshake, rejection of forged and cross-module tokens, and the Authelia
-# path allowlist. Run from the LAN:
+# 401 handshake, and rejection of forged and cross-module tokens. Run from the
+# LAN:
 #
 #   k8s/manifests/mcp/smoke-test.sh                  # the deployed gateway
 #   GATEWAY=[::1] PORT=8443 INSECURE=1 smoke-test.sh # a local caddy run
@@ -19,13 +19,11 @@ PORT="${PORT:-443}"
 MODULES=(notes anki)
 
 curl_opts=(-sS --max-time 15
-  --resolve "mcp.home.garvey.sh:${PORT}:${GATEWAY}"
-  --resolve "auth.home.garvey.sh:${PORT}:${GATEWAY}")
+  --resolve "mcp.home.garvey.sh:${PORT}:${GATEWAY}")
 [ -n "${INSECURE:-}" ] && curl_opts+=(-k)
 
 mcp="https://mcp.home.garvey.sh:${PORT}"
-auth="https://auth.home.garvey.sh:${PORT}"
-[ "$PORT" = 443 ] && mcp="https://mcp.home.garvey.sh" && auth="https://auth.home.garvey.sh"
+[ "$PORT" = 443 ] && mcp="https://mcp.home.garvey.sh"
 
 failures=0
 pass() { echo "ok   $1"; }
@@ -81,19 +79,6 @@ done
 
 check "mcp: unknown path -> 404" "$(status "$mcp/")" 404
 check "mcp: unknown module -> 404" "$(status "$mcp/nope/mcp")" 404
-
-disc=$(curl "${curl_opts[@]}" "$auth/.well-known/openid-configuration")
-check "auth: discovery issuer" "$(jq -r .issuer <<<"$disc" 2>/dev/null)" "https://auth.home.garvey.sh"
-check "auth: oauth-authorization-server" \
-  "$(status "$auth/.well-known/oauth-authorization-server")" 200
-# A refresh with a made-up token and client: Authelia answers with an OAuth
-# error, not a 404, which shows the path reaches it.
-token_status=$(status "$auth/api/oidc/token" -X POST -d grant_type=refresh_token -d refresh_token=x -d client_id=x)
-case "$token_status" in 400|401) pass "auth: token endpoint reaches Authelia ($token_status)" ;;
-  *) fail "auth: token endpoint (got $token_status, want 400 or 401)" ;; esac
-for p in / /api/oidc/authorization /jwks.json /api/oidc/introspection /api/oidc/revocation /api/state; do
-  check "auth: $p -> 404" "$(status "$auth$p")" 404
-done
 
 # Real tokens, from ticket nix-xcFoC.5's Authelia clients.
 for m in "${MODULES[@]}"; do

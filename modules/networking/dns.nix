@@ -45,12 +45,11 @@ in rec {
     # IPv4-only LAN clients (Android): HAProxy routes the name to CouchDB by SNI.
     obsidian-livesync = { v4 = [ ipv4Gateway.v4 ]; v6 = [ "2001:470:482f:2::5004" ]; };
     grafana       = { v4 = []; v6 = [ "2001:470:482f:2::5006" ]; };
-    # Authelia (OIDC login for Grafana); Caddy sidecar terminates TLS on 443
-    # (k8s/manifests/authelia). The A record is the WAN front door: the router
-    # forwards WAN :443 to the HAProxy SNI router (k8s/manifests/ipv4-gateway),
-    # which lets only Claude's connector range through, to the MCP gateway; that
-    # forwards just Authelia's discovery and token endpoints. LAN clients use
-    # the AAAA, as the router rejects LAN traffic to its own :443.
+    # Authelia (logins, OIDC and forward auth); its Caddy sidecar terminates TLS
+    # on 443 (k8s/manifests/authelia). The A record is the WAN front door: the
+    # router forwards WAN :443 to the HAProxy SNI router
+    # (k8s/manifests/ipv4-gateway), which lets this name through from any
+    # source. LAN clients get the overrides in garveyShOverrides below.
     auth          = { v4 = [ wanIPv4 ]; v6 = [ "2001:470:482f:2::5005" ]; };
     # SPIRE's OIDC discovery provider serves the trust domain's JWKS on 443 off
     # this LB IP (k8s/manifests/spire).
@@ -90,7 +89,7 @@ in rec {
   };
 
   # The router's DHCP-assigned WAN IPv4: ns1's address, and the public front
-  # door for mcp and auth above. Nothing updates it if the lease
+  # door for mcp, auth, matrix-auth and pages above. Nothing updates it if the lease
   # changes; modules/router/wan-dns-drift.nix alerts when it no longer matches.
   wanIPv4 = "64.186.8.205";
 
@@ -143,6 +142,8 @@ in rec {
     # Without an A here, blocky forwards A queries upstream and returns wanIPv4.
     "matrix.garvey.sh" = "${ipv4Gateway.v4},2001:470:482f:2::5010";
     "matrix-auth.home.garvey.sh" = "${ipv4Gateway.v4},2001:470:482f:2::5011";
+    # As for matrix-auth: the Authelia portal (k8s/manifests/authelia).
+    "auth.home.garvey.sh" = "${ipv4Gateway.v4},2001:470:482f:2::5005";
     # As for matrix-auth (k8s/manifests/pages).
     "pages.home.garvey.sh" = "${ipv4Gateway.v4},2001:470:482f:2::5017";
   };

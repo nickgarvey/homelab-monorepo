@@ -16,8 +16,8 @@ and it can never change without starting over.
   :443, so on the LAN both names resolve (`garveyShOverrides`) to the IPv4
   gateway, `10.28.0.8`, which HAProxy routes by SNI, and to the
   LoadBalancer AAAA. Inbound IPv6 is still default-deny.
-  Authelia stays closed to the WAN (Anthropic's range only), so new logins
-  need the LAN or Tailscale. A signed-in phone only needs MAS.
+  Authelia is reachable from the WAN too (`manifests/ipv4-gateway`), so new
+  logins work from anywhere.
 - **No federation.** Synapse serves only the client API (no federation
   listener), allows no remote servers and asks no key servers.
 - **TLS on 443 by a Caddy in Synapse's pod** (`caddy-configmap.yaml`), with a

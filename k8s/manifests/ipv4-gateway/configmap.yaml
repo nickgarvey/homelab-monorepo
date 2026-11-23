@@ -9,10 +9,12 @@
 # embedded in 2001:470:482f:64::/96 (modules/networking/dns.nix ipv4Gateway):
 #   - LAN IPv6, and LAN IPv4 (10.28.0.0/16 -> 64::a1c:0/112): every route.
 #   - WAN IPv4 (anything else in the /96; the router forwards WAN :443 here from
-#     every source): the Matrix names (Synapse and MAS, k8s/manifests/matrix)
-#     from anywhere, so the phone can fetch messages off the LAN; and the MCP
-#     gateway's names, only from Anthropic's connector egress range
-#     160.79.104.0/21 (-> 64::a04f:6800/117). Everything else from the WAN is
+#     every source): from anywhere, the Matrix names (Synapse and MAS,
+#     k8s/manifests/matrix), so the phone can fetch messages off the LAN, the
+#     Authelia portal (k8s/manifests/authelia), so logins work off the LAN, and
+#     the static pages behind it (k8s/manifests/pages); the MCP gateway only
+#     from Anthropic's connector egress range 160.79.104.0/21
+#     (-> 64::a04f:6800/117). Everything else from the WAN is
 #     refused, so this is the only filter on WAN :443.
 apiVersion: v1
 kind: ConfigMap
@@ -46,21 +48,25 @@ data:
       acl from_ipv4 src 2001:470:482f:64::/96
       acl from_lan_ipv4 src 2001:470:482f:64::a1c:0/112
       acl from_anthropic src 2001:470:482f:64::a04f:6800/117
-      acl sni_mcp req.ssl_sni -i mcp.home.garvey.sh auth.home.garvey.sh
+      acl sni_mcp req.ssl_sni -i mcp.home.garvey.sh
+      acl sni_auth req.ssl_sni -i auth.home.garvey.sh
+      acl sni_pages req.ssl_sni -i pages.home.garvey.sh
       acl sni_jellyfin req.ssl_sni -i jellyfin.garvey.sh
       acl sni_couchdb req.ssl_sni -i obsidian-livesync.home.garvey.sh
       acl sni_synapse req.ssl_sni -i matrix.garvey.sh
       acl sni_mas req.ssl_sni -i matrix-auth.home.garvey.sh
-      # WAN: the Matrix names from anywhere, the MCP names from Anthropic only.
-      # Both checks wait for the ClientHello: with the Matrix names open to
+      # WAN: the Matrix names, Authelia and pages from anywhere, the MCP gateway
+      # from Anthropic only. Both checks wait for the ClientHello: with names open to
       # every source, nothing can be refused at accept.
       tcp-request inspect-delay 5s
-      tcp-request content reject if from_ipv4 !from_lan_ipv4 !sni_synapse !sni_mas !sni_mcp
+      tcp-request content reject if from_ipv4 !from_lan_ipv4 !sni_synapse !sni_mas !sni_mcp !sni_auth !sni_pages
       tcp-request content reject if from_ipv4 !from_lan_ipv4 sni_mcp !from_anthropic
       tcp-request content accept if { req.ssl_hello_type 1 }
       use_backend mcp-tls if sni_mcp
       use_backend synapse-tls if sni_synapse
       use_backend mas-tls if sni_mas
+      use_backend authelia-tls if sni_auth
+      use_backend pages-tls if sni_pages
       use_backend jellyfin-tls if sni_jellyfin
       use_backend couchdb-tls if sni_couchdb
       # No default_backend: a connection with an unknown or missing SNI is closed.
@@ -102,7 +108,17 @@ data:
       mode tcp
       server mas mas.matrix.svc.cluster.local:443 resolvers cluster resolve-prefer ipv6 init-addr none
 
-    # The MCP gateway's Caddy serves both names (k8s/manifests/mcp/certificate.yaml).
+    # Authelia's Caddy sidecar terminates TLS (k8s/manifests/authelia).
+    backend authelia-tls
+      mode tcp
+      server authelia authelia-https.authelia.svc.cluster.local:443 resolvers cluster resolve-prefer ipv6 init-addr none
+
+    # The pages Caddy terminates TLS (k8s/manifests/pages).
+    backend pages-tls
+      mode tcp
+      server pages pages.pages.svc.cluster.local:443 resolvers cluster resolve-prefer ipv6 init-addr none
+
+    # The MCP gateway's Caddy terminates TLS (k8s/manifests/mcp).
     backend mcp-tls
       mode tcp
       server mcp-gateway mcp-gateway.mcp.svc.cluster.local:443 resolvers cluster resolve-prefer ipv6 init-addr none

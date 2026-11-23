@@ -4,7 +4,7 @@ The MCP gateway: Caddy with the caddy-jwt plugin (`packages/mcp-gateway`), on th
 LoadBalancer `2001:470:482f:2::5013`. It is the only way in to the MCP modules
 that claude.ai connectors (and Claude Duet) use. Design: ait epic nix-xcFoC.
 
-It serves two names off one certificate (`mcp-gateway-tls`):
+It serves one name, with the certificate `mcp-gateway-tls`:
 
 - `mcp.home.garvey.sh/<module>/mcp`: each module's MCP endpoint. Caddy serves the
   module's RFC 9728 protected resource metadata at
@@ -13,10 +13,10 @@ It serves two names off one certificate (`mcp-gateway-tls`):
   forwards only requests carrying an Authelia JWT access token whose audience is
   that module's URL. Modules: `notes` (namespace `mcp-notes`) and `anki`
   (namespace `mcp-anki`).
-- `auth.home.garvey.sh`: Authelia's discovery documents and `/api/oidc/token`
-  only, for Anthropic's servers; every other path is a 404. Browsers on the LAN
-  reach Authelia itself through its own LoadBalancer (the AAAA record), so the
-  login portal is never served here.
+
+Anthropic's servers reach Authelia (`auth.home.garvey.sh`) for discovery and
+tokens through the HAProxy SNI router (`manifests/ipv4-gateway`), which passes
+that name from any source, not through this gateway.
 
 ## Adding a module
 
@@ -44,6 +44,6 @@ deploy/mcp-gateway -c reload` shows each reload. To restart by hand, bump the
 ## Testing
 
 `./smoke-test.sh` from the LAN checks the metadata, the 401 handshake, that
-forged and query-string tokens are refused, and the Authelia path allowlist.
+forged and query-string tokens are refused.
 With `NOTES_TOKEN` / `ANKI_TOKEN` set to real access tokens it also checks
 pass-through and that each token is refused by the other module.

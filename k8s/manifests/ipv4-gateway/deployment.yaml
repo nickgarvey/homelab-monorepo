@@ -23,7 +23,7 @@ spec:
         app.kubernetes.io/managed-by: ngarvey-homelab
       annotations:
         # Bump to roll the pods when configmap.yaml changes.
-        config-revision: "4"
+        config-revision: "5"
     spec:
       securityContext:
         runAsNonRoot: true
