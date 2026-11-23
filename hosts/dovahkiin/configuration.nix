@@ -7,7 +7,6 @@
     ../../modules/desktop/niri.nix
     ../../modules/networking/network-manager.nix
     ../../modules/desktop/upower-overlay.nix
-    ../../modules/desktop/rtl-sdr.nix
   ];
 
   boot.loader.systemd-boot.enable = true;
