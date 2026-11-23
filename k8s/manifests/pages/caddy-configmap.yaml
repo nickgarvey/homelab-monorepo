@@ -53,6 +53,14 @@ data:
         -Server
       }
 
+      # Directory listings are never cached. S3 folders have no timestamp, so a
+      # listing's Last-Modified is always year 1 and a revalidating browser
+      # would get 304 Not Modified forever, however the folder changes.
+      @dir path */
+      request_header @dir -If-Modified-Since
+      request_header @dir -If-None-Match
+      header @dir Cache-Control no-store
+
       file_server {
         fs pages
         browse {
