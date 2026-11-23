@@ -10,7 +10,7 @@ Dirichlet L-functions), released 2026-11-20. It was checked twice, in two indepe
 | Checks | con-leche and con-ron (not Lean's kernel) | `lake build Main`, `#print axioms`, `leanchecker --fresh Main` (Lean's kernel) |
 | Result | PASS | PASS |
 | Wall time | about 28 min (first run) | 24 h 12 min |
-| Code | `packages/riemann-proof/outputs.nix` on dev (`nix run .#riemann-proof`) | `packages/riemann-proof/full.sh` on branch `riemann-full` |
+| Code | `packages/riemann-proof/outputs.nix` (`nix run .#riemann-proof`) | `packages/riemann-proof/full.sh` (start command in its header) |
 
 ## The proof
 
@@ -73,7 +73,7 @@ What it took:
 
 ## Check 2: full build from source on wabbajack
 
-`packages/riemann-proof/full.sh` (branch `riemann-full`) runs as a transient systemd unit. Every
+`packages/riemann-proof/full.sh` runs as a transient systemd unit. Every
 file lives under `~/riemann`, and `HOME` is pointed at `~/riemann/home` so that elan, Mathlib's
 cache and git's config stay inside. The start command is in the script's header.
 
@@ -162,7 +162,7 @@ Memory during the replay:
   because the EXIT trap took the status as success. Fixed before it was replaced by the Nix check.
 - **Path bugs in `full.sh`:** it `cd`s into `lean/`, so relative paths sent `summary.txt` and
   `RESULT` to `~/riemann/lean/`. The hours column was blank because `awk` was not in the nix
-  shell. Both are fixed on the branch (`2db79a6`).
+  shell. Both are fixed.
 - **A masked failure:** a `celler push … | tail` hid the push's failure, because the pipeline's
   exit status was `tail`'s.
 
