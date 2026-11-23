@@ -16,6 +16,7 @@ let
   release-watch = import ./release-watch/outputs.nix { inherit nixpkgs system; };
   anki-sync-server-image = import ./anki-sync-server/outputs.nix { inherit nixpkgs system; };
   longhorn-backup-pruner = import ./longhorn-backup-pruner/outputs.nix { inherit nixpkgs system; };
+  failed-pod-pruner = import ./failed-pod-pruner/outputs.nix { inherit nixpkgs system; };
   env-from-files = import ./env-from-files/outputs.nix { inherit nixpkgs system; };
   matrix-synapse = import ./matrix-synapse/outputs.nix { inherit nixpkgs system; };
   matrix-authentication-service = import ./matrix-authentication-service/outputs.nix { inherit nixpkgs system; };
@@ -123,6 +124,8 @@ in
     release-watch-image = release-watch.image;
     longhorn-backup-pruner = longhorn-backup-pruner.package;
     longhorn-backup-pruner-image = longhorn-backup-pruner.image;
+    failed-pod-pruner = failed-pod-pruner.package;
+    failed-pod-pruner-image = failed-pod-pruner.image;
     env-from-files = env-from-files.package;
     env-from-files-image = env-from-files.image;
     matrix-synapse = matrix-synapse.package;

@@ -1,0 +1,72 @@
+# Daily deletion of pods that have been in the Failed phase for two days or
+# more, in every namespace. A Failed pod is terminal and its controller has
+# already replaced it, but nothing removes the object.
+#
+# What makes them here: Jellyfin asks for gpu.intel.com/xe from the Intel GPU
+# device plugin. When its node boots (a reboot or a power cut), the kubelet
+# re-admits the pod before the plugin has registered, rejects it with
+# UnexpectedAdmissionError, and the Deployment starts a replacement on another
+# node. The kubelet has no way to wait for the plugin, and Jellyfin stays a
+# Deployment so that it still moves by itself when a node is lost.
+#
+# Pods owned by a Job are left to the CronJobs' failedJobsHistoryLimit.
+#
+# Script: packages/failed-pod-pruner. Push its image from the repo root
+# (from a workstation; see the zot section of k8s/AGENTS.md):
+#   nix build .#failed-pod-pruner-image
+#   skopeo copy docker-archive:result \
+#     docker://oci.garvey.sh/failed-pod-pruner:$(nix eval --raw .#failed-pod-pruner-image.imageTag)
+# then set the tag below.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: failed-pod-pruner
+  namespace: failed-pod-pruner
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  schedule: "30 12 * * *"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 600
+      template:
+        metadata:
+          labels:
+            app: failed-pod-pruner
+            app.kubernetes.io/managed-by: ngarvey-homelab
+        spec:
+          serviceAccountName: failed-pod-pruner
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: prune
+              image: oci.garvey.sh/failed-pod-pruner:3g37n4rf7r0qlwhbg50526c3nkjcdzak
+              env:
+                # kubectl writes its discovery cache under $HOME.
+                - name: HOME
+                  value: /tmp
+                - name: MIN_AGE_HOURS
+                  value: "48"
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: [ALL]}
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  memory: 128Mi
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir: {}
