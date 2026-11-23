@@ -1,7 +1,7 @@
 # Caddy for pages.home.garvey.sh: TLS, an Authelia login on every request, then
 # the object from the RGW bucket `pages`.
 #
-# forward_auth asks Authelia (/api/authz/forward-auth) about each request; its
+# forward_auth asks Authelia (/api/authz/ext-authz) about each request; its
 # access rule for this name lets in only ngarvey (k8s/manifests/authelia/
 # configmap.yaml). Without a session the browser is redirected to the portal.
 # file_server serves <path>/index.html for a directory and never lists one, so
@@ -29,12 +29,17 @@ data:
     https://pages.home.garvey.sh {
       tls /certs/tls.crt /certs/tls.key
 
+      # Authelia's ext-authz endpoint, not forward-auth: forward-auth reads the
+      # target from X-Forwarded-Host, which Authelia's own Caddy sidecar
+      # replaces with auth.home.garvey.sh for any client it does not trust.
+      # ext-authz reads it from Host and the path after the endpoint, which
+      # the sidecar passes on unchanged.
       forward_auth https://authelia-https.authelia.svc.cluster.local {
-        uri /api/authz/forward-auth
+        # The prefix ends in a slash, as in Authelia's Envoy example: Authelia
+        # strips "/api/authz/ext-authz/" and keeps the rest, {uri}, as the path.
+        uri /api/authz/ext-authz/{uri}
         copy_headers Remote-User
-        # For an HTTPS upstream Caddy sends the upstream's address as Host;
-        # Authelia answers only for its own name.
-        header_up Host auth.home.garvey.sh
+        header_up Host {host}
         transport http {
           tls_server_name auth.home.garvey.sh
         }

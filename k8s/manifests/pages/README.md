@@ -8,7 +8,7 @@ Authelia's session cookie covers it.
 
 - **Serving:** one Caddy (`packages/pages-server`, Caddy with the
   `caddy-fs-s3` plugin) terminates TLS on 443, asks Authelia about every
-  request (`forward_auth`), then serves the object. A directory serves its
+  request (`forward_auth` to its ext-authz endpoint), then serves the object. A directory serves its
   `index.html`; nothing is ever listed, and a missing object is a 404.
   Content-Type comes from the file extension. `caddy-configmap.yaml` has the
   config.
