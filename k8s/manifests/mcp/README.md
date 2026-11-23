@@ -2,7 +2,7 @@
 
 The MCP gateway: Caddy with the caddy-jwt plugin (`packages/mcp-gateway`), on the
 LoadBalancer `2001:470:482f:2::5013`. It is the only way in to the MCP modules
-that claude.ai connectors (and Claude Duet) use. Design: ait epic nix-xcFoC.
+that claude.ai connectors use. Design: ait epic nix-xcFoC.
 
 It serves one name, with the certificate `mcp-gateway-tls`:
 

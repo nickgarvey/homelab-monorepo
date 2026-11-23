@@ -140,9 +140,8 @@ data:
               - policy: two_factor
                 subject:
                   - user:ngarvey
-          # The MCP connectors (manifests/mcp), Duet and the rest of claude.ai:
-          # only ngarvey.
-          duet:
+          # The MCP connectors (manifests/mcp): only ngarvey.
+          mcp:
             default_policy: deny
             rules:
               - policy: two_factor
@@ -165,7 +164,7 @@ data:
             openshell-cli:
               refresh_token: 30d
             # A connector idle this long must sign in again.
-            duet:
+            mcp:
               refresh_token: 90d
         clients:
           - client_id: grafana
@@ -251,15 +250,15 @@ data:
             access_token_signed_response_alg: RS256
             userinfo_signed_response_alg: none
             token_endpoint_auth_method: client_secret_basic
-          # The Duet MCP connectors in claude.ai, one client per module behind
+          # The MCP connectors in claude.ai, one client per module behind
           # the mcp gateway (manifests/mcp). Claude is a public client (PKCE, no
           # secret); the gateway checks the JWT's aud against the module URL,
           # which implicit audience mode grants without Claude asking for it.
-          - client_id: duet-notes
-            client_name: Duet notes
+          - client_id: claude-notes
+            client_name: Claude notes
             public: true
-            authorization_policy: duet
-            lifespan: duet
+            authorization_policy: mcp
+            lifespan: mcp
             require_pkce: true
             pkce_challenge_method: S256
             redirect_uris:
@@ -278,11 +277,11 @@ data:
             access_token_signed_response_alg: RS256
             userinfo_signed_response_alg: none
             token_endpoint_auth_method: none
-          - client_id: duet-anki
-            client_name: Duet Anki
+          - client_id: claude-anki
+            client_name: Claude Anki
             public: true
-            authorization_policy: duet
-            lifespan: duet
+            authorization_policy: mcp
+            lifespan: mcp
             require_pkce: true
             pkce_challenge_method: S256
             redirect_uris:
@@ -301,13 +300,11 @@ data:
             access_token_signed_response_alg: RS256
             userinfo_signed_response_alg: none
             token_endpoint_auth_method: none
-          # Not Duet-only: any claude.ai connector, Duet included, signs in
-          # through the same callback.
           - client_id: claude-pages
             client_name: Claude pages
             public: true
-            authorization_policy: duet
-            lifespan: duet
+            authorization_policy: mcp
+            lifespan: mcp
             require_pkce: true
             pkce_challenge_method: S256
             redirect_uris:

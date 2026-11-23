@@ -23,8 +23,7 @@ is stored.
 
 In claude.ai, add a custom connector with the URL
 `https://mcp.home.garvey.sh/pages/mcp`, then sign in with Authelia (Authelia
-client `claude-pages`). The same connector works in regular claude.ai
-chats and in Duet.
+client `claude-pages`).
 
 ## Apply (from `k8s/`)
 
