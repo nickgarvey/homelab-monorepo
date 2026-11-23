@@ -176,6 +176,11 @@ in
             # exposures below as needed. ICMPv6 is allowed for PMTUD / ND.
             ${lib.optionalString heCfg.enable ''
               iifname "${cfg.lanInterface}" oifname "he-ipv6" accept
+              # Not to the k8s LB pool: a packet for a VIP that is not one of its
+              # service ports (any ICMPv6) is not taken by Cilium, and the
+              # announcing node routes it back here, so it would circle between
+              # router and node until its hop limit ran out.
+              iifname "he-ipv6" ip6 daddr 2001:470:482f:2::/112 counter drop
               iifname "he-ipv6" oifname "${cfg.lanInterface}" meta l4proto ipv6-icmp counter accept
               # (no inbound services currently exposed — anything reaching the
               # final drop below is a denied inbound from the public IPv6
