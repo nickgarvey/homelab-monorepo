@@ -1,0 +1,24 @@
+# Anyone may reach the LoadBalancer Service in service.yaml on its target port:
+# every request still needs an Authelia session.
+# Allow-only: the deny comes from manifests/cilium/pod-ingress-default-deny.yaml.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: pages-lb-ingress
+  namespace: pages
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  description: "LoadBalancer target port open to all"
+  enableDefaultDeny:
+    ingress: false
+  endpointSelector:
+    matchLabels:
+      app: pages
+  ingress:
+    - fromEntities:
+        - all
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP

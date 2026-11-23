@@ -75,6 +75,10 @@ in rec {
     # The MCP gateway: Caddy that checks Authelia tokens in front of the MCP
     # modules (k8s/manifests/mcp). A record as for auth above.
     mcp           = { v4 = [ wanIPv4 ]; v6 = [ "2001:470:482f:2::5013" ]; };
+    # Static pages from the RGW bucket `pages`, behind an Authelia login; a
+    # Caddy terminates TLS on 443 (k8s/manifests/pages). A record as for
+    # matrix-auth above: HAProxy lets every WAN source through.
+    pages         = { v4 = [ wanIPv4 ]; v6 = [ "2001:470:482f:2::5017" ]; };
     # OpenBao, the private CA's issuing tier, on 8200 (modules/services/openbao.nix).
     # Clients use the shared name; any node serves the whole API (standbys
     # forward to the active node). The per-node names are the Raft peers' API
@@ -116,7 +120,7 @@ in rec {
   certManagerAcme = {
     home = [
       "anki" "auth" "celler" "grafana" "matrix-auth" "mcp" "nightscout"
-      "obsidian-livesync" "prometheus" "spiffe-oidc"
+      "obsidian-livesync" "pages" "prometheus" "spiffe-oidc"
     ];
     garveySh = [ "jellyfin" "matrix" "oci" "temporal" ];
   };
@@ -139,5 +143,7 @@ in rec {
     # Without an A here, blocky forwards A queries upstream and returns wanIPv4.
     "matrix.garvey.sh" = "${ipv4Gateway.v4},2001:470:482f:2::5010";
     "matrix-auth.home.garvey.sh" = "${ipv4Gateway.v4},2001:470:482f:2::5011";
+    # As for matrix-auth (k8s/manifests/pages).
+    "pages.home.garvey.sh" = "${ipv4Gateway.v4},2001:470:482f:2::5017";
   };
 }

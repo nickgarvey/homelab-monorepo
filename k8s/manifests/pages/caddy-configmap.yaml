@@ -1,0 +1,53 @@
+# Caddy for pages.home.garvey.sh: TLS, an Authelia login on every request, then
+# the object from the RGW bucket `pages`.
+#
+# forward_auth asks Authelia (/api/authz/forward-auth) about each request; its
+# access rule for this name lets in only ngarvey (k8s/manifests/authelia/
+# configmap.yaml). Without a session the browser is redirected to the portal.
+# file_server serves <path>/index.html for a directory and never lists one, so
+# a path with no object is a 404.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pages-caddy
+  namespace: pages
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+data:
+  Caddyfile: |
+    {
+      # The reload container reaches the admin API on the pod's loopback.
+      admin 127.0.0.1:2019
+      auto_https off
+      filesystem pages s3 {
+        bucket pages
+        region default
+        endpoint https://rgw.home.garvey.sh
+        use_path_style
+      }
+    }
+    https://pages.home.garvey.sh {
+      tls /certs/tls.crt /certs/tls.key
+
+      forward_auth https://authelia-https.authelia.svc.cluster.local {
+        uri /api/authz/forward-auth
+        copy_headers Remote-User
+        # For an HTTPS upstream Caddy sends the upstream's address as Host;
+        # Authelia answers only for its own name.
+        header_up Host auth.home.garvey.sh
+        transport http {
+          tls_server_name auth.home.garvey.sh
+        }
+      }
+
+      header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options nosniff
+        Referrer-Policy same-origin
+        -Server
+      }
+
+      file_server {
+        fs pages
+      }
+    }

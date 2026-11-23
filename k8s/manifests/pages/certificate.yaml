@@ -1,0 +1,14 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: pages-tls
+  namespace: pages
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  secretName: pages-tls
+  dnsNames:
+    - pages.home.garvey.sh
+  issuerRef:
+    name: letsencrypt-rfc2136-prod
+    kind: ClusterIssuer

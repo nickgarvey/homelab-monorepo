@@ -50,6 +50,22 @@ data:
         # `admins` group to its admin role, everyone else to viewer.
         - domain: frigate.home.garvey.sh
           policy: two_factor
+        # Static pages from the RGW bucket `pages` (k8s/manifests/pages),
+        # reachable from the internet. Only ngarvey; everyone else is denied.
+        - domain: pages.home.garvey.sh
+          subject: 'user:ngarvey'
+          policy: two_factor
+    # The portal is reachable from the internet (k8s/manifests/ipv4-gateway).
+    # Bans are per client address, not per user: logins are passkey-only, so
+    # failed attempts are noise, and a per-user ban would let anyone lock
+    # ngarvey out. The Caddy sidecar sets X-Forwarded-For to the real client
+    # (HAProxy passes TCP through and the Service keeps the source address).
+    regulation:
+      modes:
+        - 'ip'
+      max_retries: 5
+      find_time: '10m'
+      ban_time: '1h'
     session:
       cookies:
         - domain: home.garvey.sh

@@ -19,6 +19,7 @@ let
   matrix-synapse = import ./matrix-synapse/outputs.nix { inherit nixpkgs system; };
   matrix-authentication-service = import ./matrix-authentication-service/outputs.nix { inherit nixpkgs system; };
   mcp-gateway = import ./mcp-gateway/outputs.nix { inherit nixpkgs system; };
+  pages-server = import ./pages-server/outputs.nix { inherit nixpkgs system; };
   obsidian-sync-mcp = import ./obsidian-sync-mcp/outputs.nix { inherit nixpkgs system; };
   anki-mcp = import ./anki-mcp/outputs.nix { inherit nixpkgs system; };
   pocket-dmg = import ./pocket-dmg/outputs.nix { inherit nixpkgs system; };
@@ -128,6 +129,8 @@ in
     inherit anki-sync-server-image;
     mcp-gateway = mcp-gateway.package;
     mcp-gateway-image = mcp-gateway.image;
+    pages-server = pages-server.package;
+    pages-server-image = pages-server.image;
     obsidian-sync-mcp = obsidian-sync-mcp.package;
     obsidian-sync-mcp-image = obsidian-sync-mcp.image;
     anki-mcp = anki-mcp.package;

@@ -1,0 +1,175 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pages
+  namespace: pages
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pages
+  template:
+    metadata:
+      labels:
+        app: pages
+        app.kubernetes.io/managed-by: ngarvey-homelab
+      annotations:
+        # Bump to restart by hand. A renewed certificate or a Caddyfile change
+        # needs no restart: the reload container picks it up within a few
+        # minutes.
+        pages.home.garvey.sh/restarted: "1"
+    spec:
+      serviceAccountName: pages
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+        # Lets the non-root Caddy bind 443 (the sysctl covers IPv6 too).
+        sysctls:
+          - name: net.ipv4.ip_unprivileged_port_start
+            value: "0"
+      initContainers:
+        # A native sidecar (restartPolicy Always): it starts before Caddy and
+        # keeps running. Its startup probe passes once the JWT-SVID file is
+        # written, so Caddy never starts without one.
+        - name: spiffe-helper
+          image: ghcr.io/spiffe/spiffe-helper:0.11.0
+          restartPolicy: Always
+          args: ["-config", "/etc/spiffe-helper/helper.conf"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: spiffe-workload-api
+              mountPath: /spiffe-workload-api
+              readOnly: true
+            - name: spiffe-helper-config
+              mountPath: /etc/spiffe-helper
+              readOnly: true
+            - name: rgw-token
+              mountPath: /run/rgw-token
+          startupProbe:
+            httpGet:
+              path: /ready
+              port: 8081
+            periodSeconds: 2
+            failureThreshold: 60
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: 8081
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+      containers:
+        - name: caddy
+          # packages/pages-server: Caddy with the caddy-fs-s3 plugin.
+          image: oci.garvey.sh/pages-server:2.11.9-4z497hk
+          env:
+            # S3 credentials: RGW STS trades the JWT-SVID for temporary keys
+            # of the pages role (modules/services/rgw-roles.nix), which may
+            # only read buckets named pages*.
+            - name: AWS_WEB_IDENTITY_TOKEN_FILE
+              value: /run/rgw-token/jwt_svid.token
+            - name: AWS_ROLE_ARN
+              value: arn:aws:iam::RGW77873637642885287:role/nix-managed/pages
+            - name: AWS_ROLE_SESSION_NAME
+              value: pages
+            - name: AWS_ENDPOINT_URL_STS
+              value: https://rgw.home.garvey.sh
+            - name: AWS_REGION
+              value: default
+          ports:
+            - containerPort: 443
+              name: https
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/caddy
+              readOnly: true
+            - name: certs
+              mountPath: /certs
+              readOnly: true
+            - name: rgw-token
+              mountPath: /run/rgw-token
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          readinessProbe:
+            tcpSocket:
+              port: 443
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 443
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi
+        # Caddy reads its `tls` files only when it loads a config: this reloads
+        # it through the admin API (127.0.0.1:2019) when cert-manager renews
+        # pages-tls or the Caddyfile ConfigMap changes.
+        - name: reload
+          image: oci.garvey.sh/pages-server:2.11.9-4z497hk
+          command: ["/bin/pages-server-reload"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/caddy
+              readOnly: true
+            - name: certs
+              mountPath: /certs
+              readOnly: true
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+      volumes:
+        - name: config
+          configMap:
+            name: pages-caddy
+        - name: certs
+          secret:
+            secretName: pages-tls
+        # The SPIRE agent's Workload API socket.
+        - name: spiffe-workload-api
+          csi:
+            driver: csi.spiffe.io
+            readOnly: true
+        - name: spiffe-helper-config
+          configMap:
+            name: pages-spiffe-helper
+        - name: rgw-token
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 16Mi

@@ -166,6 +166,9 @@ in
       agents-worker = { namespace = "agents"; serviceAccount = "agents-worker"; bucketPrefix = "agent-sessions"; };
       # The Ceph backup worker (k8s/manifests/ceph-backup) reads every bucket.
       ceph-backup = { namespace = "ceph-backup"; serviceAccount = "ceph-backup-worker"; access = "readonly"; bucketPrefix = null; };
+      # The static pages server (k8s/manifests/pages) reads the bucket `pages`;
+      # uploads use the RGW user pages-upload, not a role.
+      pages = { namespace = "pages"; serviceAccount = "pages"; bucketPrefix = "pages"; access = "readonly"; };
       # The valkey-operator S3 snapshotting prototype's backup controller
       # (~/valkey/s3-snapshotting, namespace valkey-testing; not in this repo).
       valkey-backup = { namespace = "valkey-testing"; serviceAccount = "valkey-backup"; bucketPrefix = "valkey-s3-testing"; };
