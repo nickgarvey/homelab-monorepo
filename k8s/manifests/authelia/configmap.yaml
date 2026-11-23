@@ -163,8 +163,7 @@ data:
             # this much idle time.
             openshell-cli:
               refresh_token: 30d
-            # The login portal is reachable only from the LAN, so a connector
-            # that lapses can only be reconnected from home.
+            # A connector idle this long must sign in again.
             duet:
               refresh_token: 90d
         clients:
@@ -289,6 +288,29 @@ data:
               - https://claude.ai/api/mcp/auth_callback
             audience:
               - https://mcp.home.garvey.sh/anki/mcp
+            requested_audience_mode: implicit
+            scopes:
+              - openid
+              - offline_access
+            response_types:
+              - code
+            grant_types:
+              - authorization_code
+              - refresh_token
+            access_token_signed_response_alg: RS256
+            userinfo_signed_response_alg: none
+            token_endpoint_auth_method: none
+          - client_id: duet-pages
+            client_name: Duet pages
+            public: true
+            authorization_policy: duet
+            lifespan: duet
+            require_pkce: true
+            pkce_challenge_method: S256
+            redirect_uris:
+              - https://claude.ai/api/mcp/auth_callback
+            audience:
+              - https://mcp.home.garvey.sh/pages/mcp
             requested_audience_mode: implicit
             scopes:
               - openid

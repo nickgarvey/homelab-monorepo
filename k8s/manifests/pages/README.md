@@ -28,6 +28,9 @@ Authelia's session cookie covers it.
 
 ## Uploading
 
+Claude can also add pages (never change or delete them) through the MCP
+connector in `manifests/mcp-pages`.
+
 Uploads use the RGW user `pages-upload` in the `k8s` account
 (`RGW77873637642885287`). Its only permission is an inline IAM policy,
 `pages-bucket`, allowing `s3:*` on `pages` and `pages/*`. Its key is in

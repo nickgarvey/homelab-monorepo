@@ -24,6 +24,7 @@ let
   pages-server = import ./pages-server/outputs.nix { inherit nixpkgs system; };
   obsidian-sync-mcp = import ./obsidian-sync-mcp/outputs.nix { inherit nixpkgs system; };
   anki-mcp = import ./anki-mcp/outputs.nix { inherit nixpkgs system; };
+  pages-mcp = import ./pages-mcp/outputs.nix { inherit nixpkgs system; };
   pocket-dmg = import ./pocket-dmg/outputs.nix { inherit nixpkgs system; };
   riemann-proof = import ./riemann-proof/outputs.nix { inherit nixpkgs system; };
   glkvm-cert = import ./glkvm-cert/outputs.nix { inherit nixpkgs system; };
@@ -141,6 +142,8 @@ in
     obsidian-sync-mcp-image = obsidian-sync-mcp.image;
     anki-mcp = anki-mcp.package;
     anki-mcp-image = anki-mcp.image;
+    pages-mcp = pages-mcp.package;
+    pages-mcp-image = pages-mcp.image;
     pocket-dmg = pocket-dmg.package;
     riemann-proof = riemann-proof.package;
     riemann-proof-check = riemann-proof.check;
@@ -155,6 +158,7 @@ in
     ceph-backup-worker-tests = ceph-backup-worker.package;
     release-watch-tests = release-watch.package;
     anki-mcp-tests = anki-mcp.package;
+    pages-mcp-tests = pages-mcp.package;
     pocket-dmg-tests = pocket-dmg.package;
     glkvm-cert-tests = glkvm-cert.package;
     openshell-images-test = openshell.images-test;

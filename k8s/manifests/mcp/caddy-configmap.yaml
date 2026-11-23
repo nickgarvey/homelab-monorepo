@@ -53,6 +53,7 @@ data:
 
       import module notes obsidian-sync-mcp.mcp-notes.svc.cluster.local:8787
       import module anki mcp-anki.mcp-anki.svc.cluster.local:8000
+      import module pages mcp-pages.mcp-pages.svc.cluster.local:8000
 
       handle {
         respond 404

@@ -1,0 +1,18 @@
+[project]
+name = "pages-mcp"
+version = "0.1.0"
+description = "MCP server for the static pages at pages.home.garvey.sh: list, read, create; never delete"
+requires-python = ">=3.12"
+
+[project.scripts]
+pages-mcp = "pages_mcp.__main__:main"
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

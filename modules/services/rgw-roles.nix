@@ -9,7 +9,9 @@
 # role allows s3:* on buckets named <bucketPrefix>*, nothing else; the app
 # creates its own buckets. A read-only role (access = "readonly") may only read
 # and list, on its prefix or, with no prefix, on every bucket of the account
-# (the Ceph backup worker). A client gets credentials with
+# (the Ceph backup worker). A create-only role (access = "create") may read,
+# list and add objects but not delete them; PutObject can still overwrite, so
+# refusing that is up to the app. A client gets credentials with
 # AWS_WEB_IDENTITY_TOKEN_FILE + AWS_ROLE_ARN; see "S3 on Ceph RGW" in
 # k8s/manifests/spire/README.md.
 #
@@ -43,9 +45,11 @@ let
     Version = "2012-10-17";
     Statement = [{
       Effect = "Allow";
-      Action = if app.access == "readonly" then [
+      Action = let read = [
         "s3:GetObject" "s3:GetObjectVersion" "s3:ListBucket" "s3:ListBucketVersions" "s3:GetBucketLocation"
-      ] else [ "s3:*" ];
+      ]; in if app.access == "readonly" then read
+        else if app.access == "create" then read ++ [ "s3:PutObject" ]
+        else [ "s3:*" ];
       Resource = [
         "arn:aws:s3:::${p}*"
         "arn:aws:s3:::${p}*/*"
@@ -61,7 +65,7 @@ let
     }) cfg.apps));
 
   prefixes = lib.mapAttrsToList (name: app: { inherit name; p = app.bucketPrefix; })
-    (lib.filterAttrs (_: app: app.access == "readwrite") cfg.apps);
+    (lib.filterAttrs (_: app: app.access != "readonly") cfg.apps);
   # One app's prefix may not start another's: role "cache" (cache*) would
   # otherwise reach every bucket of an app with prefix "cache-x". Read-only
   # roles are exempt: reading is not owning.
@@ -147,9 +151,9 @@ in
           description = "The app may create and use every bucket whose name starts with this. null (read-only roles only): every bucket.";
         };
         access = lib.mkOption {
-          type = lib.types.enum [ "readwrite" "readonly" ];
+          type = lib.types.enum [ "readwrite" "create" "readonly" ];
           default = "readwrite";
-          description = "readonly: get and list objects only, no writes, no bucket creation.";
+          description = "readonly: get and list objects only, no writes, no bucket creation. create: readonly plus PutObject (no delete).";
         };
       };
     }));
@@ -169,6 +173,9 @@ in
       # The static pages server (k8s/manifests/pages) reads the bucket `pages`;
       # uploads use the RGW user pages-upload, not a role.
       pages = { namespace = "pages"; serviceAccount = "pages"; bucketPrefix = "pages"; access = "readonly"; };
+      # The pages MCP server (k8s/manifests/mcp-pages) lists, reads and adds
+      # pages; it may not delete them.
+      pages-mcp = { namespace = "mcp-pages"; serviceAccount = "mcp-pages"; bucketPrefix = "pages"; access = "create"; };
       # lydia's daily Home Assistant backup (modules/services/home-assistant-backup.nix).
       homeassistant-backup = { spiffeID = "spiffe://home.garvey.sh/host/lydia/homeassistant-backup"; bucketPrefix = "homeassistant-backup"; };
     };

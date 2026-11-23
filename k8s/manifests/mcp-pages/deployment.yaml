@@ -1,0 +1,133 @@
+# The pages MCP server (packages/pages-mcp): Claude's tools to list, read and
+# create files in the RGW bucket `pages`, served at https://pages.home.garvey.sh
+# (manifests/pages). It cannot change or delete a file: its role has no delete
+# permission, and it refuses a path that already exists.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-pages
+  namespace: mcp-pages
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcp-pages
+  template:
+    metadata:
+      labels:
+        app: mcp-pages
+        app.kubernetes.io/managed-by: ngarvey-homelab
+    spec:
+      serviceAccountName: mcp-pages
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        # A native sidecar (restartPolicy Always): it starts before the server
+        # and keeps running. Its startup probe passes once the JWT-SVID file
+        # is written, so the server never starts without one.
+        - name: spiffe-helper
+          image: ghcr.io/spiffe/spiffe-helper:0.11.0
+          restartPolicy: Always
+          args: ["-config", "/etc/spiffe-helper/helper.conf"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: spiffe-workload-api
+              mountPath: /spiffe-workload-api
+              readOnly: true
+            - name: spiffe-helper-config
+              mountPath: /etc/spiffe-helper
+              readOnly: true
+            - name: rgw-token
+              mountPath: /run/rgw-token
+          startupProbe:
+            httpGet:
+              path: /ready
+              port: 8081
+            periodSeconds: 2
+            failureThreshold: 60
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: 8081
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+      containers:
+        - name: pages-mcp
+          # packages/pages-mcp: the tag is the package's store hash.
+          image: oci.garvey.sh/pages-mcp:apkiqg5xj2wbbc05qyvscgxn3b5p5rsj
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            - name: MCP_ALLOWED_HOSTS
+              value: mcp.home.garvey.sh,localhost:*,127.0.0.1:*
+            # S3 credentials: RGW STS trades the JWT-SVID for temporary keys
+            # of the role pages-mcp (modules/services/rgw-roles.nix).
+            - name: AWS_WEB_IDENTITY_TOKEN_FILE
+              value: /run/rgw-token/jwt_svid.token
+            - name: AWS_ROLE_ARN
+              value: arn:aws:iam::RGW77873637642885287:role/nix-managed/pages-mcp
+            - name: AWS_ROLE_SESSION_NAME
+              value: pages-mcp
+            - name: AWS_ENDPOINT_URL_STS
+              value: https://rgw.home.garvey.sh
+            - name: AWS_REGION
+              value: default
+            - name: AWS_REQUEST_CHECKSUM_CALCULATION
+              value: when_required
+            - name: AWS_RESPONSE_CHECKSUM_VALIDATION
+              value: when_required
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: rgw-token
+              mountPath: /run/rgw-token
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+      volumes:
+        # The SPIRE agent's Workload API socket.
+        - name: spiffe-workload-api
+          csi:
+            driver: csi.spiffe.io
+            readOnly: true
+        - name: spiffe-helper-config
+          configMap:
+            name: mcp-pages-spiffe-helper
+        - name: rgw-token
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 16Mi

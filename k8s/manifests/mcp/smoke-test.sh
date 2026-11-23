@@ -9,14 +9,14 @@
 # With real Authelia access tokens it also checks pass-through and that a
 # token is refused by every module but its own:
 #
-#   NOTES_TOKEN=<jwt> ANKI_TOKEN=<jwt> k8s/manifests/mcp/smoke-test.sh
+#   NOTES_TOKEN=<jwt> ANKI_TOKEN=<jwt> PAGES_TOKEN=<jwt> k8s/manifests/mcp/smoke-test.sh
 #
 # Needs curl, jq and openssl.
 set -u
 
 GATEWAY="${GATEWAY:-[2001:470:482f:2::5013]}"
 PORT="${PORT:-443}"
-MODULES=(notes anki)
+MODULES=(notes anki pages)
 
 curl_opts=(-sS --max-time 15
   --resolve "mcp.home.garvey.sh:${PORT}:${GATEWAY}")
