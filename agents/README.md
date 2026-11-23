@@ -226,8 +226,10 @@ data. The CLI is documented in `habit-helper/README.md`.
 
 ## pi
 
-The pi coding agent (`pkgs.pi-coding-agent`), on `qwen3.8-flash-next` through
-litellm (`k8s/manifests/litellm/`). litellm is the only thing it can reach, and
+The pi coding agent (`pkgs.pi-coding-agent`), on litellm's model `pi`
+(DeepSeek V4 Flash; `k8s/manifests/litellm/`). `pi/models.json` also lists
+`qwen3.8-flash-next`, whose backend, llama.cpp on wabbajack, is off. litellm
+is the only thing the agent can reach, and
 only pi's `node` can reach it, and only for `GET /v1/models` and
 `POST /v1/chat/completions`. It cannot fetch packages, clone repositories or
 browse.
@@ -238,7 +240,7 @@ JWT-SVID (`spiffe://home.garvey.sh/agent/<type>/<sandbox-id>`) at agent-token
 for the key granted to that type and puts it in each request's
 `Authorization` header ("The token service" in
 `k8s/manifests/agents/README.md`). pi gets litellm's `pi` key, which may
-call `qwen3.8-flash-next` only. A sandbox created without an agent
+call `pi` and `qwen3.8-flash-next` only. A sandbox created without an agent
 type (`openshell sandbox create` by hand) gets no key, so its model calls fail
 with a 502.
 

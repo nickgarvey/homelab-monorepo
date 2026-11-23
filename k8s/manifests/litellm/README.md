@@ -8,6 +8,7 @@ An OpenAI-compatible proxy in front of the models the cluster uses
 | `qwen3.8-flash-next` | llama.cpp on wabbajack, currently off (its memory goes to Nix builds; `hosts/wabbajack/configuration.nix`) |
 | `pi` | DeepSeek V4 Flash (`deepseek/deepseek-v4-flash`), with the key in `DEEPSEEK_API_KEY`; the pi agent's default |
 | `habit-helper` | GPT-6.1 Sol through the Responses API (`openai/responses/gpt-6.1-sol`), with the key in `OPENAI_API_KEY` |
+| `habit-admin` | DeepSeek V4 Flash (`deepseek/deepseek-v4-flash`), with the key in `DEEPSEEK_API_KEY` |
 
 Secrets come from OpenBao, mounted by `secret-provider-class.yaml`
 (docs/openbao.md, "Pod secrets"), one file per ServiceAccount:

@@ -193,7 +193,7 @@ The committed grants:
 
 | Grant | SPIFFE IDs | Audience | Credential |
 |---|---|---|---|
-| `pi-litellm` | `/agent/pi/` | `litellm` | `litellm-pi` (alias `pi`: `qwen3.8-flash-next`) |
+| `pi-litellm` | `/agent/pi/` | `litellm` | `litellm-pi` (alias `pi`: `pi`, `qwen3.8-flash-next`) |
 | `habit-helper-litellm` | `/agent/habit-helper/` | `litellm` | `litellm-habit-helper` (alias `habit-helper`: `habit-helper`) |
 | `habit-data` | `/agent/habit-helper/` | `habit-data` | JWT with `role: habit_agent` |
 | `habit-admin` | `/ns/agents/sa/agents-matrix` (the bridge's pod) | `habit-data` | JWT with `role: habit_admin` |

@@ -75,9 +75,11 @@
 
   # Qwen3.8-Flash-Next (125B MoE, 6B active). llama-server pulls the split GGUF
   # from HuggingFace into /var/cache/llama-cpp on first start.
-  # Off: wabbajack's memory goes to Nix builds. Setting enable back to true
-  # also brings back litellm's qwen3.8-flash-next
-  # (k8s/manifests/litellm/configmap.yaml), the pi agent type's only model.
+  # Off: wabbajack's memory goes to Nix builds. While it is off, the things
+  # that point here have no backend: litellm's qwen3.8-flash-next
+  # (k8s/manifests/litellm/configmap.yaml), which the pi agent type lists as
+  # its second model after `pi` (DeepSeek), and the `wabbajack` provider in
+  # the workstations' pi (modules/llms/pi-models.json).
   services.llama-cpp = {
     enable = false;
     package = pkgs.llama-cpp-vulkan;

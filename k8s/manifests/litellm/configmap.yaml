@@ -30,8 +30,8 @@ data:
         litellm_params:
           model: openai/responses/gpt-6.1-sol
           api_key: os.environ/OPENAI_API_KEY
-      # The same model, for the habit-admin agent, under its own name so either
-      # can move on its own.
+      # DeepSeek V4 Flash again, for the habit-admin agent, under its own name
+      # so it and pi can each move on their own.
       - model_name: habit-admin
         litellm_params:
           model: deepseek/deepseek-v4-flash
