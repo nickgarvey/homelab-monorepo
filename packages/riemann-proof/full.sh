@@ -8,7 +8,7 @@
 #     -p WorkingDirectory=$HOME/riemann -p Environment=HOME=$HOME/riemann/home \
 #     -p LimitNOFILE=524288 -p MemoryMax=110G -p Nice=10 \
 #     -p AllowedCPUs=0-14,16-30 -p CPUWeight=idle \
-#     /run/current-system/sw/bin/nix shell nixpkgs#{bash,coreutils,gnugrep,gnused,findutils,gnutar,gzip,curl,git,time,elan,ripgrep} \
+#     /run/current-system/sw/bin/nix shell nixpkgs#{bash,coreutils,gnugrep,gnused,findutils,gnutar,gzip,curl,git,time,elan,ripgrep,gawk} \
 #     -c bash $HOME/riemann/full.sh'
 #   ssh wabbajack 'sudo journalctl -fu riemann-full -o cat'        # follow it
 #   ssh wabbajack 'cat ~/riemann/RESULT'                           # the verdict
@@ -26,8 +26,8 @@ set -euo pipefail
 R=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 cd "$R"
 mkdir -p "$HOME"
-: >summary.txt
-rm -f RESULT
+: >"$R/summary.txt"
+rm -f "$R/RESULT"
 done=no
 
 finish() {
@@ -35,14 +35,14 @@ finish() {
   [ -n "${janitor:-}" ] && kill "$janitor" 2>/dev/null || true
   local status="FAIL (exit $rc)"
   [ "$done" = yes ] && status=PASS
-  { echo "$status: full build and check, $(date -u +%FT%TZ)"; cat summary.txt; } >RESULT
+  { echo "$status: full build and check, $(date -u +%FT%TZ)"; cat "$R/summary.txt"; } >"$R/RESULT"
   echo "=== RESULT"
-  cat RESULT
+  cat "$R/RESULT"
 }
 trap finish EXIT
 
 log() { echo "=== $(date -u +%T) $*"; }
-note() { echo "$*" | tee -a summary.txt; }
+note() { echo "$*" | tee -a "$R/summary.txt"; }
 die() { note "FAILED: $*"; exit 1; }
 
 # timed <label> <log> <cmd...>: runs cmd into log, records wall time and peak RSS.
@@ -157,7 +157,7 @@ for t in "${theorems[@]}"; do
 done
 [ "$(grep -c 'depends on axioms' ../axioms.log)" -eq 5 ] || die "unexpected extra axiom lines in axioms.log"
 note "RiemannHypothesis, as Lean prints it (compare with Mathlib/NumberTheory/LSeries/RiemannZeta.lean):"
-sed -n '/^riemannHypothesis :/,$p' ../axioms.log | sed 's/^/    /' | tee -a summary.txt >/dev/null
+sed -n '/^riemannHypothesis :/,$p' ../axioms.log | sed 's/^/    /' | tee -a "$R/summary.txt" >/dev/null
 
 # --- 7. Replay every declaration of Main and its imports through the kernel, from the compiled files.
 lc="$(dirname "$(elan which lean)")/leanchecker"
