@@ -55,6 +55,23 @@ def check_path(path: str) -> str:
     return path
 
 
+LAYOUT = ("New files go in <origin>/<topic>/: either <origin>/<topic>/<page>.html or inside a subfolder, "
+          "<origin>/<topic>/<subfolder>/... . <origin> is where the page comes from (e.g. the project or "
+          "conversation's subject area), <topic> what it is about. Nothing at the top level, directly under "
+          "<origin>, and no index.html directly under <origin>/<topic>/.")
+
+
+def check_layout(path: str) -> str:
+    """The folder layout for new files (LAYOUT); reading and listing are not restricted."""
+    parts = path.split("/")
+    if len(parts) < 3:
+        raise Refused(f"{path!r} is not allowed here. {LAYOUT}")
+    if len(parts) == 3 and parts[2].lower() in ("index.html", "index.htm"):
+        raise Refused(f"{path!r}: index.html is not allowed directly under <origin>/<topic>/; name the page, "
+                      f"or put it in a subfolder ({parts[0]}/{parts[1]}/<subfolder>/index.html). {LAYOUT}")
+    return path
+
+
 def check_folder(folder: str) -> str:
     folder = folder.strip("/")
     if folder == "":
@@ -115,7 +132,7 @@ class Pages:
             raise
 
     def create(self, path: str, content: str) -> dict[str, Any]:
-        key = check_path(path)
+        key = check_layout(check_path(path))
         data = content.encode("utf-8")
         if len(data) > MAX_CREATE_BYTES:
             raise Refused(f"content is {len(data)} bytes; the limit is {MAX_CREATE_BYTES}")

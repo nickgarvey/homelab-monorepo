@@ -24,28 +24,28 @@ def pages(monkeypatch):
 
 
 def test_create_read_list(pages):
-    r = pages.create("trips/2026/index.html", "<h1>Japan</h1>")
-    assert r["url"] == "https://pages.home.garvey.sh/trips/2026/"
+    r = pages.create("me/trips/japan/index.html", "<h1>Japan</h1>")
+    assert r["url"] == "https://pages.home.garvey.sh/me/trips/japan/"
     assert r["permanent"] is True
-    pages.create("report.html", "<p>hi</p>")
+    pages.create("me/work/report.html", "<p>hi</p>")
 
-    got = pages.read("trips/2026/index.html")
+    got = pages.read("me/trips/japan/index.html")
     assert got["content"] == "<h1>Japan</h1>" and got["truncated"] is False
-    head = pages.s3.head_object(Bucket="pages", Key="report.html")
+    head = pages.s3.head_object(Bucket="pages", Key="me/work/report.html")
     assert head["ContentType"] == "text/html; charset=utf-8"
 
     listing = pages.list()
     assert listing["total"] == 2
-    assert {f["path"] for f in listing["files"]} == {"report.html", "trips/2026/index.html"}
-    assert [f["path"] for f in pages.list("trips")["files"]] == ["trips/2026/index.html"]
-    assert pages.list("/trips/")["folder"] == "trips/"
+    assert {f["path"] for f in listing["files"]} == {"me/work/report.html", "me/trips/japan/index.html"}
+    assert [f["path"] for f in pages.list("me/trips")["files"]] == ["me/trips/japan/index.html"]
+    assert pages.list("/me/trips/")["folder"] == "me/trips/"
 
 
 def test_existing_file_is_never_replaced(pages):
-    pages.create("a.html", "first")
+    pages.create("me/t/a.html", "first")
     with pytest.raises(store.Refused, match="already exists"):
-        pages.create("a.html", "second")
-    assert pages.read("a.html")["content"] == "first"
+        pages.create("me/t/a.html", "second")
+    assert pages.read("me/t/a.html")["content"] == "first"
 
 
 @pytest.mark.parametrize("path", ["/a.html", "a/../b.html", "a//b.html", "a.exe", "a", ".hidden.html",
@@ -65,7 +65,7 @@ def test_read_missing_and_large(pages):
 
 def test_too_large(pages):
     with pytest.raises(store.Refused, match="limit"):
-        pages.create("big.html", "x" * (store.MAX_CREATE_BYTES + 1))
+        pages.create("me/t/big.html", "x" * (store.MAX_CREATE_BYTES + 1))
 
 
 def rpc(client, method, params=None):
@@ -87,9 +87,9 @@ def test_http_app(pages):
         assert tools["create_page"]["annotations"]["destructiveHint"] is False
         assert "PERMANENT" in tools["create_page"]["description"]
 
-        r = rpc(client, "tools/call", {"name": "create_page", "arguments": {"path": "x.html", "content": "hi"}})
+        r = rpc(client, "tools/call", {"name": "create_page", "arguments": {"path": "me/t/x.html", "content": "hi"}})
         assert r.json()["result"]["isError"] is False, r.text
-        r = rpc(client, "tools/call", {"name": "create_page", "arguments": {"path": "x.html", "content": "hi"}})
+        r = rpc(client, "tools/call", {"name": "create_page", "arguments": {"path": "me/t/x.html", "content": "hi"}})
         assert r.json()["result"]["isError"] is True
         assert "already exists" in r.json()["result"]["content"][0]["text"]
 
@@ -97,3 +97,21 @@ def test_http_app(pages):
                           json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}})
         assert bad.status_code == 421
         assert client.get("/healthz").json() == {"status": "ok"}
+
+
+@pytest.mark.parametrize("path", ["page.html", "me/page.html", "me/topic/index.html", "me/topic/INDEX.html"])
+def test_layout_refused(pages, path):
+    with pytest.raises(store.Refused, match="origin"):
+        pages.create(path, "x")
+
+
+@pytest.mark.parametrize("path", ["me/topic/page.html", "me/topic/sub/index.html", "me/topic/sub/deep/a.css"])
+def test_layout_allowed(pages, path):
+    pages.create(path, "x")
+    assert pages.read(path)["content"] == "x"
+
+
+def test_layout_only_limits_create(pages):
+    pages.s3.put_object(Bucket="pages", Key="old.html", Body=b"by hand")
+    assert pages.read("old.html")["content"] == "by hand"
+    assert pages.list()["total"] == 1

@@ -8,7 +8,9 @@ The pages MCP server (`packages/pages-mcp`) at
 - `list_pages(folder, limit)`: files under a folder, newest first.
 - `read_page(path)`: one file's text (truncated at 1 MB).
 - `create_page(path, content)`: a new text file (`.html`, `.css`, `.js`,
-  `.svg`, `.json`, `.md`, …, up to 5 MB). Paths may contain folders.
+  `.svg`, `.json`, `.md`, …, up to 5 MB), only at `<origin>/<topic>/<page>`
+  or `<origin>/<topic>/<subfolder>/...`: nothing at the top level or directly
+  under `<origin>`, and no `index.html` directly under `<origin>/<topic>/`.
 
 Nothing it creates can be changed or deleted through it. Its RGW role
 `pages-mcp` (`modules/services/rgw-roles.nix`, access `create`) has no delete
