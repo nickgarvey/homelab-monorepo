@@ -6,7 +6,6 @@
     ../../modules/core/nixos-common.nix
     ../../modules/networking/thunderbolt-mesh.nix
     ../../modules/services/ceph.nix
-    ../../modules/services/shutdown-debug.nix
     # Backs up every Ceph RBD volume; one node is enough.
     ../../modules/services/ceph-restore.nix
     # The RGW STS roles for k3s apps; one node reconciles them.

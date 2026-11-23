@@ -6,7 +6,6 @@
     ../../modules/core/nixos-common.nix
     ../../modules/networking/thunderbolt-mesh.nix
     ../../modules/services/ceph.nix
-    ../../modules/services/shutdown-debug.nix
   ];
 
   networking.hostName = "frul";
