@@ -163,6 +163,15 @@ creation_rules:
     - age:
       - *ngarvey
       - *paper
+  # glkvm-acme: TSIG secret for the acme-glkvm key (ACME DNS-01 for
+  # glkvm.home.garvey.sh). dragonsreach holds it for Knot. The KVM is not a
+  # recipient: `nix run .#glkvm-cert-install` decrypts it as *ngarvey and
+  # writes it to the device (packages/glkvm-cert).
+  - path_regex: secrets/glkvm-acme.yaml
+    key_groups:
+    - age:
+      - *ngarvey
+      - *dragonsreach
   # skyforge-acme: TSIG secret for the acme-skyforge key (ACME DNS-01 for
   # skyforge.home.garvey.sh). dragonsreach holds it for Knot; skyforge runs lego
   # (hosts/skyforge/web-gate.nix).

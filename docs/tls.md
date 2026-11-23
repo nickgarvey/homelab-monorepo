@@ -20,7 +20,7 @@ owns cert-manager and the services themselves.
 
 | Path | Names | Issued by | Config |
 |---|---|---|---|
-| cert-manager | `<name>.home.garvey.sh` and `<name>.garvey.sh` for cluster services | Let's Encrypt, DNS-01 via RFC2136 | `k8s/manifests/cert-manager/cluster-issuer-rfc2136-{prod,staging}.yaml`; names in `certManagerAcme`, `modules/networking/dns.nix` |
+| cert-manager | `<name>.home.garvey.sh` and `<name>.garvey.sh` for cluster services |`incus.home.garvey.sh`, `glkvm.home.garvey.sh` | Let's Encrypt, DNS-01 via RFC2136 |  / `glkvm-cert` on the KVM itself (`packages/glkvm-cert`); TSIG ACLs in| `k8s/manifests/cert-manager/cluster-issuer-rfc2136-{prod,staging}.yaml`; names in `certManagerAcme`, `modules/networking/dns.nix` |
 | On-box ACME | `homeassistant.home.garvey.sh`, `garage.home.garvey.sh`, `storj-gateway.home.garvey.sh`, `rgw.home.garvey.sh`, `openbao.home.garvey.sh` (+ `openbao-<node>`), `incus.home.garvey.sh` | Let's Encrypt, DNS-01 via RFC2136 | `security.acme` on lydia (Home Assistant pod, `modules/services/home-assistant.nix`) / `security.acme` on lydia + wabbajack (garage) / `security.acme` on dragonsreach / `security.acme` on joor + zah + frul (Ceph RGW) / `security.acme` on fus + ro + dah (OpenBao, `docs/openbao.md`) / Incus's own ACME client on lydia (`modules/virtualisation/incus.nix`); TSIG ACLs in `modules/containers/knot-auth.nix` |
 
 Both write the challenge TXT straight into Knot with a TSIG key that may write only TXT at
@@ -136,6 +136,27 @@ Nothing is lost by disabling it. Knot is the only authoritative server and its D
 is committed before lego proceeds, so there is no propagation to await; Let's Encrypt
 validates from the public internet, where the DNAT does apply. Any future on-box ACME
 client on this network needs the same setting.
+
+**The GL.iNet KVM runs its own client, because it is not a NixOS host and is usually
+switched off.** A host that issued the certificate and pushed it would find the KVM
+unreachable at most renewals. So `glkvm-cert` (`packages/glkvm-cert`, a static ARMv7 Go
+binary) runs on the device: started at boot, it checks the pair nginx serves
+(`/etc/kvmd/user/ssl/server.{crt,key}`) every minute, and when it is missing, not for
+`glkvm.home.garvey.sh`, or in the last third of its lifetime, it orders a new one, writing
+the challenge to Knot with the `acme-glkvm` key, and sends nginx a SIGHUP. After months
+off, the KVM serves its old certificate for about a minute after power-on.
+
+Everything it needs is under `/etc/kvmd/user/`: the binary, `config.json` (with the TSIG
+secret) and the ACME account key in `glkvm-cert/`, and the boot hook
+`scripts/S50glkvm-cert.sh`, which the firmware's `/etc/init.d/S99custom` sources. The
+firmware restores that directory, and `/root/.ssh`, on the first boot after an update
+(`/etc/init.d/S23config`); a factory reset removes both.
+
+`nix run .#glkvm-cert-install` puts all of it on the device over SSH, with the KVM
+switched on, and is also how a new build of the binary gets there. `-- --staging` orders
+from Let's Encrypt's staging CA; `-- --force` then replaces that certificate with a real
+one. Nothing monitors this certificate: the device is off too often for an expiry alert to
+mean anything. `logread | grep glkvm-cert` on the KVM shows what the client did.
 
 ---
 

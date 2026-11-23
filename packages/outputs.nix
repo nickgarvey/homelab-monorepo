@@ -23,6 +23,7 @@ let
   anki-mcp = import ./anki-mcp/outputs.nix { inherit nixpkgs system; };
   pocket-dmg = import ./pocket-dmg/outputs.nix { inherit nixpkgs system; };
   riemann-proof = import ./riemann-proof/outputs.nix { inherit nixpkgs system; };
+  glkvm-cert = import ./glkvm-cert/outputs.nix { inherit nixpkgs system; };
 
   # The deploy binary, built from ./deploy. buildGoModule runs `go test`
   # as part of the build, so this derivation is also the test check.
@@ -134,6 +135,9 @@ in
     pocket-dmg = pocket-dmg.package;
     riemann-proof = riemann-proof.package;
     riemann-proof-check = riemann-proof.check;
+    glkvm-cert = glkvm-cert.package;
+    glkvm-cert-armv7 = glkvm-cert.arm;
+    glkvm-cert-install = glkvm-cert.install;
   };
 
   checks.${system} = {
@@ -142,6 +146,7 @@ in
     ceph-backup-worker-tests = ceph-backup-worker.package;
     anki-mcp-tests = anki-mcp.package;
     pocket-dmg-tests = pocket-dmg.package;
+    glkvm-cert-tests = glkvm-cert.package;
     openshell-images-test = openshell.images-test;
   };
 }

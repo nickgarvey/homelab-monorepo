@@ -40,6 +40,8 @@ let
   #                         container's nginx (modules/containers/frigate.nix).
   #   acme-incus         -> Incus's own ACME (lego) on lydia, for the Incus API
   #                         and web UI (modules/virtualisation/incus.nix).
+  #   acme-glkvm         -> glkvm-cert on the GL.iNet KVM itself, which is not a
+  #                         NixOS host (packages/glkvm-cert).
   #   acme-openbao       -> lego on fus, ro and dah, one listener cert per node
   #                         covering openbao and that node's openbao-<node>
   #                         (modules/services/openbao.nix). IPv6-only, via NAT64.
@@ -98,6 +100,13 @@ let
       owners = [ "_acme-challenge.incus.${domain}." ];
       sopsName = "incus-acme-tsig";
       sopsFile = ../../secrets/incus-acme.yaml;
+      sopsKey = "acme_tsig_secret";
+    }
+    {
+      name = "acme-glkvm";
+      owners = [ "_acme-challenge.glkvm.${domain}." ];
+      sopsName = "glkvm-acme-tsig";
+      sopsFile = ../../secrets/glkvm-acme.yaml;
       sopsKey = "acme_tsig_secret";
     }
     {
