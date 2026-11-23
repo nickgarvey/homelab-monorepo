@@ -1,10 +1,16 @@
 # The Matrix Authentication Service (MAS), which handles every Matrix login,
-# from nixpkgs, and the image k8s/manifests/matrix runs. Imported by
-# packages/outputs.nix.
+# from nixpkgs with our registration-policy patch, and the image
+# k8s/manifests/matrix runs. Imported by packages/outputs.nix.
 { nixpkgs, system }:
 let
   pkgs = import nixpkgs { inherit system; };
-  package = pkgs.matrix-authentication-service;
+  # Dynamic registration accepts public clients only (the patch's header says
+  # why). The policy is compiled into policy.wasm during the build.
+  package = pkgs.matrix-authentication-service.overrideAttrs (old: {
+    patches = (old.patches or [ ]) ++ [
+      ../../patches/matrix-authentication-service-public-clients-only.patch
+    ];
+  });
 in
 {
   inherit package;

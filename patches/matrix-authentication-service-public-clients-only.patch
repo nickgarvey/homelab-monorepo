@@ -1,0 +1,55 @@
+Upstream:      matrix-authentication-service
+               (github.com/element-hq/matrix-authentication-service):
+               policies/client_registration/client_registration.rego
+Upstreamable:  not as written (it removes confidential clients for everyone).
+               A policy.data.client_registration flag with the same effect
+               would be.
+How:           An issue on element-hq/matrix-authentication-service asking for
+               a data flag that limits dynamic registration to public clients,
+               or for jwks_uri to be checked like the other client URIs.
+Written:       2026-11-23, against matrix-authentication-service 1.29.0
+Last checked:  2026-11-23: 1.29.0 (the version in nixpkgs) has no rule on
+               token_endpoint_auth_method, jwks or jwks_uri; main not checked
+Remove when:   MAS can refuse confidential clients, or attacker-chosen
+               jwks_uri, through its config
+Applied by:    packages/matrix-authentication-service/outputs.nix (the build
+               fails if the patch stops applying)
+
+Dynamic client registration (POST /oauth2/registration) needs no
+authentication, and MAS has no setting to turn it off. A client registered
+with token_endpoint_auth_method private_key_jwt and a jwks_uri makes MAS GET
+that URL from its pod when the client presents a client_assertion at
+/oauth2/token: a blind SSRF for anyone who can reach MAS, which is the whole
+internet here. Any confidential client can also mint a client_credentials
+token and call introspection.
+
+The patch refuses every registration that is not a public client
+(token_endpoint_auth_method none, which a registration must state), and any
+that carries jwks or jwks_uri. The Matrix clients (Element, Element X) register
+as public clients. The policy runs only at registration, so clients registered
+before it stay as they are until deleted from the database.
+
+Upstream's policy tests (make -C policies test) register clients without an
+auth method and fail with this patch; the package build does not run them.
+
+--- a/policies/client_registration/client_registration.rego
++++ b/policies/client_registration/client_registration.rego
+@@ -188,6 +188,18 @@
+ 	is_public_client
+ }
+ 
++violation contains {"msg": "only public clients (token_endpoint_auth_method none) may register"} if {
++	not is_public_client
++}
++
++violation contains {"msg": "jwks_uri is not allowed"} if {
++	input.client_metadata.jwks_uri
++}
++
++violation contains {"msg": "jwks is not allowed"} if {
++	input.client_metadata.jwks
++}
++
+ violation contains {"msg": "missing redirect_uris"} if {
+ 	requires_redirect_uris
+ 	not input.client_metadata.redirect_uris
