@@ -9,7 +9,9 @@ Authelia's session cookie covers it.
 - **Serving:** one Caddy (`packages/pages-server`, Caddy with the
   `caddy-fs-s3` plugin) terminates TLS on 443, asks Authelia about every
   request (`forward_auth` to its ext-authz endpoint), then serves the object. A directory serves its
-  `index.html`; nothing is ever listed, and a missing object is a 404.
+  `index.html`; one without an `index.html` (the root included) gets a
+  listing, newest first, with folders last because S3 folders have no
+  timestamp. A missing object is a 404.
   Content-Type comes from the file extension. `caddy-configmap.yaml` has the
   config.
 - **Credentials:** none stored. The spiffe-helper sidecar keeps the pod's

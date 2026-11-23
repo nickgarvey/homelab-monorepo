@@ -4,8 +4,9 @@
 # forward_auth asks Authelia (/api/authz/ext-authz) about each request; its
 # access rule for this name lets in only ngarvey (k8s/manifests/authelia/
 # configmap.yaml). Without a session the browser is redirected to the portal.
-# file_server serves <path>/index.html for a directory and never lists one, so
-# a path with no object is a 404.
+# file_server serves <path>/index.html for a directory; a directory without one
+# gets a listing, newest first. S3 folders have no timestamp, so they sort
+# below the files.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -54,5 +55,8 @@ data:
 
       file_server {
         fs pages
+        browse {
+          sort time desc
+        }
       }
     }
