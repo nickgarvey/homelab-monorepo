@@ -29,6 +29,9 @@ extern "C" {
 #include <esp_matter.h>
 #include <esp_matter_core.h>
 #include <esp_openthread_types.h>
+#include <esp_openthread.h>
+#include <esp_openthread_lock.h>
+#include <openthread/thread.h>
 #include <platform/ESP32/OpenthreadLauncher.h>
 #include <platform/ThreadStackManager.h>
 #include <setup_payload/OnboardingCodesUtil.h>
@@ -286,6 +289,19 @@ static esp_err_t app_identification_cb(identification::callback_type_t type, uin
     return ESP_OK;
 }
 
+/* Network name and extended PAN ID: public (every border router advertises them), and enough
+ * to tell which Thread network the dataset in NVS belongs to. */
+static void log_thread_network(void)
+{
+    esp_openthread_lock_acquire(portMAX_DELAY);
+    otInstance *ot = esp_openthread_get_instance();
+    const otExtendedPanId *xp = otThreadGetExtendedPanId(ot);
+    ESP_LOGI(TAG, "Thread: role %s, network \"%s\", xpanid %02x%02x%02x%02x%02x%02x%02x%02x",
+             otThreadDeviceRoleToString(otThreadGetDeviceRole(ot)), otThreadGetNetworkName(ot),
+             xp->m8[0], xp->m8[1], xp->m8[2], xp->m8[3], xp->m8[4], xp->m8[5], xp->m8[6], xp->m8[7]);
+    esp_openthread_lock_release();
+}
+
 static void app_event_cb(const ChipDeviceEvent *event, intptr_t arg)
 {
     switch (event->Type) {
@@ -302,6 +318,9 @@ static void app_event_cb(const ChipDeviceEvent *event, intptr_t arg)
         if (event->ThreadStateChange.AddressChanged &&
             chip::DeviceLayer::ConnectivityMgr().IsThreadAttached()) {
             chip::app::DnssdServer::Instance().StartServer();
+        }
+        if (event->ThreadStateChange.RoleChanged) {
+            log_thread_network();
         }
         break;
     default:

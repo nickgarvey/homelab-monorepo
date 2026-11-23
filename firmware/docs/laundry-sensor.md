@@ -38,6 +38,12 @@ nix develop .#esp32 --command python3 scripts/flash.py --thread --erase devices/
 `--thread --erase` writes the Thread dataset from `secrets/thread.sops.yaml` (see
 [commissioning.md](commissioning.md)); without `--erase` the dataset already in NVS is kept.
 
+Pair it with `scripts/commission.py devices/laundry-sensor`. The board advertises for
+commissioning only for 15 minutes after it boots; if pairing fails with "No commissionable
+device was discovered", reset the board and run it again. On each Thread role change the log
+prints the network name and extended PAN ID, which tell whether the dataset in NVS is Home
+Assistant's network (compare `avahi-browse -rpt _meshcop._udp`).
+
 ---
 
 ## Power
