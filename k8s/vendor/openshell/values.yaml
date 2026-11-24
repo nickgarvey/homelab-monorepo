@@ -106,12 +106,12 @@ gateway:
   listenAddress: "::"
   image:
     repository: openshell/gateway
-    digest: sha256:12ddebc95037705d4c52a12d6e75bc3b5840e978de111dcb9ae3f6ce66adbfe1
+    digest: sha256:eb6ac2677c882bbbbaf31ed3e97cd79329a232f51934e18aed47622d4ed06b1b
 supervisor:
   image:
     repository: openshell/supervisor
-    digest: sha256:d844d1fb2a60d1c5f8a35aa1a3a90021f2144b77aac4d71d0d76c0a5d8baf923
+    digest: sha256:475ef95aa7a7b4bc56908f92811b0a5483465290f18015baee49c7aea5eb29fb
 sandboxRuntime:
   image:
     repository: openshell/sandbox
-    digest: sha256:dea86afd467c9e7e23e614e3e6b7344942599fd702e658992a8742071ccab2ca
+    digest: sha256:6b2c7826d2abc9a0579e56e47e1fdf22997b1b55c8e857f5bb5a75a58b108a39
