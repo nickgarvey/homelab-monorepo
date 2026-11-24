@@ -12,7 +12,7 @@ run:
 | Kind | What | How it is read | Kopia source |
 |---|---|---|---|
 | `rbd` | every image in every pool with the `rbd` application (today: the ceph-csi volumes in `kubernetes`) | snapshot, clone, mount the clone (the filesystem replays its journal) | `/run/ceph-backup/<namespace>/<pvc>`; other images `/run/ceph-backup-rbd/<pool>/<image>` |
-| `rgw` | every bucket of the `k8s` RGW account | rclone mount through S3, as the read-only STS role `ceph-backup` (`modules/services/rgw-roles.nix`) | `/run/ceph-backup-rgw/<bucket>` |
+| `rgw` | every bucket of the `k8s` RGW account except `celler`, the Nix binary cache (`--skip-bucket` in `k8s/manifests/ceph-backup/daemonset.yaml`) | rclone mount through S3, as the read-only STS role `ceph-backup` (`modules/services/rgw-roles.nix`) | `/run/ceph-backup-rgw/<bucket>` |
 | `rgw-metadata` | accounts, users (with keys), roles, OIDC providers, bucket metadata (not the zone/zonegroup, which `docs/ceph-bootstrap/` recreates) | the RGW admin-ops API (`/admin/metadata`, the same JSON as `radosgw-admin metadata get`), `rados get` for OIDC providers | `/run/ceph-backup-rgw-metadata` |
 | `cephfs` | every CephFS filesystem (today: `local-drive`) | a CephFS snapshot of the root (`.snap/kopia-backup-<time>`), mounted with the worker's key `client.ceph-backup` | `/run/ceph-backup-cephfs/<fs>` |
 

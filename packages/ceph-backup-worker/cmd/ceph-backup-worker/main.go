@@ -69,6 +69,10 @@ func main() {
 	flag.StringVar(&c.StateDir, "state-dir", "/var/cache/ceph-backup-worker", "Kopia's caches, kept across restarts")
 	flag.StringVar(&c.RunDir, "run-dir", "/run/ceph-backup-worker", "Pod-local: Kopia's repository configs and logs, short-lived secret files")
 	flag.IntVar(&c.KopiaParallel, "kopia-parallel", 4, "Files Kopia uploads at once (0: Kopia's default)")
+	flag.Func("skip-bucket", "RGW bucket not to back up (repeatable)", func(b string) error {
+		c.SkipBuckets = append(c.SkipBuckets, b)
+		return nil
+	})
 	flag.StringVar(&o.nodeName, "node-name", "", "The node this pod runs on (spec.nodeName)")
 	flag.StringVar(&o.metricsAddr, "metrics-listen", ":9090", "Address of the Prometheus /metrics endpoint")
 	flag.DurationVar(&o.metricsInterval, "metrics-interval", 15*time.Minute, "How often the Lease holder recomputes the backup metrics")

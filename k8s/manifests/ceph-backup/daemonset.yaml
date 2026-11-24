@@ -92,6 +92,9 @@ spec:
             - --rgw-admin-dir=/etc/ceph-backup/rgw-admin
             - --kopia-dir=/etc/ceph-backup/kopia
             - --storj-dir=/etc/ceph-backup/storj
+            # The Nix binary cache: rebuildable, and its 1.3M objects take
+            # rclone and kopia past the 4Gi limit.
+            - --skip-bucket=celler
             - --node-name=$(NODE_NAME)
           env:
             - name: NODE_NAME

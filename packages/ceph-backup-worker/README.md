@@ -33,7 +33,7 @@ Workflow `CephBackup` (`internal/backup/workflow.go`):
    mappings on this node, clones and snapshots in every RBD pool), connects to
    the repository, sets the global policy, and lists the items: `rbd` (every
    image in every pool with the rbd application, ceph-csi ones named by PVC),
-   `rgw-metadata`, `rgw` (every bucket, from the admin-ops API), `cephfs`
+   `rgw-metadata`, `rgw` (every bucket, from the admin-ops API, except those named by `--skip-bucket`), `cephfs`
    (every filesystem), and `pool` items it cannot back up (unknown
    applications, RBD namespaces, pools the cephx key has no caps on).
 2. For each item, one at a time: `BackupRBD` / `BackupRGWMetadata` /

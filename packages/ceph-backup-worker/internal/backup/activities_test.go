@@ -138,6 +138,24 @@ func TestDiscover(t *testing.T) {
 	}
 }
 
+func TestDiscoverSkipBuckets(t *testing.T) {
+	a := newActs(t, discoveryFake())
+	a.Cfg.SkipBuckets = []string{"photos"}
+	inv, err := a.discover(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rgw []string
+	for _, it := range inv.Items {
+		if it.Kind == KindRGW {
+			rgw = append(rgw, it.Name)
+		}
+	}
+	if !reflect.DeepEqual(rgw, []string{"chats"}) {
+		t.Errorf("rgw items %q", rgw)
+	}
+}
+
 func TestCephArgs(t *testing.T) {
 	f := discoveryFake()
 	a := newActs(t, f)

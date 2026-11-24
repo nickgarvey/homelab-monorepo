@@ -59,6 +59,10 @@ type Config struct {
 	// KopiaParallel caps the files Kopia uploads at once (0: Kopia's
 	// default), which bounds its memory on a first full copy.
 	KopiaParallel int
+
+	// SkipBuckets are RGW buckets left out of the inventory: never backed
+	// up, and absent from the metrics, so no alert covers them.
+	SkipBuckets []string
 }
 
 // cephArgs are the global options of rbd, ceph and rados.

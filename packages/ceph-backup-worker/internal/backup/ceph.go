@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -166,6 +167,9 @@ func (a *Activities) discover(ctx context.Context) (Inventory, error) {
 		}
 		sort.Strings(buckets)
 		for _, b := range buckets {
+			if slices.Contains(a.Cfg.SkipBuckets, b) {
+				continue
+			}
 			inv.Items = append(inv.Items, Item{Kind: KindRGW, Name: b, Bucket: b})
 		}
 	}
