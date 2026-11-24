@@ -56,16 +56,10 @@ preview shows something wrong, such as a missing cut, a floating piece, a featur
 wrong face or bad proportions, fix it and render again. Don't report a part you have
 not looked at.
 
-## Handing off
+## Opening in OrcaSlicer
 
-Report the file paths, the overall dimensions, the print orientation, and anything the
-user should check (fit-critical dimensions, any part that needs support). The printer is
-skyforge, a Klipper machine whose gantry travels 335 × 320 × 235 mm; ask before
-designing anything near that size. The user slices in OrcaSlicer with the "Skyforge"
-preset. Never send anything to the printer yourself.
-
-End the report by asking whether to open the model in OrcaSlicer. Open it only after
-the user says yes, as a final check that the 3MF loads:
+After every render that passes the checks above, open the new 3MF in OrcaSlicer. Do
+this for each iteration, without asking: the user checks every revision in the slicer.
 
 ```sh
 setsid -f orca-slicer "$(realpath <name>.3mf)" >/dev/null 2>&1 </dev/null
@@ -76,3 +70,22 @@ relative path fails with "Unable to open the file". After a few seconds, `niri m
 windows` should list a window titled `<name> - OrcaSlicer`. A title of `Untitled -
 OrcaSlicer` means the load failed; the reason is in the newest file under
 `~/.config/OrcaSlicer/log/`.
+
+Keep one OrcaSlicer window per part. Once the new one has loaded, close the window
+that holds the previous iteration, by its id from `niri msg windows`:
+
+```sh
+niri msg action close-window --id <id>
+```
+
+Close only windows this session opened. Do not look for the process instead: `pgrep -x
+orca-slicer` matches nothing, because the wrapped binary runs under another name, and
+`pkill -f` with a pattern that is in your own command line kills your shell.
+
+## Handing off
+
+Report the file paths, the overall dimensions, the print orientation, and anything the
+user should check (fit-critical dimensions, any part that needs support). The printer is
+skyforge, a Klipper machine whose gantry travels 335 × 320 × 235 mm; ask before
+designing anything near that size. The user slices in OrcaSlicer with the "Skyforge"
+preset. Never send anything to the printer yourself.
