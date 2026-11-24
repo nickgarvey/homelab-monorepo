@@ -1,0 +1,18 @@
+[project]
+name = "diabetes-mcp"
+version = "0.1.0"
+description = "Read-only MCP server for Nightscout: glucose, Loop, pump and CGM lifetimes, therapy settings"
+requires-python = ">=3.12"
+
+[project.scripts]
+diabetes-mcp = "diabetes_mcp.__main__:main"
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
