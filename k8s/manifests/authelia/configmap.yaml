@@ -323,6 +323,29 @@ data:
             access_token_signed_response_alg: RS256
             userinfo_signed_response_alg: none
             token_endpoint_auth_method: none
+          - client_id: claude-diabetes
+            client_name: Claude diabetes
+            public: true
+            authorization_policy: mcp
+            lifespan: mcp
+            require_pkce: true
+            pkce_challenge_method: S256
+            redirect_uris:
+              - https://claude.ai/api/mcp/auth_callback
+            audience:
+              - https://mcp.home.garvey.sh/diabetes/mcp
+            requested_audience_mode: implicit
+            scopes:
+              - openid
+              - offline_access
+            response_types:
+              - code
+            grant_types:
+              - authorization_code
+              - refresh_token
+            access_token_signed_response_alg: RS256
+            userinfo_signed_response_alg: none
+            token_endpoint_auth_method: none
           # The Matrix Authentication Service (manifests/matrix), which every
           # Matrix login goes through. The callback ends in the ID of its
           # upstream provider (manifests/matrix/mas-configmap.yaml).

@@ -1,0 +1,53 @@
+# The server has no authentication of its own (the gateway checks tokens), so
+# only the gateway may reach it, and it may reach only Nightscout and DNS.
+# The namespace is excluded from manifests/cilium/pod-ingress-default-deny.yaml,
+# whose allow-from-cluster would otherwise widen this.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: mcp-diabetes
+  namespace: mcp-diabetes
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  description: "Ingress from the MCP gateway only; egress to Nightscout and DNS only"
+  endpointSelector:
+    matchLabels:
+      app: mcp-diabetes
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: mcp
+            app: mcp-gateway
+      toPorts:
+        - ports:
+            - port: "8000"
+              protocol: TCP
+    # kubelet probes, from this pod's own node.
+    - fromEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "8000"
+              protocol: TCP
+  egress:
+    # https://nightscout.home.garvey.sh: the LoadBalancer address is translated
+    # to the Nightscout pod's Caddy before policy applies.
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: nightscout
+            app: nightscout
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP

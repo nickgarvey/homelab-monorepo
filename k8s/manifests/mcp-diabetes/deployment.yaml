@@ -1,0 +1,83 @@
+# The diabetes MCP server (packages/diabetes-mcp): read-only tools over
+# Nightscout for Claude (glucose, Loop, pod and sensor lifetimes, treatments,
+# therapy settings). Stateless.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-diabetes
+  namespace: mcp-diabetes
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcp-diabetes
+  template:
+    metadata:
+      labels:
+        app: mcp-diabetes
+        app.kubernetes.io/managed-by: ngarvey-homelab
+    spec:
+      serviceAccountName: mcp-diabetes
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: diabetes-mcp
+          # packages/diabetes-mcp: the tag is the package's store hash.
+          image: oci.garvey.sh/diabetes-mcp:lxvg2rvk805jh7xl84kfps0f22nva8d8
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            - name: NIGHTSCOUT_URL
+              value: https://nightscout.home.garvey.sh
+            - name: NIGHTSCOUT_TOKEN_FILE
+              value: /run/secrets/nightscout/token
+            - name: MCP_ALLOWED_HOSTS
+              value: mcp.home.garvey.sh,localhost:*,127.0.0.1:*
+            # The zone used when neither the caller nor Nightscout gives one.
+            - name: HOME_TIMEZONE
+              value: America/Los_Angeles
+            # Dexcom G7: 10 days plus a 12-hour grace period.
+            - name: CGM_LIFETIME_HOURS
+              value: "240"
+            - name: CGM_GRACE_HOURS
+              value: "12"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          volumeMounts:
+            - name: token
+              mountPath: /run/secrets/nightscout
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        # From OpenBao (secret-provider-class.yaml).
+        - name: token
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: mcp-diabetes
+        - name: tmp
+          emptyDir: {}

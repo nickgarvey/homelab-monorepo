@@ -27,6 +27,7 @@
 #   reachable from the mcp gateway only)
 # - mcp-anki: manifests/mcp-anki/network-policy.yaml (likewise)
 # - mcp-pages: manifests/mcp-pages/network-policy.yaml (likewise)
+# - mcp-diabetes: manifests/mcp-diabetes/network-policy.yaml (likewise)
 #
 # Rollback: kubectl delete ciliumclusterwidenetworkpolicy pod-ingress-default-deny
 apiVersion: cilium.io/v2
@@ -46,6 +47,7 @@ spec:
           - mcp-notes
           - mcp-anki
           - mcp-pages
+          - mcp-diabetes
       - key: k8s:openshell.ai/managed-by
         operator: DoesNotExist
   ingress:

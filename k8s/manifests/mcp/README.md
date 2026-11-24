@@ -12,7 +12,8 @@ It serves one name, with the certificate `mcp-gateway-tls`:
   token with `401` and `WWW-Authenticate: Bearer resource_metadata="…"`, and
   forwards only requests carrying an Authelia JWT access token whose audience is
   that module's URL. Modules: `notes` (namespace `mcp-notes`), `anki`
-  (namespace `mcp-anki`) and `pages` (namespace `mcp-pages`).
+  (namespace `mcp-anki`), `pages` (namespace `mcp-pages`) and `diabetes`
+  (namespace `mcp-diabetes`).
 
 Anthropic's servers reach Authelia (`auth.home.garvey.sh`) for discovery and
 tokens through the HAProxy SNI router (`manifests/ipv4-gateway`), which passes
@@ -45,5 +46,5 @@ deploy/mcp-gateway -c reload` shows each reload. To restart by hand, bump the
 
 `./smoke-test.sh` from the LAN checks the metadata, the 401 handshake, that
 forged and query-string tokens are refused.
-With `NOTES_TOKEN` / `ANKI_TOKEN` / `PAGES_TOKEN` set to real access tokens it also checks
+With `NOTES_TOKEN` / `ANKI_TOKEN` / `PAGES_TOKEN` / `DIABETES_TOKEN` set to real access tokens it also checks
 pass-through and that each token is refused by the other module.
