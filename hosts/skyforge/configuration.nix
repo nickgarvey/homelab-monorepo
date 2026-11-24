@@ -28,6 +28,10 @@
             doCheck = false;
             doInstallCheck = false;
           });
+          # apprise depends on paho-mqtt, so the override above means it is
+          # rebuilt here instead of coming from the cache, and its 1200-test
+          # suite is slow under emulation.
+          apprise = pyprev.apprise.overridePythonAttrs { doCheck = false; };
         })
       ];
     })
