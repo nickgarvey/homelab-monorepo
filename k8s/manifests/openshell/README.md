@@ -11,7 +11,7 @@ version, from the repo root's `packages/openshell/`, pushed to
 `vendor/openshell/values.yaml`. The build carries
 `patches/openshell-supervisor-template-labels.patch`, which puts the sandbox
 template's labels on the supervisor pod too ("Provider token grants"),
-until upstream does (nix-q7Q31). The supervisor image
+until upstream does (nix-hLYBv). The supervisor image
 also trusts the root (pki/root.crt), for token endpoints with cluster-ca
 certificates, so the supervisor stays our build after the patch is gone.
 
@@ -171,7 +171,7 @@ The supervisor's identity is
 the supervisor pod's `agents.garvey.sh/type` label. The agents worker sets that
 label on the sandbox template. Upstream OpenShell (as of 0.1.8) puts template labels on
 the workload pod only; our build copies them onto the supervisor pod as well
-(`patches/openshell-supervisor-template-labels.patch`, nix-q7Q31), except
+(`patches/openshell-supervisor-template-labels.patch`, nix-hLYBv), except
 `openshell.ai/*` ones, and never over a label the driver sets. A sandbox
 created without the label (with the CLI, say) is `agent/untyped/<sandbox-id>`.
 Anyone who can create sandboxes picks the type, since template labels are
