@@ -9,8 +9,7 @@ Written:       2026-11-15, against OpenShell v0.1.8; rebased 2026-11-24 onto v0.
 Last checked:  2026-11-24: v0.1.10's dedicated supervisor pod still gets only
                control_labels
 Remove when:   a release copies template labels onto the supervisor pod
-Applied by:    packages/openshell/outputs.nix; agents/outputs.nix fails the build
-               after 2026-12-01 while it is carried
+Applied by:    packages/openshell/outputs.nix
 
 Kubernetes driver: copy the sandbox template's labels onto the supervisor pod.
 With the sandbox runtime, upstream puts template labels only on the workload

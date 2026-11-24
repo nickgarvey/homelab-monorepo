@@ -88,8 +88,7 @@ gatewayConfig:
 # supervisor pod, for its SPIFFE ID (nix-q7Q31). The supervisor image's CA
 # bundle also holds the root (pki/root.crt), for token_grant endpoints such as
 # agent-token (manifests/agents/), so it stays our build even without the
-# patch. Drop the patch (and its deadline check in agents/outputs.nix) once a
-# release includes it. A rebuild changes the digests: push it and update all
+# patch. Drop the patch once a release includes it. A rebuild changes the digests: push it and update all
 # three here, and the gateway's in manifests/openshell/jwt-keys-job.yaml.
 #
 # Sandboxes resolve names through their supervisor's policy DNS, which answers

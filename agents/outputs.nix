@@ -11,22 +11,6 @@ let
   pkgs = nixpkgs.legacyPackages.${system};
   lib = nixpkgs.lib;
 
-  # The gateway, supervisor and sandbox runtime are our own builds of OpenShell
-  # (packages/openshell), which copy the sandbox template's labels onto the
-  # supervisor pod, so its SPIFFE ID can carry the agent type
-  # (patches/openshell-supervisor-template-labels.patch, nix-q7Q31). Carrying
-  # the patch is meant to be temporary, until upstream takes it.
-  labelsPatched = builtins.pathExists ../patches/openshell-supervisor-template-labels.patch;
-  labelsPinExpired = labelsPatched
-    && lib.max self.lastModified nixpkgs.lastModified >= 1796083200; # 2026-12-01T00:00:00Z
-  checkLabelsPin = lib.throwIf labelsPinExpired ''
-    patches/openshell-supervisor-template-labels.patch (nix-q7Q31) expired on
-    2026-12-01. Move to a release that copies template labels onto the
-    supervisor pod, drop the patch and this check in agents/outputs.nix, or
-    push the deadline out deliberately.
-  '';
-  checkPins = checkLabelsPin;
-
   # The provider profile's binaries entry must be the exe that opens the
   # connection: the node that pi's wrapper execs, resolved past symlinks.
   # Fails the build if pi stops running under pkgs.nodejs.
@@ -128,7 +112,7 @@ let
   };
 in
 {
-  packages.${system} = lib.mapAttrs (_: checkPins) {
+  packages.${system} = {
     pi-agent-image = images.pi;
     habit-helper-image = images.habitHelper;
     pi-agent-litellm-profile = piLitellmProfile;
@@ -146,7 +130,7 @@ in
     habit-helper-postgrest-image = import ./habit-helper/postgrest-image.nix { inherit pkgs; };
   };
 
-  checks.${system} = lib.mapAttrs (_: checkPins) {
+  checks.${system} = {
     agents-declaration-test = import ./declaration-test.nix { inherit pkgs lib images desiredState; };
     agents-go-tests = agentsGo;
     habit-cli-tests = habitCli;

@@ -14,7 +14,7 @@ let
   # workload pod, never on the supervisor pod that holds the SPIFFE identity,
   # where the openshell-sandboxes ClusterSPIFFEID (k8s/vendor/spire/values.yaml)
   # reads the agent type. This copies them over, under the driver's own labels
-  # (see the patch header). agents/outputs.nix gives it a deadline.
+  # (see the patch header).
   labelsPatch = ../../patches/openshell-supervisor-template-labels.patch;
 
   src = pkgs.applyPatches {

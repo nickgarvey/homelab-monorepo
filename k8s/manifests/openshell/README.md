@@ -10,8 +10,8 @@ version, from the repo root's `packages/openshell/`, pushed to
 `oci.garvey.sh/openshell/` and pinned by digest in
 `vendor/openshell/values.yaml`. The build carries
 `patches/openshell-supervisor-template-labels.patch`, which puts the sandbox
-template's labels on the supervisor pod too ("Provider token grants"); the
-agents/ build fails after 2026-12-01 while it remains. The supervisor image
+template's labels on the supervisor pod too ("Provider token grants"),
+until upstream does (nix-q7Q31). The supervisor image
 also trusts the root (pki/root.crt), for token endpoints with cluster-ca
 certificates, so the supervisor stays our build after the patch is gone.
 
