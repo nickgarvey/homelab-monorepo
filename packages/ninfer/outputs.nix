@@ -23,13 +23,13 @@ let
     in
     cuda.backendStdenv.mkDerivation {
       pname = "ninfer";
-      version = "0-unstable-2026-08-28";
+      version = "0-unstable-2026-11-24";
 
       src = pkgs.fetchFromGitHub {
         owner = "Neroued";
         repo = "ninfer";
-        rev = "3a61ef3f8ad58a6ad22d75912e4d0156f59caf2f";
-        hash = "sha256-xpNyxYM8QMuylU9sv4LUdD8/iVxbDiArughk/vvME2s=";
+        rev = "9ebb72ed756ecbec5dbc18ee22d58fc08575e129";
+        hash = "sha256-pJYoDZX/X/yUwuHpRLsfk25SJw79a4Pk+PI8K2qU3uY=";
       };
 
       nativeBuildInputs = [
@@ -46,8 +46,12 @@ let
         cuda.cuda_cudart
         cuda.cuda_nvtx
         cuda.cuda_cccl
+        cuda.cuda_profiler_api
         pkgs.ffmpeg
         pkgs.curl
+        pkgs.libjpeg
+        pkgs.hwloc
+        pkgs.liburing
       ];
 
       cmakeFlags = [
@@ -65,10 +69,14 @@ let
       '';
 
       # Upstream ships no install() rules; the build tree is the product.
+      # The apps link the engine's shared libraries from lib/ through an
+      # $ORIGIN/../lib runpath.
       installPhase = ''
         runHook preInstall
         install -Dm755 apps/ninfer       $out/bin/ninfer
         install -Dm755 apps/ninfer-serve $out/bin/ninfer-serve
+        mkdir -p $out/lib
+        cp -P lib/*.so* $out/lib/
         runHook postInstall
       '';
 
@@ -88,31 +96,37 @@ let
   #
   #   docker run -d --name ninfer --device nvidia.com/gpu=all \
   #     -v /path/to/qwen3_8_27b.ninfer:/models/model.ninfer:ro \
-  #     -p 8080:8080 ninfer:latest
+  #     -p 8080:8080 oci.garvey.sh/ninfer:<tag>
   #
   # --max-context is 8192 by default, which is too small to hold pi's tool
   # schemas — the agent gets a 400 context_length_exceeded before it says
   # anything. 128k costs 8.46 GiB of KV cache and leaves ~5 GiB of the
   # 5090's VRAM free; ~192k is the wall for bf16 KV. Cold prefill runs at
   # ~2650 tok/s, so a full 128k prompt is ~50 s to first token.
-  # --kv-capacity auto keeps 1 GiB of sizing headroom.
+  # The engine reads only v3 artifacts; upstream's
+  # tools/upgrade_ninfer_v2_to_v3.py converts an older download.
   dockerImageFor = system:
     let
       pkgs = pkgsFor system;
-    in
-    pkgs.dockerTools.buildLayeredImage {
-      name = "ninfer";
-      tag = "latest";
-
-      contents = pkgs.buildEnv {
+      ninfer = ninferFor system;
+      imageRoot = pkgs.buildEnv {
         name = "image-root";
         paths = [
-          (ninferFor system)
+          ninfer
           pkgs.cacert
           pkgs.busybox
         ];
         pathsToLink = [ "/bin" "/etc" "/share" ];
       };
+    in
+    # Pushed as oci.garvey.sh/ninfer:<tag>, the tag being the package version
+    # plus the image root's store hash, so a rebuild with new contents gets a
+    # new tag.
+    pkgs.dockerTools.buildLayeredImage {
+      name = "ninfer";
+      tag = "${ninfer.version}-${builtins.substring 11 7 imageRoot.outPath}";
+
+      contents = imageRoot;
 
       fakeRootCommands = ''
         mkdir -p /models /tmp
@@ -130,8 +144,6 @@ let
           "8080"
           "--max-context"
           "131072"
-          "--kv-capacity"
-          "auto"
         ];
         ExposedPorts = { "8080/tcp" = { }; };
         Volumes = { "/models" = { }; };
