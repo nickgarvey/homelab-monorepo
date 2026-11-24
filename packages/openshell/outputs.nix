@@ -1,5 +1,4 @@
-# OpenShell v0.1.8 built from source with the IPv6 policy-DNS patch
-# (patches/openshell-ipv6-policy-dns.patch) and the supervisor template-labels
+# OpenShell v0.1.10 built from source with the supervisor template-labels
 # patch (patches/openshell-supervisor-template-labels.patch): the CLI, and the
 # gateway, supervisor and sandbox-runtime images that k8s/vendor/openshell runs.
 # nixpkgs packages only the CLI, at an older release (0.0.x) that cannot talk
@@ -9,31 +8,24 @@ let
   pkgs = import nixpkgs { inherit system; };
   inherit (pkgs) lib;
 
-  version = "0.1.8";
-
-  # Upstream's policy DNS (still at v0.1.8) answers every AAAA query with
-  # NODATA, so no sandbox in this IPv6-only cluster could resolve a name
-  # (NVIDIA/OpenShell#3702, rebased; see the patch header). agents/outputs.nix checks it is
-  # applied.
-  patch = ../../patches/openshell-ipv6-policy-dns.patch;
+  version = "0.1.10";
 
   # Upstream's Kubernetes driver puts the sandbox template's labels only on the
   # workload pod, never on the supervisor pod that holds the SPIFFE identity,
   # where the openshell-sandboxes ClusterSPIFFEID (k8s/vendor/spire/values.yaml)
   # reads the agent type. This copies them over, under the driver's own labels
-  # (see the patch header). agents/outputs.nix gives it a deadline. Applies on
-  # top of the #3702 patch.
+  # (see the patch header). agents/outputs.nix gives it a deadline.
   labelsPatch = ../../patches/openshell-supervisor-template-labels.patch;
 
   src = pkgs.applyPatches {
     name = "openshell-${version}-src";
     src = pkgs.fetchFromGitHub {
-      owner = "NVIDIA";
-      repo = "OpenShell";
+      owner = "ai-openshell";
+      repo = "openshell";
       tag = "v${version}";
-      hash = "sha256-+3AYKxzdyAcqFUx0roWNRIYCrqeIfGHFjmHB0Eaurkg=";
+      hash = "sha256-BgrOjmHlsUjO4m22OMfq1c4Y6MTm+V4E6bNL3lo7m+g=";
     };
-    patches = [ patch labelsPatch ];
+    patches = [ labelsPatch ];
     # The workspace's crates are versioned 0.0.0; release builds stamp it.
     postPatch = ''
       substituteInPlace Cargo.toml \
@@ -44,7 +36,7 @@ let
   cargoDeps = pkgs.rustPlatform.fetchCargoVendor {
     inherit src;
     name = "openshell-${version}";
-    hash = "sha256-8vSVZ693nrVw+G1oHKDApi8j/evkK0ipn/wlfTlQ138=";
+    hash = "sha256-HGM/ap24xukZWfbvf8V3mvYu0V4heLt8W/dXiMnGgYs=";
   };
 
   common = {
@@ -81,7 +73,9 @@ let
       "-p" "openshell-gateway" "--bin" "openshell-gateway"
       "-p" "openshell-supervisor" "--bin" "openshell-supervisor"
     ];
-    # The patched crates' own tests, which include the patches'.
+    # The patched crate's tests (driver-kubernetes, which include the patch's),
+    # and those of the IPv6 policy DNS this cluster depends on (core,
+    # supervisor-network).
     cargoTestFlags = [
       "-p" "openshell-core" "-p" "openshell-supervisor-network"
       "-p" "openshell-driver-kubernetes"
@@ -90,11 +84,15 @@ let
     # root store even for plain HTTP; the build sandbox has none of its own.
     nativeCheckInputs = [ pkgs.cacert ];
     # Tests the build sandbox cannot run: the filesystem preflight ones exec
-    # /bin/sleep and the like, and two proxy ones resolve dns.google.
+    # /bin/sleep and the like, two proxy ones resolve dns.google, and the
+    # request-trace ones bind a non-loopback IPv4 address, which the sandbox
+    # lacks.
     checkFlags = [
       "--skip=e2fsprogs::tests::filesystem_preflight_"
       "--skip=proxy::tests::test_forward_public_ip_allowed_without_allowed_ips"
       "--skip=proxy::tests::test_resolve_check_allowed_ips_rejects_outside_allowlist"
+      "--skip=proxy::tests::request_trace::shared_proxy_startup_registers_correlation_and_terminal_errors"
+      "--skip=proxy::tests::request_trace::inspected_forward_"
     ];
   });
 
@@ -186,7 +184,8 @@ let
   };
   # Unpacks each image and checks what the chart and the Kubernetes driver rely
   # on: the entrypoint exists and is executable, the user, the sandbox binary
-  # is a static file of its own, the supervisor takes the patch's flag and
+  # is a static file of its own, the supervisor has IPv6 policy DNS (the
+  # --policy-dns-ipv6-egress flag) and
   # trusts the root.
   # The supervisor runs from the unpacked image but loads its libraries
   # (aws-lc among them) from their store paths, so the test depends on
@@ -226,7 +225,7 @@ let
       expect supervisor .Entrypoint '["/openshell-supervisor"]'
       supervisor=$(executable supervisor /openshell-supervisor)
       "$supervisor" --help | grep -q -- --policy-dns-ipv6-egress \
-        || { echo "supervisor: no --policy-dns-ipv6-egress; is the patch applied?"; exit 1; }
+        || { echo "supervisor: no --policy-dns-ipv6-egress; sandboxes cannot resolve names in an IPv6-only cluster"; exit 1; }
       # Token grants verify the token endpoint against SSL_CERT_FILE, which
       # must hold the root.
       cafile=$(jq -r '.Env[] | select(startswith("SSL_CERT_FILE=")) | ltrimstr("SSL_CERT_FILE=")' supervisor/config.json)

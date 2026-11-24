@@ -1,27 +1,25 @@
 # openshell
 
-NVIDIA OpenShell gateway. The chart render and its IPv6 patch are in
-`vendor/openshell/`; the Sandbox CRD and controller are `vendor/agent-sandbox/`.
-The agents that run on it, and how to start them, are in the repo root's
-`agents/`.
+OpenShell gateway (github.com/ai-openshell/openshell). The chart render and
+its kustomization are in `vendor/openshell/`; the Sandbox CRD and controller
+are `vendor/agent-sandbox/`. The agents that run on it, and how to start them,
+are in the repo root's `agents/`.
 
 The gateway, supervisor and sandbox runtime are our own builds of the chart's
-version with NVIDIA/OpenShell#3702 (IPv6 policy DNS egress) applied, from the
-repo root's `packages/openshell/` and `patches/openshell-ipv6-policy-dns.patch`,
-pushed to `oci.garvey.sh/openshell/` and pinned by digest in
-`vendor/openshell/values.yaml`. Upstream answers every AAAA query in a sandbox
-with NODATA, so in this IPv6-only cluster no sandbox could resolve a name. Go
-back to the chart's images when a release includes #3702 (nix-lNoiG; the
-agents/ build fails after 2026-12-01 while the patch remains). With #3702 the supervisor
-logs "Policy DNS IPv6 egress enabled (requested auto, route state
-ipv6_only)" at start. Still broken upstream: a policy endpoint given as an
-IPv6 literal fails (the supervisor writes the CONNECT host unbracketed), so
-use hostnames. The build also carries
+version, from the repo root's `packages/openshell/`, pushed to
+`oci.garvey.sh/openshell/` and pinned by digest in
+`vendor/openshell/values.yaml`. The build carries
 `patches/openshell-supervisor-template-labels.patch`, which puts the sandbox
-template's labels on the supervisor pod too ("Provider token grants"). The
-supervisor image also trusts the root (pki/root.crt), for token endpoints with
-cluster-ca certificates, so the supervisor stays our build after the patches
-are gone.
+template's labels on the supervisor pod too ("Provider token grants"); the
+agents/ build fails after 2026-12-01 while it remains. The supervisor image
+also trusts the root (pki/root.crt), for token endpoints with cluster-ca
+certificates, so the supervisor stays our build after the patch is gone.
+
+Sandboxes resolve names through the supervisor's policy DNS, which answers
+AAAA queries only when the supervisor pod is IPv6-only, as here; the
+supervisor logs "Policy DNS IPv6 egress enabled (requested auto, route state
+ipv6_only)" at start. Give policy endpoints as hostnames; IPv6 literals are
+untested here.
 
 ## Apply order (from `k8s/`)
 
@@ -194,8 +192,7 @@ socket when its supervisor pod is next created (a stop and start).
 
 Bump `VERSION` in `vendor/openshell/chart.env` and the version and hashes in
 the repo root's `packages/openshell/outputs.nix` to match (rebasing
-`patches/openshell-ipv6-policy-dns.patch` and
-`patches/openshell-supervisor-template-labels.patch` while they are carried),
+`patches/openshell-supervisor-template-labels.patch` while it is carried),
 and re-render.
 Then build and push the three images and pin their digests in
 `vendor/openshell/values.yaml`, and the gateway's in `jwt-keys-job.yaml`

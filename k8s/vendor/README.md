@@ -14,7 +14,7 @@ on top of a component (issuers, StorageClasses, policies) live in
 | cert-manager | chart, `cert-manager/chart.env` | v1.20.1 | `kubectl apply -f vendor/cert-manager/cert-manager.yaml` |
 | longhorn | chart, `longhorn/chart.env`, plus `kustomization.yaml` (no support-bundle cluster-admin binding) | 1.11.1 | `kubectl apply -k vendor/longhorn` |
 | ceph-csi-rbd | chart, `ceph-csi-rbd/chart.env` | 3.17.1 | `kubectl apply -f vendor/ceph-csi-rbd/ceph-csi-rbd.yaml` |
-| openshell | chart, `openshell/chart.env` (OCI), plus `kustomization.yaml` (IPv6 listeners); see `manifests/openshell/README.md` | 0.1.3 chart; our images with NVIDIA/OpenShell#3702 and the supervisor template-labels patch (`packages/openshell`), pinned in `values.yaml` | `kubectl apply -k vendor/openshell` |
+| openshell | chart, `openshell/chart.env` (OCI), plus `kustomization.yaml`; see `manifests/openshell/README.md` | 0.1.10 chart; our images with the supervisor template-labels patch (`packages/openshell`), pinned in `values.yaml` | `kubectl apply -k vendor/openshell` |
 | prometheus-operator | static, `prometheus-operator/source.env`, plus `kustomization.yaml` (own namespace, control-plane pinning) | v0.90.1 | `kubectl apply --server-side -k vendor/prometheus-operator` |
 | csi-smb | static, `deploy/<v>/` of kubernetes-csi/csi-driver-smb (rbac, driver, controller, node) | v1.16.0 | `kubectl apply -f vendor/csi-smb/install.yaml` |
 | intel-gpu-plugin | static, `deployments/gpu_plugin/base/intel-gpu-plugin.yaml` of intel/intel-device-plugins-for-kubernetes | 0.31.0 | `kubectl apply -f vendor/intel-gpu-plugin/daemonset.yaml` |
@@ -35,8 +35,7 @@ Notes on the apply commands:
 - **plugin-barman-cloud** goes after cloudnative-pg and cert-manager (it creates
   cert-manager Certificates in `cnpg-system`).
 - **openshell** goes through its `kustomization.yaml`, which sets the namespace
-  the chart leaves off and moves the gateway's listeners from `0.0.0.0` to
-  `[::]` with env vars (the chart has no value for the bind address).
+  the chart leaves off and adds what the chart has no values for.
 - On a bare cluster, apply cilium first (it is the CNI), and each component
   before the `manifests/` resources that use its CRDs.
 

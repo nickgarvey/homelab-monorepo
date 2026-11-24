@@ -35,9 +35,10 @@ declarations fail to evaluate.
 A sandbox has no network access of its own. In OpenShell 0.1 the policy grants
 none, and each provider attached to the sandbox adds the endpoints in its
 profile. The sandbox supervisor's proxy makes the upstream connection, and
-only for the binaries the profile names. This needs our OpenShell build with
-NVIDIA/OpenShell#3702 (`packages/openshell`): stock OpenShell cannot resolve
-names in an IPv6-only cluster. Give endpoints as hostnames, not IPv6 literals.
+only for the binaries the profile names. Names resolve through the
+supervisor's policy DNS, which answers AAAA queries in this IPv6-only cluster
+(`k8s/vendor/openshell/values.yaml`). Give endpoints as hostnames, not IPv6
+literals.
 
 ## Publishing: `agents-apply`
 

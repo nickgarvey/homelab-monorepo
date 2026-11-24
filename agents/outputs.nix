@@ -12,23 +12,10 @@ let
   lib = nixpkgs.lib;
 
   # The gateway, supervisor and sandbox runtime are our own builds of OpenShell
-  # with NVIDIA/OpenShell#3702 applied (packages/openshell, nix-lNoiG); without
-  # it no sandbox can resolve a name in this IPv6-only cluster. Carrying the
-  # patch is meant to be temporary.
-  patched = builtins.pathExists ../patches/openshell-ipv6-policy-dns.patch;
-  pinExpired = patched
-    && lib.max self.lastModified nixpkgs.lastModified >= 1796083200; # 2026-12-01T00:00:00Z
-  checkPin = lib.throwIf pinExpired ''
-    patches/openshell-ipv6-policy-dns.patch (NVIDIA/OpenShell#3702, nix-lNoiG)
-    expired on 2026-12-01. Move to a release that includes #3702, drop the
-    patch and this check in agents/outputs.nix, or push the deadline out
-    deliberately.
-  '';
-
-  # Our OpenShell build also copies the sandbox template's labels onto the
+  # (packages/openshell), which copy the sandbox template's labels onto the
   # supervisor pod, so its SPIFFE ID can carry the agent type
-  # (patches/openshell-supervisor-template-labels.patch, nix-q7Q31). Meant to
-  # be temporary too, until upstream takes it.
+  # (patches/openshell-supervisor-template-labels.patch, nix-q7Q31). Carrying
+  # the patch is meant to be temporary, until upstream takes it.
   labelsPatched = builtins.pathExists ../patches/openshell-supervisor-template-labels.patch;
   labelsPinExpired = labelsPatched
     && lib.max self.lastModified nixpkgs.lastModified >= 1796083200; # 2026-12-01T00:00:00Z
@@ -38,7 +25,7 @@ let
     supervisor pod, drop the patch and this check in agents/outputs.nix, or
     push the deadline out deliberately.
   '';
-  checkPins = drv: checkLabelsPin (checkPin drv);
+  checkPins = checkLabelsPin;
 
   # The provider profile's binaries entry must be the exe that opens the
   # connection: the node that pi's wrapper execs, resolved past symlinks.

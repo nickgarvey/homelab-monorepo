@@ -82,27 +82,36 @@ gatewayConfig:
       - agents.garvey.sh/type
 
 # The gateway, supervisor and sandbox runtime are our own builds of the chart's
-# version with two patches: packages/openshell, pushed to
-# oci.garvey.sh/openshell/<name>:<tag> and pinned by digest.
-# NVIDIA/OpenShell#3702 (IPv6 policy DNS egress): upstream's policy DNS
-# answers every AAAA query with NODATA, so in this IPv6-only cluster no sandbox
-# could resolve any name (nix-lNoiG). The template-labels patch copies the
-# sandbox template's labels onto the supervisor pod, for its SPIFFE ID
-# (nix-q7Q31). The supervisor image's CA bundle also holds the root (pki/root.crt),
-# for token_grant endpoints such as agent-token (manifests/agents/), so it
-# stays our build even without patches. Drop each patch (and its deadline
-# check in agents/outputs.nix) once a release includes it. A rebuild changes
-# the digests: push it and update all three here, and the gateway's in
-# manifests/openshell/jwt-keys-job.yaml.
+# version with one patch: packages/openshell, pushed to
+# oci.garvey.sh/openshell/<name>:<tag> and pinned by digest. The
+# template-labels patch copies the sandbox template's labels onto the
+# supervisor pod, for its SPIFFE ID (nix-q7Q31). The supervisor image's CA
+# bundle also holds the root (pki/root.crt), for token_grant endpoints such as
+# agent-token (manifests/agents/), so it stays our build even without the
+# patch. Drop the patch (and its deadline check in agents/outputs.nix) once a
+# release includes it. A rebuild changes the digests: push it and update all
+# three here, and the gateway's in manifests/openshell/jwt-keys-job.yaml.
+#
+# Sandboxes resolve names through their supervisor's policy DNS, which answers
+# AAAA queries only with IPv6 egress on. Its default, auto, turns it on when
+# the supervisor pod has an IPv6 default route and no IPv4 one, as every pod
+# in this cluster does; the supervisor logs "Policy DNS IPv6 egress enabled
+# (requested auto, route state ipv6_only)" at start.
 global:
   image:
     registry: oci.garvey.sh
 gateway:
+  # The gRPC, health and metrics listeners; the chart's 0.0.0.0 accepts
+  # nothing in this IPv6-only cluster.
+  listenAddress: "::"
   image:
+    repository: openshell/gateway
     digest: sha256:12ddebc95037705d4c52a12d6e75bc3b5840e978de111dcb9ae3f6ce66adbfe1
 supervisor:
   image:
+    repository: openshell/supervisor
     digest: sha256:d844d1fb2a60d1c5f8a35aa1a3a90021f2144b77aac4d71d0d76c0a5d8baf923
 sandboxRuntime:
   image:
+    repository: openshell/sandbox
     digest: sha256:dea86afd467c9e7e23e614e3e6b7344942599fd702e658992a8742071ccab2ca

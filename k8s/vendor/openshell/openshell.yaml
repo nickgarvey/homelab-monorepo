@@ -5,7 +5,7 @@ kind: Namespace
 metadata:
   name: openshell
 ---
-# Source: helm-chart/templates/networkpolicy.yaml
+# Source: openshell/templates/networkpolicy.yaml
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 # NetworkPolicy restricting SSH ingress on sandbox pods to the gateway pod.
@@ -19,10 +19,10 @@ metadata:
   name: openshell-sandbox-ssh
   namespace: openshell
   labels:
-    helm.sh/chart: helm-chart-0.1.8
+    helm.sh/chart: openshell-0.1.10
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.8"
+    app.kubernetes.io/version: "0.1.10"
     app.kubernetes.io/managed-by: Helm
 spec:
   podSelector:
@@ -44,7 +44,7 @@ spec:
           port: 2222
 
 ---
-# Source: helm-chart/templates/serviceaccount.yaml
+# Source: openshell/templates/serviceaccount.yaml
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 apiVersion: v1
@@ -52,28 +52,28 @@ kind: ServiceAccount
 metadata:
   name: openshell
   labels:
-    helm.sh/chart: helm-chart-0.1.8
+    helm.sh/chart: openshell-0.1.10
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.8"
+    app.kubernetes.io/version: "0.1.10"
     app.kubernetes.io/managed-by: Helm
 
 ---
-# Source: helm-chart/templates/serviceaccount.yaml
+# Source: openshell/templates/serviceaccount.yaml
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: openshell-sandbox
   namespace: openshell
   labels:
-    helm.sh/chart: helm-chart-0.1.8
+    helm.sh/chart: openshell-0.1.10
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.8"
+    app.kubernetes.io/version: "0.1.10"
     app.kubernetes.io/managed-by: Helm
 
 ---
-# Source: helm-chart/templates/gateway-config.yaml
+# Source: openshell/templates/gateway-config.yaml
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -82,10 +82,10 @@ kind: ConfigMap
 metadata:
   name: openshell-config
   labels:
-    helm.sh/chart: helm-chart-0.1.8
+    helm.sh/chart: openshell-0.1.10
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.8"
+    app.kubernetes.io/version: "0.1.10"
     app.kubernetes.io/managed-by: Helm
 data:
   gateway.toml: |
@@ -116,14 +116,15 @@ data:
     [openshell.drivers.kubernetes.resource_admission]
     enabled = true
     [openshell.gateway]
-    bind_address = "0.0.0.0:8080"
+    bind_address = "[::]:8080"
     compute_driver = "kubernetes"
     disable_tls = false
+    enable_gateway_service_routing = false
     enable_loopback_service_http = true
     enable_websocket_tunnel = false
-    health_bind_address = "0.0.0.0:8081"
+    health_bind_address = "[::]:8081"
     log_level = "info"
-    metrics_bind_address = "0.0.0.0:9090"
+    metrics_bind_address = "[::]:9090"
     name = "openshell"
     policy_validation_failure_mode = "fail_closed"
     server_sans = ["openshell", "openshell.openshell.svc", "openshell.openshell.svc.cluster.local", "localhost", "openshell.localhost", "*.openshell.localhost", "host.docker.internal", "gateway.openshell.k8s.home.garvey.sh"]
@@ -151,7 +152,7 @@ data:
     
 
 ---
-# Source: helm-chart/templates/clusterrole.yaml
+# Source: openshell/templates/clusterrole.yaml
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -160,10 +161,10 @@ kind: ClusterRole
 metadata:
   name: openshell-node-reader-openshell
   labels:
-    helm.sh/chart: helm-chart-0.1.8
+    helm.sh/chart: openshell-0.1.10
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.8"
+    app.kubernetes.io/version: "0.1.10"
     app.kubernetes.io/managed-by: Helm
 rules:
   - apiGroups: ["node.k8s.io"]
@@ -200,7 +201,7 @@ rules:
       - get
 
 ---
-# Source: helm-chart/templates/clusterrolebinding.yaml
+# Source: openshell/templates/clusterrolebinding.yaml
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -209,10 +210,10 @@ kind: ClusterRoleBinding
 metadata:
   name: openshell-node-reader-openshell
   labels:
-    helm.sh/chart: helm-chart-0.1.8
+    helm.sh/chart: openshell-0.1.10
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.8"
+    app.kubernetes.io/version: "0.1.10"
     app.kubernetes.io/managed-by: Helm
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -224,7 +225,7 @@ subjects:
     namespace: openshell
 
 ---
-# Source: helm-chart/templates/peer-role.yaml
+# Source: openshell/templates/peer-role.yaml
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 apiVersion: rbac.authorization.k8s.io/v1
@@ -233,10 +234,10 @@ metadata:
   name: openshell-peer
   namespace: openshell
   labels:
-    helm.sh/chart: helm-chart-0.1.8
+    helm.sh/chart: openshell-0.1.10
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.8"
+    app.kubernetes.io/version: "0.1.10"
     app.kubernetes.io/managed-by: Helm
 rules:
   # Gateway peer identity: TokenReview authenticates the projected token, then
@@ -250,7 +251,7 @@ rules:
       - get
 
 ---
-# Source: helm-chart/templates/role.yaml
+# Source: openshell/templates/role.yaml
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 apiVersion: rbac.authorization.k8s.io/v1
@@ -259,10 +260,10 @@ metadata:
   name: openshell-sandbox
   namespace: openshell
   labels:
-    helm.sh/chart: helm-chart-0.1.8
+    helm.sh/chart: openshell-0.1.10
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.8"
+    app.kubernetes.io/version: "0.1.10"
     app.kubernetes.io/managed-by: Helm
 rules:
   - apiGroups:
@@ -316,17 +317,17 @@ rules:
     verbs: ["create", "get"]
 
 ---
-# Source: helm-chart/templates/peer-role.yaml
+# Source: openshell/templates/peer-role.yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: openshell-peer
   namespace: openshell
   labels:
-    helm.sh/chart: helm-chart-0.1.8
+    helm.sh/chart: openshell-0.1.10
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.8"
+    app.kubernetes.io/version: "0.1.10"
     app.kubernetes.io/managed-by: Helm
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -338,7 +339,7 @@ subjects:
     namespace: openshell
 
 ---
-# Source: helm-chart/templates/rolebinding.yaml
+# Source: openshell/templates/rolebinding.yaml
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 apiVersion: rbac.authorization.k8s.io/v1
@@ -347,10 +348,10 @@ metadata:
   name: openshell-sandbox
   namespace: openshell
   labels:
-    helm.sh/chart: helm-chart-0.1.8
+    helm.sh/chart: openshell-0.1.10
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.8"
+    app.kubernetes.io/version: "0.1.10"
     app.kubernetes.io/managed-by: Helm
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -362,7 +363,7 @@ subjects:
     namespace: openshell
 
 ---
-# Source: helm-chart/templates/peer-service.yaml
+# Source: openshell/templates/peer-service.yaml
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 apiVersion: v1
@@ -370,10 +371,10 @@ kind: Service
 metadata:
   name: openshell-peer
   labels:
-    helm.sh/chart: helm-chart-0.1.8
+    helm.sh/chart: openshell-0.1.10
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.8"
+    app.kubernetes.io/version: "0.1.10"
     app.kubernetes.io/managed-by: Helm
 spec:
   clusterIP: None
@@ -389,7 +390,7 @@ spec:
     app.kubernetes.io/instance: openshell
 
 ---
-# Source: helm-chart/templates/service.yaml
+# Source: openshell/templates/service.yaml
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -398,10 +399,10 @@ kind: Service
 metadata:
   name: openshell
   labels:
-    helm.sh/chart: helm-chart-0.1.8
+    helm.sh/chart: openshell-0.1.10
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.8"
+    app.kubernetes.io/version: "0.1.10"
     app.kubernetes.io/managed-by: Helm
 spec:
   type: ClusterIP
@@ -420,7 +421,7 @@ spec:
     app.kubernetes.io/instance: openshell
 
 ---
-# Source: helm-chart/templates/deployment.yaml
+# Source: openshell/templates/deployment.yaml
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 apiVersion: apps/v1
@@ -428,10 +429,10 @@ kind: Deployment
 metadata:
   name: openshell
   labels:
-    helm.sh/chart: helm-chart-0.1.8
+    helm.sh/chart: openshell-0.1.10
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.8"
+    app.kubernetes.io/version: "0.1.10"
     app.kubernetes.io/managed-by: Helm
 spec:
   replicas: 1
@@ -447,12 +448,12 @@ spec:
         # this annotation a `helm upgrade` that only mutates the ConfigMap would
         # leave pods running with stale config. The operator-owned additional-CA
         # ConfigMap is not checksummed; restart the gateway after changing its data.
-        checksum/gateway-config: 1f21322f962aa2edfa81ba7787de552898b2f607c0f46bf0ebc976e1a3792be5
+        checksum/gateway-config: 61a539366c6ceb858027feaa6d08e549a4e7e5074c3632f4833aaf4001b912ab
       labels:
-        helm.sh/chart: helm-chart-0.1.8
+        helm.sh/chart: openshell-0.1.10
         app.kubernetes.io/name: openshell
         app.kubernetes.io/instance: openshell
-        app.kubernetes.io/version: "0.1.8"
+        app.kubernetes.io/version: "0.1.10"
         app.kubernetes.io/managed-by: Helm
     spec:
       terminationGracePeriodSeconds: 30
@@ -524,8 +525,7 @@ spec:
                   key: uri
             # Most gateway settings live in the ConfigMap-backed TOML file
             # mounted at /etc/openshell/gateway.toml. Secret-bearing settings use
-            # env vars that the TOML references by name. Some process-level
-            # settings consumed by libraries outside gateway code also remain here.
+            # env vars that the TOML references by name.
             # The gateway stages normalized, content-addressed supervisor trust
             # artifacts under its XDG state directory. Keep that state on a
             # dedicated writable volume for both StatefulSet and Deployment modes.
@@ -634,72 +634,72 @@ spec:
           emptyDir: {}
 
 ---
-# Source: helm-chart/templates/backend-tls-policy.yaml
+# Source: openshell/templates/backend-tls-policy.yaml
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 ---
-# Source: helm-chart/templates/credential-secrets-namespace.yaml
+# Source: openshell/templates/credential-secrets-namespace.yaml
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 ---
-# Source: helm-chart/templates/credential-storage-key-encryption-key-secret.yaml
+# Source: openshell/templates/credential-storage-key-encryption-key-secret.yaml
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 ---
-# Source: helm-chart/templates/hpa.yaml
+# Source: openshell/templates/hpa.yaml
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 ---
-# Source: helm-chart/templates/route.yaml
+# Source: openshell/templates/route.yaml
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 ---
-# Source: helm-chart/templates/statefulset.yaml
+# Source: openshell/templates/statefulset.yaml
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 ---
-# Source: helm-chart/templates/supervisor-hpa.yaml
+# Source: openshell/templates/supervisor-hpa.yaml
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 ---
-# Source: helm-chart/templates/supervisor-networkpolicy.yaml
+# Source: openshell/templates/supervisor-networkpolicy.yaml
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 ---
-# Source: helm-chart/templates/supervisor-pdb.yaml
+# Source: openshell/templates/supervisor-pdb.yaml
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 ---
-# Source: helm-chart/templates/supervisor-service.yaml
+# Source: openshell/templates/supervisor-service.yaml
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 ---
-# Source: helm-chart/templates/supervisor-token-secret.yaml
+# Source: openshell/templates/supervisor-token-secret.yaml
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 ---
-# Source: helm-chart/templates/cert-manager-pki.yaml
+# Source: openshell/templates/cert-manager-pki.yaml
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: openshell-ca
   namespace: openshell
   labels:
-    helm.sh/chart: helm-chart-0.1.8
+    helm.sh/chart: openshell-0.1.10
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.8"
+    app.kubernetes.io/version: "0.1.10"
     app.kubernetes.io/managed-by: Helm
 spec:
   isCA: true
@@ -714,7 +714,7 @@ spec:
     group: cert-manager.io
 
 ---
-# Source: helm-chart/templates/cert-manager-pki.yaml
+# Source: openshell/templates/cert-manager-pki.yaml
 # Internal server certificate — always issued by the chart’s own CA with
 # internal SANs.  Supervisors connect via internal hostnames and verify
 # this cert against the chart CA they already trust.
@@ -724,10 +724,10 @@ metadata:
   name: openshell-server
   namespace: openshell
   labels:
-    helm.sh/chart: helm-chart-0.1.8
+    helm.sh/chart: openshell-0.1.10
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.8"
+    app.kubernetes.io/version: "0.1.10"
     app.kubernetes.io/managed-by: Helm
 spec:
   secretName: "openshell-server-tls"
@@ -766,17 +766,17 @@ spec:
     group: cert-manager.io
 
 ---
-# Source: helm-chart/templates/cert-manager-pki.yaml
+# Source: openshell/templates/cert-manager-pki.yaml
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: openshell-client
   namespace: openshell
   labels:
-    helm.sh/chart: helm-chart-0.1.8
+    helm.sh/chart: openshell-0.1.10
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.8"
+    app.kubernetes.io/version: "0.1.10"
     app.kubernetes.io/managed-by: Helm
 spec:
   secretName: "openshell-client-tls"
@@ -796,7 +796,7 @@ spec:
     group: cert-manager.io
 
 ---
-# Source: helm-chart/templates/cert-manager-pki.yaml
+# Source: openshell/templates/cert-manager-pki.yaml
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 apiVersion: cert-manager.io/v1
@@ -805,26 +805,26 @@ metadata:
   name: openshell-selfsigned
   namespace: openshell
   labels:
-    helm.sh/chart: helm-chart-0.1.8
+    helm.sh/chart: openshell-0.1.10
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.8"
+    app.kubernetes.io/version: "0.1.10"
     app.kubernetes.io/managed-by: Helm
 spec:
   selfSigned: {}
 
 ---
-# Source: helm-chart/templates/cert-manager-pki.yaml
+# Source: openshell/templates/cert-manager-pki.yaml
 apiVersion: cert-manager.io/v1
 kind: Issuer
 metadata:
   name: openshell-ca-issuer
   namespace: openshell
   labels:
-    helm.sh/chart: helm-chart-0.1.8
+    helm.sh/chart: openshell-0.1.10
     app.kubernetes.io/name: openshell
     app.kubernetes.io/instance: openshell
-    app.kubernetes.io/version: "0.1.8"
+    app.kubernetes.io/version: "0.1.10"
     app.kubernetes.io/managed-by: Helm
 spec:
   ca:
