@@ -37,7 +37,9 @@
     powerManagement.finegrained = false;
     open = true;
     nvidiaSettings = true;
-    package = config.boot.kernelPackages.nvidiaPackages.stable;
+    # ninfer calls cudaStreamGetDevice while capturing CUDA graphs, which the
+    # 595 (stable) driver rejects; upstream runs a 617 driver.
+    package = config.boot.kernelPackages.nvidiaPackages.latest;
   };
 
   # Exposes the GPU to containers as the CDI device `nvidia.com/gpu=all`
