@@ -1,5 +1,6 @@
 # OpenShell v0.1.10 built from source with the supervisor template-labels
-# patch (patches/openshell-supervisor-template-labels.patch): the CLI, and the
+# patch (patches/openshell-supervisor-template-labels.patch) and the Postgres
+# TLS reload patch (patches/openshell-postgres-tls-reload.patch): the CLI, and the
 # gateway, supervisor and sandbox-runtime images that k8s/vendor/openshell runs.
 # nixpkgs packages only the CLI, at an older release (0.0.x) that cannot talk
 # to a 0.1 gateway. Imported by packages/outputs.nix.
@@ -17,6 +18,12 @@ let
   # (see the patch header).
   labelsPatch = ../../patches/openshell-supervisor-template-labels.patch;
 
+  # SQLx 0.9 reads the database URL's TLS files once and keeps them, so the
+  # gateway would present its starting client certificate (24h, from
+  # k8s/manifests/openshell/postgres-client-certificate.yaml) past its expiry.
+  # This reparses the URL every five minutes (see the patch header).
+  pgTlsPatch = ../../patches/openshell-postgres-tls-reload.patch;
+
   src = pkgs.applyPatches {
     name = "openshell-${version}-src";
     src = pkgs.fetchFromGitHub {
@@ -25,7 +32,7 @@ let
       tag = "v${version}";
       hash = "sha256-BgrOjmHlsUjO4m22OMfq1c4Y6MTm+V4E6bNL3lo7m+g=";
     };
-    patches = [ labelsPatch ];
+    patches = [ labelsPatch pgTlsPatch ];
     # The workspace's crates are versioned 0.0.0; release builds stamp it.
     postPatch = ''
       substituteInPlace Cargo.toml \
@@ -73,16 +80,22 @@ let
       "-p" "openshell-gateway" "--bin" "openshell-gateway"
       "-p" "openshell-supervisor" "--bin" "openshell-supervisor"
     ];
-    # The patched crate's tests (driver-kubernetes, which include the patch's),
-    # and those of the IPv6 policy DNS this cluster depends on (core,
+    # The patched crates' tests (driver-kubernetes and server, which include the
+    # patches'), and those of the IPv6 policy DNS this cluster depends on (core,
     # supervisor-network).
     cargoTestFlags = [
       "-p" "openshell-core" "-p" "openshell-supervisor-network"
       "-p" "openshell-driver-kubernetes"
+      "-p" "openshell-server"
     ];
     # The Kubernetes driver's client tests build a rustls client, which needs a
     # root store even for plain HTTP; the build sandbox has none of its own.
     nativeCheckInputs = [ pkgs.cacert ];
+    # A server test keeps its credential key under the default state directory,
+    # in $HOME, which the build sandbox does not have.
+    preCheck = ''
+      export HOME=$(mktemp -d)
+    '';
     # Tests the build sandbox cannot run: the filesystem preflight ones exec
     # /bin/sleep and the like, two proxy ones resolve dns.google, and the
     # request-trace ones bind a non-loopback IPv4 address, which the sandbox

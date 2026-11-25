@@ -192,7 +192,8 @@ socket when its supervisor pod is next created (a stop and start).
 
 Bump `VERSION` in `vendor/openshell/chart.env` and the version and hashes in
 the repo root's `packages/openshell/outputs.nix` to match (rebasing
-`patches/openshell-supervisor-template-labels.patch` while it is carried),
+`patches/openshell-supervisor-template-labels.patch` and
+`patches/openshell-postgres-tls-reload.patch` while they are carried),
 and re-render.
 Then build and push the three images and pin their digests in
 `vendor/openshell/values.yaml`, and the gateway's in `jwt-keys-job.yaml`

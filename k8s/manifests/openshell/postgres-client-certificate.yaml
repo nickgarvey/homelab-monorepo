@@ -18,8 +18,9 @@ spec:
     - client auth
     - digital signature
     - key encipherment
-  # Short lived: the gateway's connection pool reopens connections and reads
-  # the renewed files from the mounted Secret.
+  # Short lived: the gateway rereads these files from the mounted Secret every
+  # five minutes (patches/openshell-postgres-tls-reload.patch), and its new
+  # connections present the renewed certificate.
   duration: 24h
   renewBefore: 8h
   privateKey:

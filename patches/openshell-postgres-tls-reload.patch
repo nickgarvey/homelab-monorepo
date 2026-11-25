@@ -1,0 +1,202 @@
+Upstream:      OpenShell (github.com/ai-openshell/openshell):
+               crates/openshell-server/src/persistence/azure_workload_identity.rs,
+               postgres.rs
+Upstreamable:  yes
+How:           An issue and a PR against main: with sslcert/sslkey in
+               database_url, a gateway that outlives its client certificate
+               can no longer open Postgres connections (SQLx 0.9 caches the TLS
+               connector in PgConnectOptions), and the readiness probe fails.
+Written:       2026-11-25, against OpenShell v0.1.10 (SQLx 0.9.1)
+Last checked:  2026-11-25: main builds plain pools with From<PgPool>, which
+               never replaces the connect options
+Remove when:   a release reloads the database URL's TLS files, or SQLx stops
+               caching the connector across connections
+Applied by:    packages/openshell/outputs.nix
+
+Postgres: reread the database URL's TLS files every five minutes.
+SQLx 0.9 builds the TLS connector, reading sslcert, sslkey and sslrootcert, on
+the first connection a PgConnectOptions opens, and keeps it in that options
+value. A pool built from a URL therefore presents the client certificate it
+started with for as long as the process runs. Once that certificate expires,
+Postgres refuses every new connection ("certificate has expired") while the
+renewed one sits unread in the mounted Secret.
+
+The plain (non-Azure) pools now keep their URL. On acquire, at most once per
+interval, the URL is parsed again and installed with set_connect_options, so
+the next connection builds a new connector from the files on disk. Open
+connections are left alone. A URL that no longer parses keeps the current
+options and logs a warning. Unit tests cover the interval and the parse
+failure.
+
+
+diff --git a/crates/openshell-server/src/persistence/azure_workload_identity.rs b/crates/openshell-server/src/persistence/azure_workload_identity.rs
+index 10046fa..18f83d7 100644
+--- a/crates/openshell-server/src/persistence/azure_workload_identity.rs
++++ b/crates/openshell-server/src/persistence/azure_workload_identity.rs
+@@ -31,6 +31,11 @@ const CLOCK_SKEW: Duration = Duration::from_secs(30);
+ // SQLx exposes no notification for returned idle connections. Poll alongside
+ // credential acquisition so returned sessions can win without waiting for Entra.
+ const REUSE_POLL_INTERVAL: Duration = Duration::from_millis(10);
++// SQLx 0.9 reads sslcert, sslkey and sslrootcert once per PgConnectOptions and
++// caches the TLS connector built from them inside the options. A plain pool
++// reparses its URL this often, so the connections it opens afterwards read the
++// files again and present a renewed client certificate.
++const TLS_RELOAD_INTERVAL: Duration = Duration::from_secs(5 * 60);
+ 
+ fn config_error(message: &'static str) -> sqlx::Error {
+     sqlx::Error::Configuration(message.into())
+@@ -260,6 +265,14 @@ pub(super) fn validate_url(url: &str) -> Result<PgConnectOptions, sqlx::Error> {
+ pub(super) struct CredentialPool {
+     inner: PgPool,
+     identity: Option<Arc<AzureWorkloadIdentity>>,
++    tls_reload: Option<Arc<TlsReload>>,
++}
++
++/// The URL a plain pool was built from, and when to reparse it next.
++struct TlsReload {
++    url: String,
++    interval: Duration,
++    next: std::sync::Mutex<Instant>,
+ }
+ 
+ impl fmt::Debug for CredentialPool {
+@@ -267,6 +280,7 @@ impl fmt::Debug for CredentialPool {
+         formatter
+             .debug_struct("CredentialPool")
+             .field("azure", &self.identity.is_some())
++            .field("tls_reload", &self.tls_reload.is_some())
+             .finish_non_exhaustive()
+     }
+ }
+@@ -276,11 +290,57 @@ impl From<PgPool> for CredentialPool {
+         Self {
+             inner,
+             identity: None,
++            tls_reload: None,
+         }
+     }
+ }
+ 
+ impl CredentialPool {
++    /// A plain pool built from `url`, which it reparses every
++    /// [`TLS_RELOAD_INTERVAL`] so that renewed TLS files take effect.
++    pub(super) fn reloading(inner: PgPool, url: &str) -> Self {
++        Self::reloading_every(inner, url, TLS_RELOAD_INTERVAL)
++    }
++
++    fn reloading_every(inner: PgPool, url: &str, interval: Duration) -> Self {
++        Self {
++            inner,
++            identity: None,
++            tls_reload: Some(Arc::new(TlsReload {
++                url: url.to_owned(),
++                interval,
++                next: std::sync::Mutex::new(Instant::now() + interval),
++            })),
++        }
++    }
++
++    /// Once the interval has passed, installs connect options freshly parsed
++    /// from the URL, whose TLS connector is built (and the files read) on the
++    /// next connection attempt. Open connections are left as they are.
++    fn reload_tls(&self) {
++        let Some(reload) = &self.tls_reload else {
++            return;
++        };
++        let now = Instant::now();
++        {
++            // A concurrent caller is already reloading.
++            let Ok(mut next) = reload.next.try_lock() else {
++                return;
++            };
++            if now < *next {
++                return;
++            }
++            *next = now + reload.interval;
++        }
++        match reload.url.parse::<PgConnectOptions>() {
++            Ok(options) => self.inner.set_connect_options(options),
++            Err(error) => tracing::warn!(
++                %error,
++                "reparsing the database URL failed; keeping the current connect options"
++            ),
++        }
++    }
++
+     pub(super) fn azure(
+         options: PgPoolOptions,
+         connect: PgConnectOptions,
+@@ -293,12 +353,14 @@ impl CredentialPool {
+                 .max_lifetime(None)
+                 .connect_lazy_with(connect),
+             identity: Some(identity),
++            tls_reload: None,
+         }
+     }
+ 
+     pub(super) fn acquire(&self) -> BoxFuture<'_, Result<PoolConnection<Postgres>, sqlx::Error>> {
+         Box::pin(async move {
+             let Some(identity) = &self.identity else {
++                self.reload_tls();
+                 return self.inner.acquire().await;
+             };
+             let budget = self.inner.options().get_acquire_timeout();
+diff --git a/crates/openshell-server/src/persistence/azure_workload_identity_tests.rs b/crates/openshell-server/src/persistence/azure_workload_identity_tests.rs
+index 11c56cc..9bfe1ed 100644
+--- a/crates/openshell-server/src/persistence/azure_workload_identity_tests.rs
++++ b/crates/openshell-server/src/persistence/azure_workload_identity_tests.rs
+@@ -474,3 +474,38 @@ fn credential_unavailability_preserves_database_io_error_classification() {
+         PersistenceError::Unavailable(_)
+     ));
+ }
++
++#[tokio::test(start_paused = true)]
++async fn plain_pool_reparses_its_url_once_per_interval() {
++    let url = "postgres://openshell@localhost/openshell?sslmode=verify-full&sslcert=/nonexistent/tls.crt&sslkey=/nonexistent/tls.key";
++    let inner = PgPoolOptions::new().connect_lazy(url).unwrap();
++    let pool = CredentialPool::reloading_every(inner, url, Duration::from_secs(60));
++    let initial = pool.inner.connect_options();
++
++    pool.reload_tls();
++    assert!(
++        Arc::ptr_eq(&initial, &pool.inner.connect_options()),
++        "reparsed before the interval"
++    );
++
++    tokio::time::advance(Duration::from_secs(61)).await;
++    pool.reload_tls();
++    let reloaded = pool.inner.connect_options();
++    assert!(!Arc::ptr_eq(&initial, &reloaded), "not reparsed after the interval");
++
++    pool.reload_tls();
++    assert!(
++        Arc::ptr_eq(&reloaded, &pool.inner.connect_options()),
++        "reparsed twice within one interval"
++    );
++}
++
++#[tokio::test]
++async fn unparseable_url_keeps_the_current_options() {
++    let url = "postgres://openshell@localhost/openshell";
++    let inner = PgPoolOptions::new().connect_lazy(url).unwrap();
++    let pool = CredentialPool::reloading_every(inner, "not a url", Duration::ZERO);
++    let initial = pool.inner.connect_options();
++    pool.reload_tls();
++    assert!(Arc::ptr_eq(&initial, &pool.inner.connect_options()));
++}
+diff --git a/crates/openshell-server/src/persistence/postgres.rs b/crates/openshell-server/src/persistence/postgres.rs
+index b62144a..5bf19cb 100644
+--- a/crates/openshell-server/src/persistence/postgres.rs
++++ b/crates/openshell-server/src/persistence/postgres.rs
+@@ -509,7 +509,10 @@ impl PostgresStore {
+             let lock_pool = lock_options
+                 .connect_lazy(url)
+                 .map_err(|error| map_db_error(&error))?;
+-            (pool.into(), lock_pool.into())
++            (
++                CredentialPool::reloading(pool, url),
++                CredentialPool::reloading(lock_pool, url),
++            )
+         };
+ 
+         Ok(Self {
