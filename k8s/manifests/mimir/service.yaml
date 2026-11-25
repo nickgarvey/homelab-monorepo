@@ -22,7 +22,7 @@ spec:
       targetPort: 9095
 ---
 # ClusterIP for clients: Prometheus remote_write target and the query API
-# (Prometheus-compatible, under /prometheus) for a Grafana datasource.
+# (Prometheus-compatible, under /prometheus).
 apiVersion: v1
 kind: Service
 metadata:

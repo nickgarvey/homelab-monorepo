@@ -14,7 +14,7 @@ check fails until that list matches the Certificates.
 | Extra DNS step | none | Cloudflare CNAME `_acme-challenge.foo.garvey.sh` → `foo.challenge.home.garvey.sh` |
 | Credentials | none | a Cloudflare `Zone:DNS:Edit` token |
 | Address record | `records` in `dns.nix`; the AAAA is the LB IP for everyone | the public record is Cloudflare's; add a `garveyShOverrides` entry so internal TLS name-matches |
-| Examples | `anki`, `grafana` | `oci`, `jellyfin`, `temporal` |
+| Examples | `anki`, `prometheus` | `oci`, `jellyfin`, `temporal` |
 
 Prefer `home.garvey.sh`: everything is in git. Either way the address is only
 resolvable from outside, not reachable; inbound `he-ipv6 → LAN` is default-deny.
@@ -42,7 +42,7 @@ Pick an unused LB IP (`grep -rh lb-ipam-ips manifests/*/service.yaml`).
 the cert and key from the mounted `foo-tls` Secret; HTTPS probes on 443; the Service
 pins `io.cilium/lb-ipam-ips` and maps 443 → 443.
 
-**If it can't** (jellyfin, anki, grafana): add a Caddy sidecar, with
+**If it can't** (jellyfin, anki, prometheus): add a Caddy sidecar, with
 `manifests/jellyfin/` as the reference.
 - The app stays on its plaintext port.
 - `caddy-configmap.yaml`: `{ auto_https off; admin off }` and

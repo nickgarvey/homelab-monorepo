@@ -18,8 +18,8 @@ spec:
         app: authelia
         app.kubernetes.io/managed-by: ngarvey-homelab
     spec:
-      # On fus/ro/dah with the monitoring stack, so Grafana logins keep working
-      # while joor/zah/frul (and Ceph) are down.
+      # On fus/ro/dah, so logins keep working while joor/zah/frul (and Ceph)
+      # are down.
       tolerations:
         - key: node-role.kubernetes.io/control-plane
           operator: Exists

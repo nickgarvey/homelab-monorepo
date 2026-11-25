@@ -39,12 +39,11 @@ in rec {
     trmnl-display = { v4 = [ "10.28.0.2" ]; v6 = [ "2001:470:482f:2::5" ]; };
     # A Caddy sidecar in the anki pod terminates TLS on 443 off this LB IP.
     anki          = { v4 = []; v6 = [ "2001:470:482f:2::5003" ]; };
-    # CouchDB for Obsidian LiveSync, and Grafana: Caddy sidecars terminate TLS
-    # on 443 off these LB IPs (k8s/manifests/couchdb, k8s/manifests/grafana).
+    # CouchDB for Obsidian LiveSync: a Caddy sidecar terminates TLS on 443 off
+    # this LB IP (k8s/manifests/couchdb).
     # obsidian-livesync's A record is the IPv4 gateway (ipv4Gateway below), for
     # IPv4-only LAN clients (Android): HAProxy routes the name to CouchDB by SNI.
     obsidian-livesync = { v4 = [ ipv4Gateway.v4 ]; v6 = [ "2001:470:482f:2::5004" ]; };
-    grafana       = { v4 = []; v6 = [ "2001:470:482f:2::5006" ]; };
     # Authelia (logins, OIDC and forward auth); its Caddy sidecar terminates TLS
     # on 443 (k8s/manifests/authelia). The A record is the WAN front door: the
     # router forwards WAN :443 to the HAProxy SNI router
@@ -118,7 +117,7 @@ in rec {
   #             where cert-manager writes the TXT (cnameStrategy: Follow).
   certManagerAcme = {
     home = [
-      "anki" "auth" "celler" "grafana" "matrix-auth" "mcp" "nightscout"
+      "anki" "auth" "celler" "matrix-auth" "mcp" "nightscout"
       "obsidian-livesync" "pages" "prometheus" "spiffe-oidc"
     ];
     garveySh = [ "jellyfin" "matrix" "oci" "temporal" ];

@@ -55,8 +55,8 @@ server:
     # the access token. Leaving the roles empty does not give the auth-only
     # mode the chart docs describe: the chart then omits them and the gateway
     # falls back to openshell-admin/openshell-user, which Authelia never
-    # issues. admins is the group Grafana also makes Admin; the admin role
-    # passes user checks too. Put a user in openshell for non-admin access.
+    # issues. The admin role passes user checks too. Put a user in openshell
+    # for non-admin access.
     rolesClaim: groups
     adminRole: admins
     userRole: openshell

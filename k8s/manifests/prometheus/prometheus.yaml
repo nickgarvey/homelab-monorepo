@@ -27,9 +27,9 @@ spec:
     - url: http://mimir.mimir.svc:8080/api/v1/push
       # Mimir keeps blocks forever, so only ship what is worth keeping forever.
       # Local Prometheus still holds every series at full resolution for the 7d
-      # above, and Grafana has both datasources -- so anything dropped here is
-      # still queryable for a week. All alerting evaluates in Prometheus, not
-      # the Mimir ruler, so nothing here can break an alert.
+      # above, so anything dropped here is still queryable for a week. All
+      # alerting evaluates in Prometheus, not the Mimir ruler, so nothing here
+      # can break an alert.
       writeRelabelConfigs:
         # Histogram buckets are 70% of all series (160k of 232k) and no
         # dashboard or alert uses histogram_quantile. Long-term latency
@@ -83,8 +83,7 @@ spec:
   # LAN (service-https.yaml): it requires the Vector credential for remote write
   # and refuses the lifecycle endpoints (caddy-configmap.yaml). Caddy loads the
   # cert only at startup, so `kubectl -n prometheus rollout restart
-  # statefulset/prometheus-prometheus` after each ~60-day cert-manager renewal,
-  # same as grafana.
+  # statefulset/prometheus-prometheus` after each ~60-day cert-manager renewal.
   containers:
     - name: caddy
       image: caddy:2-alpine
