@@ -20,6 +20,12 @@ hole_extra = 1.5;        // hole depth past the insert for the screw tip
 standoff_d = 7;          // standoff diameter
 standoff_h = 6;          // gap behind the board for its back-side parts and cable plug
 
+// --- USB cable ---
+// The cable plugs into a 5-pin 1.25 mm connector on the back of the board, at one edge next to
+// the 5V/DM/DP/G/G pads, and leaves straight out the back. A slot between the two standoff pairs,
+// the length of the face, runs straight back through the tower and out its rear face.
+slot_w = 20;             // slot width across the face; the standoffs sit on the walls either side
+
 // --- Body ---
 face_len = 40;           // length of the sloped face along the slope (board + margin)
 width    = 40;           // tower width (Y)
@@ -53,4 +59,7 @@ difference() {
     on_face() for (x = [-1, 1], y = [-1, 1])
         translate([x * hole_pitch / 2, y * hole_pitch / 2, standoff_h - insert_l - hole_extra])
             cylinder(d = insert_d, h = insert_l + hole_extra + 0.01);
+    // Cable slot: along the whole face, straight back (along -n) until it leaves the tower.
+    on_face() translate([-(face_len / 2 + 1), -slot_w / 2, -100]) cube([face_len + 2, slot_w, 100 + standoff_h]);
 }
+echo(slot_w = slot_w, standoff_inner_gap = hole_pitch - standoff_d, side_wall = (width - slot_w) / 2);
