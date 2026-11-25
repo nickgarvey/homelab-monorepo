@@ -59,7 +59,7 @@ spec:
             limits:
               memory: 128Mi
         - name: grafana
-          image: grafana/grafana:13.2.2
+          image: grafana/grafana:13.2.7
           imagePullPolicy: IfNotPresent
           env:
             # Loopback only: the Caddy sidecar is the only way in. Pod IPs are
