@@ -1,24 +1,27 @@
-// Eye tracker mount: an upside-down U taped to the flat underside of the monitor either side of
-// the ROG logo tab, with a bar under the tab carrying two camera boards (one at each end) and a
-// half-size Perma-Proto board (IR LEDs, Pico, transistors) in the middle. Cameras and board
-// face the user, tilted up; the cameras also turn in toward the middle.
+// Eye tracker mount: two clips, one either side of the ROG logo tab, each a plate taped to the
+// flat back of the monitor's bottom edge with a ledge under the edge, joined by a bar below the
+// tab. The bar carries two camera boards (one at each end) and a half-size Perma-Proto board
+// (IR LEDs, Pico, transistors) in the middle. Cameras and board face the user, tilted up; the
+// cameras also turn in toward the middle.
 //
 // Modelled in use position: X across the monitor (+X to the user's right), Y front-to-back
-// (the monitor's front face is y = 0, the monitor is at +y, the user at -y), Z up (the
-// monitor's underside is z = 0). The final rotate() lays it back-face down for printing.
+// (the monitor's front face is y = 0, its back face y = panel_t, the user at -y), Z up (the
+// monitor's bottom edge is z = 0). The final rotate() lays it on its back plates for printing.
 include <BOSL2/std.scad>
 $fa = 2; $fs = 0.4;
 
 // --- Monitor ---
-tab_clear  = 80;     // inner gap between the legs; the logo tab is ~53 mm wide at the top
-tab_drop   = 20;     // top of the bar below the underside; the tab hangs down ~12 mm
-depth      = 25;     // pad and bar depth, front-to-back, from the monitor's front face
+panel_t    = 19;     // monitor thickness at the bottom edge, front face to the flat back
+tape_t     = 1.1;    // 3M VHB 5952
+tab_clear  = 80;     // inner gap between the clips; the logo tab is ~53 mm wide at the top
+tab_drop   = 26;     // top of the bar below the bottom edge; the tab hangs down ~20 mm at the back
 
-// --- Pads, legs, bar ---
-pad_w      = 30;     // pad width (X) on the underside, from the leg's inner face outward
-pad_t      = 4;      // pad thickness
-leg_w      = 12;     // leg width (X)
+// --- Clips, bar ---
+pad_w      = 30;     // back plate width (X), from the clip's inner face outward
+pad_h      = 30;     // back plate height above the bottom edge (the taped area is pad_w x pad_h)
+plate_t    = 4;      // back plate thickness
 bar_h      = 10;     // bar height (Z)
+depth      = panel_t + tape_t + plate_t;   // front face to the back of the plates (print bed)
 
 // --- Aim ---
 cam_spacing = 200;   // camera centre to camera centre
@@ -28,7 +31,7 @@ toe         = 9.5;   // cameras turn in toward the middle: atan(100 / 600) for e
 // --- Camera boards (32 x 32, M2 holes on a 28 mm square) ---
 cam_board  = 32;
 cam_pitch  = 28;
-cam_z      = -26;    // board centre height
+cam_z      = -40;    // board centre height; its cable slot passes under the bar
 face_off   = 12;     // board-face centre in front of the monitor's front face (-y)
 cam_block  = 40;     // camera block face size
 // USB connector on the back at one edge; mount that edge at the bottom. The slot covers the
@@ -68,10 +71,11 @@ module block(x, z, yaw, size) {
 
 module frame() {
     for (s = [-1, 1]) {
-        // pad on the underside
-        translate([s > 0 ? tab_clear / 2 : -tab_clear / 2 - pad_w, 0, -pad_t]) cube([pad_w, depth, pad_t]);
-        // leg
-        translate([s > 0 ? tab_clear / 2 : -tab_clear / 2 - leg_w, 0, -tab_drop]) cube([leg_w, depth, tab_drop]);
+        x0 = s > 0 ? tab_clear / 2 : -tab_clear / 2 - pad_w;
+        // back plate: taped to the flat back, from the bar up past the bottom edge
+        translate([x0, panel_t + tape_t, -tab_drop]) cube([pad_w, plate_t, tab_drop + pad_h]);
+        // block under the bottom edge: its top carries the weight, and it joins the bar
+        translate([x0, 0, -tab_drop]) cube([pad_w, depth, tab_drop]);
     }
     translate([-bar_half, 0, -tab_drop - bar_h]) cube([2 * bar_half, depth, bar_h]);
 }
