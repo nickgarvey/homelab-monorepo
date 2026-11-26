@@ -21,6 +21,8 @@ tab_drop   = 26;     // top of the bar below the bottom edge; the tab hangs down
 pad_w      = 30;     // back plate width (X), from the clip's inner face outward
 pad_h      = 30;     // back plate height above the bottom edge (the taped area is pad_w x pad_h)
 plate_t    = 4;      // back plate thickness
+ledge_t    = 4;      // ledge under the bottom edge, the full plate width
+leg_w      = 12;     // leg from the ledge down to the bar, on the clip's inner side
 bar_h      = 10;     // bar height (Z)
 depth      = panel_t + tape_t + plate_t;   // front face to the back of the plates (print bed)
 
@@ -79,8 +81,9 @@ module frame() {
         x0 = s > 0 ? tab_clear / 2 : -tab_clear / 2 - pad_w;
         // back plate: taped to the flat back, from the bar up past the bottom edge
         translate([x0, panel_t + tape_t, -tab_drop]) cube([pad_w, plate_t, tab_drop + pad_h]);
-        // block under the bottom edge: its top carries the weight, and it joins the bar
-        translate([x0, 0, -tab_drop]) cube([pad_w, depth, tab_drop]);
+        // ledge under the bottom edge carries the weight; a leg joins it to the bar
+        translate([x0, 0, -ledge_t]) cube([pad_w, depth, ledge_t]);
+        translate([s > 0 ? tab_clear / 2 : -tab_clear / 2 - leg_w, 0, -tab_drop]) cube([leg_w, depth, tab_drop]);
     }
     translate([-bar_half, 0, -tab_drop - bar_h]) cube([2 * bar_half, depth, bar_h]);
 }
