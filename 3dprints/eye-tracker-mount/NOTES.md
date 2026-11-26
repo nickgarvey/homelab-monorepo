@@ -30,5 +30,8 @@ joined by a bar below the tab carrying:
   joints.
 - Pico: 4x M2*H4 inserts straight into the back face, on its 11.4 x 47 mm hole pattern; the
   Pico's underside is flat, so it sits directly on the face.
+- The middle block is hollow: a tunnel through it side to side (45° roof, prints without
+  supports). Run the Pico's four wires around the side, through the tunnel and out of the 8 mm
+  hole behind the LED board.
 - Weight: print with 2-3 walls and 10-15% infill; the loads are small.
 - Unverified until printed: tab clearance, pad depth, the M3 insert hole size, aim angles.

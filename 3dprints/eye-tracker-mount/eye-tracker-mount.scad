@@ -52,6 +52,13 @@ pp_block   = [50, 58];
 // --- Raspberry Pi Pico (51 x 21, M2 holes 11.4 x 47) flat on the back of the middle block ---
 pico_holes = [11.4, 47];
 
+// --- Hollow middle block: a tunnel through it side to side (wires from the Pico go in at a
+// side and out through a hole behind the LED board). Flat on the Pico side; the other side
+// peaks at 45° so it prints without supports. ---
+cavity_back = 6;      // wall under the Pico (its M2 insert holes are 5.5 deep)
+cavity_half = 22;     // half-height of the tunnel at the Pico side
+wire_hole_d = 8;      // through the LED-board face into the tunnel
+
 // --- Inserts ---
 m2_d = 3.4; m2_l = 4;         // M2*H4 (same as 3dprints/laundry-sensor)
 m3_d = 4.0; m3_l = 5;         // M3 heat-set insert hole; check against your inserts
@@ -119,6 +126,11 @@ module mount() {
             translate([-slot_w / 2, -cam_block / 2 - 2, -100]) cube([slot_w, cam_block / 2 + 2 + slot_top, 100 + standoff_h]);
         }
         on_face(0, pp_z, 0) insert_holes(pp_pts, m3_d, m3_l);
+        // tunnel: (y, z) triangle, extruded across X
+        yb = depth - cavity_back;
+        translate([-pp_block[0] / 2 - 1, 0, 0]) rotate([90, 0, 90]) linear_extrude(pp_block[0] + 2)
+            polygon([[yb, pp_z - cavity_half], [yb, pp_z + cavity_half], [yb - cavity_half, pp_z]]);
+        on_face(0, pp_z, 0) translate([0, 0, -30]) cylinder(d = wire_hole_d, h = 30 + standoff_h + 1);
         // Pico inserts, straight in from the back face
         for (x = [-1, 1], z = [-1, 1])
             translate([x * pico_holes[0] / 2, depth - m2_l - hole_extra, pp_z + z * pico_holes[1] / 2])
