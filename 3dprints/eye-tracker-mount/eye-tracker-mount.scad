@@ -68,10 +68,13 @@ bar_half = cam_x + cam_block / 2;
 module on_face(x, z, yaw)
     translate([x, -face_off, z]) rotate([0, 0, yaw]) rotate([-tilt, 0, 0]) rotate([90, 0, 0]) children();
 
-// A wedge from the bed plane (y = depth) to the tilted face.
-module block(x, z, yaw, size) {
+// A wedge from the bed plane (y = depth) to the tilted face. back_z: its [bottom, top] at the
+// bed; by default the face's own height, or narrower so it tapers from the face to the bed
+// (keep the taper under 45° from the print direction).
+module block(x, z, yaw, size, back_z) {
+    bz = is_undef(back_z) ? [z - size[1] / 2, z + size[1] / 2] : back_z;
     hull() {
-        translate([x - size[0] / 2, depth - 0.01, z - size[1] / 2]) cube([size[0], 0.01, size[1]]);
+        translate([x - size[0] / 2, depth - 0.01, bz[0]]) cube([size[0], 0.01, bz[1] - bz[0]]);
         on_face(x, z, yaw) translate([-size[0] / 2, -size[1] / 2, -0.01]) cube([size[0], size[1], 0.01]);
     }
 }
@@ -103,7 +106,8 @@ module mount() {
         union() {
             frame();
             for (s = [-1, 1]) {
-                block(s * cam_x, cam_z, -s * toe, [cam_block, cam_block + 2]);
+                // tapers from the camera face back to the bar
+                block(s * cam_x, cam_z, -s * toe, [cam_block, cam_block + 2], [-tab_drop - bar_h, -tab_drop]);
                 on_face(s * cam_x, cam_z, -s * toe) standoffs(cam_pts, standoff_d);
             }
             block(0, pp_z, 0, pp_block);
