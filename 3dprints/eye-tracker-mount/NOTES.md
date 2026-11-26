@@ -7,10 +7,12 @@ nix-c9wua). One piece: two clips either side of the ROG logo tab of the monitor 
 30 x 30 mm plate taped to the flat back of the 19 mm bottom edge with a block under the edge,
 joined by a bar below the tab carrying:
 - two OV9281 camera boards, 200 mm apart, tilted up 18° and turned in 9.5° (eyes at ~60 cm);
-- a half-size Perma-Proto board in the middle, tilted up 18°: four 850 nm IR LEDs, a Pico and
-  the transistors that switch them.
+- a quarter-size Perma-Proto board in the middle, tilted up 18°: four 850 nm IR LEDs and the
+  transistors that switch them (two pairs);
+- a Raspberry Pi Pico flat on the back of the middle block, USB port down, driving the LEDs over
+  four wires (VBUS 5 V, GND, one control line per pair).
 
-`eye-tracker-mount.scad` -> `eye-tracker-mount.3mf`. 242 x 106 x 50 mm as printed.
+`eye-tracker-mount.scad` -> `eye-tracker-mount.3mf`. 242 x 107 x 50 mm as printed.
 
 - Print on the back plates (as exported); no supports. `print = false` shows it in use position.
 - Attach: 3M VHB 5952 (1.1 mm; the plates sit that far off the back) on both plates. The blocks
@@ -22,6 +24,9 @@ joined by a bar below the tab carrying:
 - Cameras: 4x M2*H4 inserts each (3.4 mm holes), M2 x 5-6 screws. Mount each board with its USB
   connector edge at the bottom: the cable slot covers the bottom of the board and runs straight
   back, under the bar.
-- Perma-Proto: 2x M3 inserts (4.0 mm holes, 5 mm deep; check against the inserts), holes 73.7 mm
-  apart on the board's long centre line. 6 mm standoffs clear the solder joints.
+- Perma-Proto quarter-size (43 x 50.8 mm): 2x M3 inserts (4.0 mm holes, 5 mm deep; check against
+  the inserts), holes 35.56 mm apart across the 43 mm width. 6 mm standoffs clear the solder
+  joints.
+- Pico: 4x M2*H4 inserts straight into the back face, on its 11.4 x 47 mm hole pattern; the
+  Pico's underside is flat, so it sits directly on the face.
 - Unverified until printed: tab clearance, pad depth, the M3 insert hole size, aim angles.

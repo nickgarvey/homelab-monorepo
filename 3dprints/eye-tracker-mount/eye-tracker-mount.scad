@@ -1,8 +1,9 @@
 // Eye tracker mount: two clips, one either side of the ROG logo tab, each a plate taped to the
 // flat back of the monitor's bottom edge with a ledge under the edge, joined by a bar below the
-// tab. The bar carries two camera boards (one at each end) and a half-size Perma-Proto board
-// (IR LEDs, Pico, transistors) in the middle. Cameras and board face the user, tilted up; the
-// cameras also turn in toward the middle.
+// tab. The bar carries two camera boards (one at each end) and a quarter-size Perma-Proto board
+// (IR LEDs and the transistors that switch them) in the middle; the Pico that drives them sits
+// flat on the back of the middle block, USB port down. Cameras and LED board face the user,
+// tilted up; the cameras also turn in toward the middle.
 //
 // Modelled in use position: X across the monitor (+X to the user's right), Y front-to-back
 // (the monitor's front face is y = 0, its back face y = panel_t, the user at -y), Z up (the
@@ -39,11 +40,15 @@ cam_block  = 40;     // camera block face size
 slot_w     = 20;     // slot width across the board
 slot_top   = -3;     // slot runs from below the board's bottom edge up to this local y
 
-// --- Perma-Proto half-size (81 x 51, two 3.2 mm holes 73.7 apart on the long centre line) ---
-pp_size    = [81, 51];
-pp_pitch   = 73.7;
+// --- Perma-Proto quarter-size (43 x 50.8, two 3.2 mm holes 35.56 apart across the 43 mm width,
+// on the centre line) ---
+pp_size    = [43, 50.8];
+pp_pitch   = 35.56;
 pp_z       = -48;    // board centre height; keeps its top edge below the logo tab
-pp_block   = [88, 56];
+pp_block   = [50, 58];
+
+// --- Raspberry Pi Pico (51 x 21, M2 holes 11.4 x 47) flat on the back of the middle block ---
+pico_holes = [11.4, 47];
 
 // --- Inserts ---
 m2_d = 3.4; m2_l = 4;         // M2*H4 (same as 3dprints/laundry-sensor)
@@ -107,6 +112,10 @@ module mount() {
             translate([-slot_w / 2, -cam_block / 2 - 2, -100]) cube([slot_w, cam_block / 2 + 2 + slot_top, 100 + standoff_h]);
         }
         on_face(0, pp_z, 0) insert_holes(pp_pts, m3_d, m3_l);
+        // Pico inserts, straight in from the back face
+        for (x = [-1, 1], z = [-1, 1])
+            translate([x * pico_holes[0] / 2, depth - m2_l - hole_extra, pp_z + z * pico_holes[1] / 2])
+                rotate([-90, 0, 0]) cylinder(d = m2_d, h = m2_l + hole_extra + 0.01);
     }
 }
 
