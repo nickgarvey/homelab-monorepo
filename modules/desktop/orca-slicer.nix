@@ -1,4 +1,4 @@
-# OrcaSlicer, patched for its GStreamer, glew/EGL and NULL-deref crashes.
+# OrcaSlicer, patched for its GStreamer, glew/EGL and NULL-deref crashes and a sidebar that shrinks to a sliver.
 
 { config, lib, pkgs, ... }:
 
@@ -14,6 +14,7 @@
     }).overrideAttrs (old: {
       patches = (old.patches or []) ++ [
         ../../patches/orca-slicer-null-checks.patch
+        ../../patches/orca-slicer-sidebar-min-width.patch
       ];
       # nixpkgs' wrapper sets GST_PLUGIN_SYSTEM_PATH_1_0 but not GST_PLUGIN_SCANNER
       # (wrapGAppsHook3 does not add it). Without gst-plugin-scanner, GStreamer

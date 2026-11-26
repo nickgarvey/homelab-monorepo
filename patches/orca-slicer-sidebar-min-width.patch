@@ -1,0 +1,60 @@
+Upstream:      OrcaSlicer (github.com/SoftFever/OrcaSlicer): src/slic3r/GUI/Plater.cpp.
+               On main the width tracking has moved to AuiMgr::track_docked_size
+               in src/slic3r/GUI/AuiMgr.cpp, still with no minimum.
+Upstreamable:  yes
+How:           A PR against main that gives the sidebar pane a minimum width and
+               has track_docked_size ignore widths below it. No issue or PR
+               filed yet.
+Written:       2026-11-26, against OrcaSlicer 2.4.2
+Last checked:  2026-11-26: unfixed on main
+Remove when:   the OrcaSlicer release that nixpkgs packages keeps the docked
+               sidebar at or above its minimum width
+Applied by:    modules/desktop/orca-slicer.nix
+
+The Prepare tab's sidebar can get stuck a few pixels wide.
+
+The sidebar is an AUI pane with no minimum size, and SetDockSizeConstraint(1, 1)
+lets the left dock shrink to almost nothing. An idle handler copies the pane's
+current width into best_size on every idle tick, SavePerspective() writes that
+to window_layout in OrcaSlicer.conf on exit, and LoadPerspective() restores it
+on the next start. One moment at a tiny width (a sash drag, or the window
+briefly configured very small) gets saved, and the sidebar comes back at that
+width every time: talos had "bestw=18" in window_layout.
+
+The patch gives the pane a minimum width of 39 em (Sidebar's own minimum and
+its default width), applies it again after LoadPerspective (the saved layout's
+minw=-1 replaces it), widens a saved width below the minimum, and has the idle
+handler skip widths below the minimum.
+
+--- a/src/slic3r/GUI/Plater.cpp
++++ b/src/slic3r/GUI/Plater.cpp
+@@ -5054,6 +5054,7 @@
+                                    .CloseButton(false)
+                                    .TopDockable(false)
+                                    .BottomDockable(false)
++                                   .MinSize(wxSize(39 * wxGetApp().em_unit(), -1))
+                                    .BestSize(wxSize(39 * wxGetApp().em_unit(), 90 * wxGetApp().em_unit())));
+ 
+     auto* panel_sizer = new wxBoxSizer(wxHORIZONTAL);
+@@ -5085,13 +5086,20 @@
+                 BOOST_LOG_TRIVIAL(info) << "Removed floating AUI state from saved window layout for Wayland";
+             }
+ 
++            // The saved layout carries its own minw=-1, which replaces the minimum set above, and may carry a
++            // width saved while the sidebar was squeezed narrower than that minimum.
++            const int sidebar_min_width = 39 * wxGetApp().em_unit();
++            sidebar.MinSize(wxSize(sidebar_min_width, -1));
++            if (sidebar.best_size.GetWidth() < sidebar_min_width)
++                sidebar.BestSize(sidebar_min_width, sidebar.best_size.GetHeight());
++
+             sidebar_layout.is_collapsed = !sidebar.IsShown();
+         }
+ 
+         // Keep tracking the current sidebar size, by storing it using `best_size`, which will be stored
+         // in the config and re-applied when the app is opened again.
+         this->sidebar->Bind(wxEVT_IDLE, [&sidebar, this](wxIdleEvent& e) {
+-            if (sidebar.IsShown() && sidebar.IsDocked() && sidebar.rect.GetWidth() > 0) {
++            if (sidebar.IsShown() && sidebar.IsDocked() && sidebar.rect.GetWidth() >= 39 * wxGetApp().em_unit()) {
+                 sidebar.BestSize(sidebar.rect.GetWidth(), sidebar.best_size.GetHeight());
+             }
+             e.Skip();
