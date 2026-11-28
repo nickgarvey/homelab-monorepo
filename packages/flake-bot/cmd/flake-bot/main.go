@@ -17,18 +17,25 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spiffe/go-spiffe/v2/svid/jwtsvid"
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
 	"go.temporal.io/sdk/worker"
 
 	"homelab/flake-bot/internal/bot"
 	"homelab/flake-bot/internal/ghapp"
+	"homelab/flake-bot/internal/metrics"
 	"homelab/flake-bot/internal/temporalconn"
 )
 
 type config struct {
 	temporal temporalconn.Config
 	spire    string
+
+	metricsAddr     string
+	metricsInterval time.Duration
 
 	stateDir  string
 	remoteURL string
@@ -72,6 +79,8 @@ func main() {
 	flag.StringVar(&c.cellerBin, "celler", "celler", "celler")
 	flag.StringVar(&c.cellerCache, "celler-cache", "homelab", "Cache to push to")
 	flag.StringVar(&c.cellerConfigHome, "celler-config-home", "", "XDG_CONFIG_HOME holding celler/config.toml (with the push token)")
+	flag.StringVar(&c.metricsAddr, "metrics-listen", "127.0.0.1:9478", "Address of the Prometheus /metrics endpoint")
+	flag.DurationVar(&c.metricsInterval, "metrics-interval", 2*time.Minute, "How often the metrics are read again from Temporal")
 	flag.StringVar(&c.awsBin, "aws", "aws", "AWS CLI")
 	flag.StringVar(&c.s3Endpoint, "s3-endpoint", "https://rgw.home.garvey.sh", "RGW S3 and STS endpoint")
 	flag.StringVar(&c.roleARN, "s3-role", "arn:aws:iam::RGW77873637642885287:role/nix-managed/flake-bot", "STS role for the bucket")
@@ -137,6 +146,18 @@ func run(c *config) error {
 	if err := bot.EnsureSchedules(ctx, tc.ScheduleClient()); err != nil {
 		return err
 	}
+
+	reg := prometheus.NewRegistry()
+	reg.MustRegister(collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+	col := metrics.New(reg)
+	go col.Run(ctx, metrics.TemporalSource(tc, c.temporal.Namespace), c.metricsInterval)
+	go func() {
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
+		err := http.ListenAndServe(c.metricsAddr, mux)
+		slog.Error("metrics endpoint", "error", err)
+		os.Exit(1)
+	}()
 
 	host, _ := os.Hostname()
 	w := worker.New(tc, bot.TaskQueue, worker.Options{

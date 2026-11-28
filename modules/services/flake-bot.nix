@@ -88,4 +88,22 @@ in
       ProtectHome = true;
     };
   };
+
+  # The worker's metrics (the state of its newest runs, read from Temporal),
+  # pushed to Prometheus by Vector; the alerts are in
+  # k8s/manifests/prometheus/rules/flake-bot.yaml.
+  homelab.metrics.sources.flake_bot = {
+    type = "prometheus_scrape";
+    endpoints = [ "http://127.0.0.1:9478/metrics" ];
+    scrape_interval_secs = 60;
+  };
+  homelab.metrics.transforms.flake_bot_metrics = {
+    type = "remap";
+    inputs = [ "flake_bot" ];
+    source = ''
+      .tags.job = "flake-bot"
+      .tags.hostname = "${config.networking.hostName}"
+    '';
+  };
+  homelab.metrics.sinkInputs = [ "flake_bot_metrics" ];
 }

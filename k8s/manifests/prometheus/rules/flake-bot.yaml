@@ -1,0 +1,78 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: flake-bot-alerts
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+    prometheus: prometheus
+spec:
+  groups:
+    - name: flake-bot
+      rules:
+        # The flake-bot worker on wabbajack (packages/flake-bot, ait
+        # nix-b77Zn), pushed by Vector. The metrics are the state of each
+        # workflow's newest runs, read from Temporal (namespace flake-bot):
+        # UpdateRun (daily flake update onto dev) and DevBuild (each dev
+        # commit, published for hosts to pull). alertmanager-config.yaml
+        # repeats these once a day.
+
+        # The newest flake update did not land. BuildFailed: some host or
+        # check does not build with the new lock (flake-update on GitHub has
+        # the attempt, carried patches included). PatchConflict: a fix carried
+        # on flake-update no longer applies to dev; nothing was pushed.
+        - alert: FlakeBotUpdateFailed
+          expr: homelab_flake_bot_last_run_failed{workflow="UpdateRun"} == 1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "The flake update failed ({{ $labels.reason }})"
+            description: "The newest UpdateRun failed: {{ $labels.reason }}; homelab_flake_bot_last_run_failed_targets says how many targets failed. Its result (failed targets, build log tail) is in the Temporal UI, namespace flake-bot; the full log is under /var/lib/flake-bot/logs on wabbajack. dev keeps its old lock until a run succeeds."
+
+        # A dev commit failed to build. The hosts that built were published;
+        # the ones that failed stay on their last good system in the manifest.
+        - alert: FlakeBotDevBuildFailed
+          expr: homelab_flake_bot_last_run_failed{workflow="DevBuild"} == 1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "dev does not build ({{ $labels.reason }})"
+            description: "The newest DevBuild failed: {{ $labels.reason }}; homelab_flake_bot_last_run_failed_targets says how many targets failed. The failed targets are in its result in the Temporal UI, namespace flake-bot; hosts that failed are not offered an update."
+
+        # A daily run, so three days means at least two runs that failed or
+        # did not run (FlakeBotUpdateFailed says which, while the newest one
+        # failed). A run that finds nothing new also counts as success.
+        - alert: FlakeBotUpdateStale
+          expr: time() - homelab_flake_bot_last_success_timestamp_seconds{workflow="UpdateRun"} > 3 * 86400
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "No successful flake update for {{ $value | humanizeDuration }}"
+            description: "Schedule flake-bot-update and its runs in the Temporal UI (namespace flake-bot); `journalctl -u flake-bot` on wabbajack."
+
+        # DevBuild runs every 15 minutes and skips commits it has built, so a
+        # success is normally minutes old; a full rebuild after a nixpkgs
+        # bump can take hours, hence the margin.
+        - alert: FlakeBotDevBuildStale
+          expr: time() - homelab_flake_bot_last_success_timestamp_seconds{workflow="DevBuild"} > 12 * 3600
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "No successful dev build for {{ $value | humanizeDuration }}"
+            description: "Hosts are offered no new updates. Schedule flake-bot-dev and its runs in the Temporal UI (namespace flake-bot); `journalctl -u flake-bot` on wabbajack."
+
+        # The worker is down or Vector on wabbajack cannot scrape it (its
+        # process metric, there before any run has closed). Silence would
+        # look like everything building.
+        - alert: FlakeBotMetricsMissing
+          expr: absent(process_start_time_seconds{job="flake-bot"})
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: "No flake-bot metrics for an hour"
+            description: "`systemctl status flake-bot` and `journalctl -u flake-bot` on wabbajack; `curl -s 127.0.0.1:9478/metrics` there; Vector's log (`journalctl -u vector`)."

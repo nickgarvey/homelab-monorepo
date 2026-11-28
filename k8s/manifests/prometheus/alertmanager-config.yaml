@@ -46,6 +46,14 @@ stringData:
           repeat_interval: 24h
           continue: false
 
+        # flake-bot (rules/flake-bot.yaml): a build that stays broken waits
+        # for a fix, not for a reminder every four hours.
+        - receiver: 'email'
+          matchers:
+            - alertname =~ "FlakeBot.*"
+          repeat_interval: 24h
+          continue: false
+
         # Loop build age (rules/loop-build.yaml): one email a day until a new
         # build is uploaded to TestFlight.
         - receiver: 'email'

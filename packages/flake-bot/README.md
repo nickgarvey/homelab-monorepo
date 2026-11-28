@@ -71,3 +71,20 @@ temporal schedule trigger --schedule-id flake-bot-update --namespace flake-bot .
 
 with the connection flags of an identity that may write to the namespace, or from the
 Temporal UI.
+
+## Metrics and alerts
+
+The worker serves `/metrics` on `127.0.0.1:9478`, which Vector on wabbajack pushes to
+Prometheus (job `flake-bot`). The values come from Temporal, the newest runs of each
+workflow, so a restarted worker exports them again at once:
+
+| Metric | |
+|---|---|
+| `homelab_flake_bot_last_success_timestamp_seconds{workflow}` | close time of the newest successful run |
+| `homelab_flake_bot_last_run_timestamp_seconds{workflow}` | close time of the newest closed run |
+| `homelab_flake_bot_last_run_failed{workflow,reason}` | 1 if that run failed; `reason` is its error type (`BuildFailed`, `PatchConflict`) or status |
+| `homelab_flake_bot_last_run_failed_targets{workflow}` | targets that run could not build |
+
+The alerts (`FlakeBotUpdateFailed`, `FlakeBotDevBuildFailed`, `FlakeBotUpdateStale`,
+`FlakeBotDevBuildStale`, `FlakeBotMetricsMissing`) are in
+`k8s/manifests/prometheus/rules/flake-bot.yaml` and email once a day while they last.

@@ -7,7 +7,7 @@ buildGoModule {
   pname = "flake-bot";
   version = "0.1.0";
   src = ./.;
-  vendorHash = "sha256-VsBk088CAE2A6Y46HpORuAdQe3QTdqopUmyImGubrp8=";
+  vendorHash = "sha256-qLnXnPnthspiGx9CJvodoliHY2XfixJtWhnllDzbqrI=";
   env.CGO_ENABLED = "0";
   nativeCheckInputs = [ git ];
   meta.mainProgram = "flake-bot";
