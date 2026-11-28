@@ -284,15 +284,17 @@ creation_rules:
       - *zah
       - *frul
       - *skyforge
-  # celler-push: one push-only celler token per workstation, keyed by host
-  # name, for `celler watch-store` (modules/desktop/celler-push.nix). Minted
-  # with the key in secrets/celler-admin.yaml; the server checks them with its
-  # public key only.
+  # celler-push: one push-only celler token per pushing host, keyed by host
+  # name: the workstations' `celler watch-store` (modules/desktop/celler-push.nix)
+  # and the flake-bot worker on wabbajack (ait nix-b77Zn). Minted with the key
+  # in secrets/celler-admin.yaml; the server checks them with its public key
+  # only.
   - path_regex: secrets/celler-push.yaml
     key_groups:
     - age:
       - *ngarvey
       - *workstation
+      - *wabbajack
   # celler-admin: the RS256 private key that signs celler access tokens
   # (`celler admin make-token --signing-key`). The server holds only the public
   # key (k8s/manifests/celler/configmap.yaml); no host needs this.
@@ -338,8 +340,8 @@ creation_rules:
     - age:
       - *ngarvey
       - *dragonsreach
-  # The flake-bot worker on wabbajack (ait nix-b77Zn): its litellm key, and
-  # later its GitHub App key and celler push token.
+  # The flake-bot worker on wabbajack (ait nix-b77Zn): its litellm key and
+  # its GitHub App key. Its celler push token is in secrets/celler-push.yaml.
   - path_regex: secrets/flake-bot\.yaml$
     key_groups:
     - age:
