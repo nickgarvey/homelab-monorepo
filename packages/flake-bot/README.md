@@ -10,7 +10,7 @@ systems for hosts to switch to without building (ait nix-b77Zn). It runs on wabb
 
 | Workflow | Schedule | What it does |
 |---|---|---|
-| `UpdateRun` | `flake-bot-update`, daily 10:00 UTC | Rebuilds `flake-update` as `origin/dev` + one fresh `nix flake update` commit + the patches `flake-update` carried, builds every target, pushes what built to celler, force-pushes `flake-update` (leased) and, if every target built, fast-forwards `dev` to it |
+| `UpdateRun` | `flake-bot-update`, daily 10:00 UTC | Rebuilds `flake-update` (a local branch, never pushed) as `origin/dev` + one fresh `nix flake update` commit + the patches it carried, builds every target, pushes what built to celler and, if every target built, fast-forwards `dev` on GitHub to it. A failed run pushes nothing to GitHub |
 | `DevBuild` | `flake-bot-dev`, every 15 minutes | Builds `origin/dev`'s head if `manifest.json` does not cover it yet, pushes what built to celler and merges it into `manifest.json` |
 
 Targets are every `nixosConfiguration` (its toplevel) and every `checks.x86_64-linux`
@@ -25,14 +25,17 @@ commit).
 
 ## Carried patches
 
-A commit on `flake-update` that is not on `dev`, other than the bot's own lock update
-(trailer `Flake-Bot: lock-update`), is a patch. Each run cherry-picks the patches onto
-the new lock update with `--empty=drop`, so one `dev` already has drops out. A patch
-that no longer applies stops the run before any push, since force-pushing would drop it
-from `flake-update`; the run fails with type `PatchConflict`.
+`flake-update` is a branch of the bot's clone on wabbajack (`/var/lib/flake-bot/repo`),
+never pushed. A commit on it that is not on `dev`, other than the bot's own lock update
+(trailer `Flake-Bot: lock-update`), is a patch: a fix the update needs. Each run
+cherry-picks the patches onto the new lock update with `--empty=drop`, so one `dev`
+already has drops out, and moves the branch only once they are applied. When every
+target builds, the head goes to `dev` with the patches in it. A patch that no longer
+applies stops the run before the build and leaves the branch as it was; the run fails
+with type `PatchConflict`.
 
-Landing a fix by hand: commit it on top of `origin/flake-update` and push that branch;
-the next run carries it. Or put it on `dev`; the next run drops the patch as empty.
+Fixing a broken update by hand: put the fix on `dev`. The next run builds the new
+lock on top of it (and drops any carried patch the fix makes empty).
 
 ## Manifest
 

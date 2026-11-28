@@ -44,8 +44,7 @@ type Activities struct {
 // PrepareResult is flake-update rebuilt in the update worktree.
 type PrepareResult struct {
 	Base string // origin/dev
-	// OldBranch is origin/flake-update before this run ("" if none), the
-	// lease for the force-push.
+	// OldBranch is the local flake-update before this run ("" if none).
 	OldBranch string
 	Head      string // the rebuilt flake-update
 	// Inputs are the flake inputs `nix flake update` changed.
@@ -60,7 +59,13 @@ type PrepareResult struct {
 }
 
 // PrepareUpdate rebuilds flake-update as origin/dev, plus one fresh
-// `nix flake update` commit, plus the patches origin/flake-update carried.
+// `nix flake update` commit, plus the patches flake-update carried.
+//
+// flake-update is a branch of the clone on this host only; it is never
+// pushed. It carries the patches between runs while the update does not
+// build; once it does, Land pushes its head to dev, patches included. The
+// work is done detached and the branch moved only at the end, and not on a
+// conflict, so a run that fails part way loses no patch.
 func (a *Activities) PrepareUpdate(ctx context.Context) (PrepareResult, error) {
 	g := a.Git
 	if err := g.Fetch(ctx); err != nil {
@@ -71,7 +76,7 @@ func (a *Activities) PrepareUpdate(ctx context.Context) (PrepareResult, error) {
 	if r.Base, err = g.RevParse(ctx, "", "refs/remotes/origin/"+DevBranch); err != nil || r.Base == "" {
 		return r, fmt.Errorf("origin/%s: %v", DevBranch, err)
 	}
-	if r.OldBranch, err = g.RevParse(ctx, "", "refs/remotes/origin/"+UpdateBranch); err != nil {
+	if r.OldBranch, err = g.RevParse(ctx, "", "refs/heads/"+UpdateBranch); err != nil {
 		return r, err
 	}
 	var patches []Commit
@@ -80,7 +85,7 @@ func (a *Activities) PrepareUpdate(ctx context.Context) (PrepareResult, error) {
 			return r, err
 		}
 	}
-	wt, err := g.Checkout(ctx, UpdateWorktree, r.Base, UpdateBranch)
+	wt, err := g.Checkout(ctx, UpdateWorktree, r.Base, "")
 	if err != nil {
 		return r, err
 	}
@@ -125,6 +130,12 @@ func (a *Activities) PrepareUpdate(ctx context.Context) (PrepareResult, error) {
 	}
 	if r.Head, err = g.RevParse(ctx, wt, "HEAD"); err != nil {
 		return r, err
+	}
+	// On a conflict the branch keeps every patch for whoever fixes it.
+	if r.Conflict == "" {
+		if _, err := g.git(ctx, "", "branch", "--force", UpdateBranch, r.Head); err != nil {
+			return r, err
+		}
 	}
 	return r, nil
 }
@@ -191,25 +202,6 @@ func (a *Activities) PushCeller(ctx context.Context, paths []string) error {
 		Args: append([]string{"push", a.CellerCache}, paths...),
 		Env:  []string{"XDG_CONFIG_HOME=" + a.CellerConfigHome},
 	})
-	return err
-}
-
-// PushBranchRequest is a force-push of flake-update, leased on what the
-// run started from.
-type PushBranchRequest struct {
-	Head      string
-	OldBranch string
-}
-
-// PushBranch force-pushes Head to flake-update, unless flake-update moved
-// since OldBranch was read.
-func (a *Activities) PushBranch(ctx context.Context, req PushBranchRequest) error {
-	if req.Head == req.OldBranch {
-		return nil
-	}
-	lease := fmt.Sprintf("--force-with-lease=refs/heads/%s:%s", UpdateBranch, req.OldBranch)
-	_, err := a.Git.git(ctx, a.Git.Worktree(UpdateWorktree), "push", "--quiet", lease,
-		"origin", req.Head+":refs/heads/"+UpdateBranch)
 	return err
 }
 

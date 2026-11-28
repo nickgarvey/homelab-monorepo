@@ -52,16 +52,15 @@ var buildOptions = workflow.ActivityOptions{
 type UpdateResult struct {
 	Prepare PrepareResult
 	Build   *BuildResult `json:",omitempty"`
-	Pushed  bool
-	Land    *LandResult `json:",omitempty"`
+	Land    *LandResult  `json:",omitempty"`
 }
 
 // UpdateRun rebuilds flake-update (dev + a fresh lock update + the carried
-// patches), builds every target, pushes what built to celler, force-pushes
-// flake-update and, when everything built, fast-forwards dev to it.
+// patches; a branch on the worker's host only), builds every target, pushes
+// what built to celler and, when everything built, fast-forwards dev on
+// GitHub to it. Nothing else goes to GitHub: a failed run leaves dev alone.
 //
-// A patch that no longer applies stops the run before any push: pushing
-// would drop the patch from flake-update.
+// A patch that no longer applies stops the run before the build.
 func UpdateRun(ctx workflow.Context) (UpdateResult, error) {
 	step := workflow.WithActivityOptions(ctx, stepOptions)
 	long := workflow.WithActivityOptions(ctx, buildOptions)
@@ -76,11 +75,7 @@ func UpdateRun(ctx workflow.Context) (UpdateResult, error) {
 		return res, temporal.NewNonRetryableApplicationError(p.Conflict, ErrTypeConflict, nil, res)
 	}
 	if p.Head == p.Base {
-		// Nothing new: flake-update becomes dev again.
-		if err := workflow.ExecuteActivity(step, a.PushBranch, PushBranchRequest{Head: p.Head, OldBranch: p.OldBranch}).Get(ctx, nil); err != nil {
-			return res, err
-		}
-		res.Pushed = p.Head != p.OldBranch
+		// Nothing new: no input moved and dev has every patch.
 		return res, nil
 	}
 
@@ -92,10 +87,6 @@ func UpdateRun(ctx workflow.Context) (UpdateResult, error) {
 	if err := workflow.ExecuteActivity(long, a.PushCeller, b.Built()).Get(ctx, nil); err != nil {
 		return res, err
 	}
-	if err := workflow.ExecuteActivity(step, a.PushBranch, PushBranchRequest{Head: p.Head, OldBranch: p.OldBranch}).Get(ctx, nil); err != nil {
-		return res, err
-	}
-	res.Pushed = true
 	if !b.OK() {
 		return res, temporal.NewNonRetryableApplicationError(failedSummary(b), ErrTypeBuildFailed, nil, res)
 	}

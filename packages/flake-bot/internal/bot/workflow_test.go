@@ -35,13 +35,11 @@ func TestUpdateRunLands(t *testing.T) {
 	env.OnActivity(a.PrepareUpdate, mock.Anything).Return(PrepareResult{Base: "base", OldBranch: "old", Head: "head", Inputs: []string{"nixpkgs"}}, nil)
 	env.OnActivity(a.Build, mock.Anything, BuildRequest{Worktree: UpdateWorktree, Rev: "head"}).Return(okBuild("head"), nil)
 	env.OnActivity(a.PushCeller, mock.Anything, []string{"/nix/store/t"}).Return(nil)
-	env.OnActivity(a.PushBranch, mock.Anything, PushBranchRequest{Head: "head", OldBranch: "old"}).Return(nil)
 	env.OnActivity(a.Land, mock.Anything, LandRequest{Base: "base", Head: "head"}).Return(LandResult{Landed: true}, nil)
 	env.ExecuteWorkflow(UpdateRun)
 	require.NoError(t, env.GetWorkflowError())
 	var res UpdateResult
 	require.NoError(t, env.GetWorkflowResult(&res))
-	require.True(t, res.Pushed)
 	require.True(t, res.Land.Landed)
 }
 
@@ -54,7 +52,6 @@ func TestUpdateRunBuildFailureDoesNotLand(t *testing.T) {
 	env.OnActivity(a.PrepareUpdate, mock.Anything).Return(PrepareResult{Base: "base", Head: "head"}, nil)
 	env.OnActivity(a.Build, mock.Anything, mock.Anything).Return(b, nil)
 	env.OnActivity(a.PushCeller, mock.Anything, []string{"/nix/store/t"}).Return(nil)
-	env.OnActivity(a.PushBranch, mock.Anything, mock.Anything).Return(nil)
 	env.ExecuteWorkflow(UpdateRun)
 	err := env.GetWorkflowError()
 	require.Error(t, err)
@@ -69,17 +66,16 @@ func TestUpdateRunConflictPushesNothing(t *testing.T) {
 	env.ExecuteWorkflow(UpdateRun)
 	err := env.GetWorkflowError()
 	require.Equal(t, ErrTypeConflict, appErrType(t, err))
-	env.AssertNotCalled(t, "PushBranch", mock.Anything, mock.Anything)
 	env.AssertNotCalled(t, "Build", mock.Anything, mock.Anything)
 }
 
 func TestUpdateRunNothingNew(t *testing.T) {
 	env := newEnv(t)
 	env.OnActivity(a.PrepareUpdate, mock.Anything).Return(PrepareResult{Base: "base", OldBranch: "old", Head: "base"}, nil)
-	env.OnActivity(a.PushBranch, mock.Anything, PushBranchRequest{Head: "base", OldBranch: "old"}).Return(nil)
 	env.ExecuteWorkflow(UpdateRun)
 	require.NoError(t, env.GetWorkflowError())
 	env.AssertNotCalled(t, "Build", mock.Anything, mock.Anything)
+	env.AssertNotCalled(t, "Land", mock.Anything, mock.Anything)
 }
 
 func TestDevBuildSkipsBuiltCommit(t *testing.T) {
