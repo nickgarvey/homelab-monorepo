@@ -6,6 +6,8 @@
     ../../modules/core/nixos-common.nix
     ../../modules/core/server-base.nix
     ../../modules/core/nix-builder.nix
+    ../../modules/services/pki-dns-cert.nix
+    ../../modules/services/spire-agent.nix
     ../../modules/containers/garage.nix
   ];
 

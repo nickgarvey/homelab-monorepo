@@ -108,7 +108,7 @@ the same host). Its Workload API socket is `/run/spire/agent/public/api.sock`,
 and it tells services apart by systemd unit. Entries for host services are
 ClusterStaticEntries in `host-entries.yaml`, with IDs
 `spiffe://home.garvey.sh/host/<host>/<service>` and selector
-`systemd:id:<unit>`. Hosts running an agent: lydia.
+`systemd:id:<unit>`. Hosts running an agent: lydia, wabbajack.
 
 ## S3 on Ceph RGW
 

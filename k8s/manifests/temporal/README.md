@@ -172,8 +172,13 @@ add a `metricRelabelings` prefix rule to `service-monitor.yaml`.
 In-cluster workers are ordinary application Deployments, onboarded as in "Access", each
 with its own task queue.
 
-There is no off-cluster path yet. The service CIDR (`fd43::/112`) is not routed
-off-cluster and the frontend has no LoadBalancer. An off-cluster worker needs one (a
-LoadBalancer to the pod's 7233; the server certificate would then also need that name)
-and a client certificate from cert-manager with an approver policy, as postgres's
-clients have.
+Workers outside the cluster (NixOS services on hosts) connect to
+`frontend.temporal.k8s.home.garvey.sh:7233`, the LoadBalancer in `service-lb.yaml`
+(`2001:470:482f:2::5018`), with server name `frontend.temporal.k8s.home.garvey.sh`; the
+service CIDR (`fd43::/112`) is not routed off-cluster. The port is open to the LAN
+(`network-policy.yaml`); the frontend still requires a client certificate that chains to
+the root, and the authz table decides what it may do. A host worker's certificate is its
+X.509-SVID from the host's SPIRE agent (`modules/services/spire-agent.nix`, entries in
+`manifests/spire/host-entries.yaml`), and its table key is
+`spiffe://home.garvey.sh/host/<host>/<service>`. Current one: flake-bot on wabbajack
+(namespace `flake-bot`).

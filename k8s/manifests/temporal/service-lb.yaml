@@ -1,0 +1,27 @@
+# The frontend's gRPC on the LAN, for workers that run outside the cluster
+# (the flake-bot worker on wabbajack). Its k8s_gateway name is
+# frontend.temporal.k8s.home.garvey.sh, which frontend-certificate.yaml
+# carries. Callers need a client certificate that chains to the root and an
+# entry in authz-configmap.yaml, exactly as in-cluster workers do; nothing
+# else lets them in. Only the gRPC port: metrics stay on the ClusterIP
+# Service in service.yaml.
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: temporal
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+  annotations:
+    io.cilium/lb-ipam-ips: "2001:470:482f:2::5018"
+spec:
+  type: LoadBalancer
+  ipFamilies: [IPv6]
+  ipFamilyPolicy: SingleStack
+  selector:
+    app: temporal
+  ports:
+    - name: grpc
+      port: 7233
+      targetPort: 7233
+      protocol: TCP

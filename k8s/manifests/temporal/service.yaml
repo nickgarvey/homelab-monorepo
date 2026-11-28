@@ -1,6 +1,7 @@
-# The frontend's only Service, and the only one service-monitor.yaml scrapes.
-# Workers reach the frontend at temporal-frontend.temporal.svc:7233. There is no
-# off-cluster path: the service CIDR (fd43::/112) is not routed off-cluster.
+# The frontend's ClusterIP Service, and the only one service-monitor.yaml scrapes.
+# In-cluster workers reach the frontend at temporal-frontend.temporal.svc:7233.
+# The service CIDR (fd43::/112) is not routed off-cluster; workers outside the
+# cluster use service-lb.yaml.
 apiVersion: v1
 kind: Service
 metadata:

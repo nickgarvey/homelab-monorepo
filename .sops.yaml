@@ -137,6 +137,12 @@ creation_rules:
       - *ngarvey
       - *dragonsreach
       - *lydia
+  - path_regex: secrets/pki-dns-wabbajack\.yaml$
+    key_groups:
+    - age:
+      - *ngarvey
+      - *dragonsreach
+      - *wabbajack
   - path_regex: secrets/openbao-snapshot\.yaml$
     key_groups:
     - age:

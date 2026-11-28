@@ -23,3 +23,28 @@ spec:
               protocol: TCP
             - port: "443"
               protocol: TCP
+---
+# Anyone may reach the frontend's gRPC through service-lb.yaml. mTLS with
+# requireClientAuth and the authz table decide what a caller can do; this
+# only opens the port. Allow-only, like the policy above.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: temporal-frontend-lb-ingress
+  namespace: temporal
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  description: "Frontend gRPC open to all; mTLS and the authz table gate it"
+  enableDefaultDeny:
+    ingress: false
+  endpointSelector:
+    matchLabels:
+      app: temporal
+  ingress:
+    - fromEntities:
+        - all
+      toPorts:
+        - ports:
+            - port: "7233"
+              protocol: TCP

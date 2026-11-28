@@ -39,3 +39,9 @@ data:
       spiffe://home.garvey.sh/ns/release-watch/sa/release-watch:
         namespaces:
           release-watch: write
+      # The flake-bot worker on wabbajack (ait nix-b77Zn), a NixOS service
+      # with a host SPIRE identity (manifests/spire/host-entries.yaml). It
+      # connects through service-lb.yaml.
+      spiffe://home.garvey.sh/host/wabbajack/flake-bot:
+        namespaces:
+          flake-bot: write

@@ -30,3 +30,20 @@ spec:
   parentID: spiffe://home.garvey.sh/spire/agent/x509pop/lydia.home.garvey.sh
   selectors:
     - systemd:id:homeassistant-backup.service
+---
+# The flake-bot Temporal worker on wabbajack (ait nix-b77Zn): its X.509-SVID
+# is its client certificate to the Temporal frontend
+# (manifests/temporal/authz-configmap.yaml), and its JWT-SVID gets RGW STS
+# credentials for the update manifest (modules/services/rgw-roles.nix).
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterStaticEntry
+metadata:
+  name: host-wabbajack-flake-bot
+  labels:
+    app.kubernetes.io/managed-by: ngarvey-homelab
+spec:
+  className: spire-spire
+  spiffeID: spiffe://home.garvey.sh/host/wabbajack/flake-bot
+  parentID: spiffe://home.garvey.sh/spire/agent/x509pop/wabbajack.home.garvey.sh
+  selectors:
+    - systemd:id:flake-bot.service

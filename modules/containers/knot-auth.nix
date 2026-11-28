@@ -16,7 +16,7 @@ let
   dns = import ../networking/dns.nix { inherit lib; };
   # Hosts that get a certificate from OpenBao's hosts CA
   # (modules/services/pki-dns-cert.nix).
-  pkiDnsHosts = [ "lydia" ];
+  pkiDnsHosts = [ "lydia" "wabbajack" ];
 
   # TSIG identities allowed to write ACME DNS-01 challenges into the zone. Each
   # entry becomes a key, an ACL scoped to its listed owner names and to TXT

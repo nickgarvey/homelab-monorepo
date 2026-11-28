@@ -56,12 +56,14 @@ metadata:
     app.kubernetes.io/managed-by: ngarvey-homelab
 spec:
   # The Temporal frontend's server certificate
-  # (manifests/temporal/frontend-certificate.yaml), for its ClusterIP Service.
+  # (manifests/temporal/frontend-certificate.yaml), for its ClusterIP Service
+  # and its LAN LoadBalancer (manifests/temporal/service-lb.yaml).
   allowed:
     dnsNames:
       values:
         - temporal-frontend.temporal.svc
         - temporal-frontend.temporal.svc.cluster.local
+        - frontend.temporal.k8s.home.garvey.sh
     usages:
       - server auth
       - digital signature

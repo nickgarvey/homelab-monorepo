@@ -178,6 +178,12 @@ in
       pages-mcp = { namespace = "mcp-pages"; serviceAccount = "mcp-pages"; bucketPrefix = "pages"; access = "create"; };
       # lydia's daily Home Assistant backup (modules/services/home-assistant-backup.nix).
       homeassistant-backup = { spiffeID = "spiffe://home.garvey.sh/host/lydia/homeassistant-backup"; bucketPrefix = "homeassistant-backup"; };
+      # The flake-bot worker on wabbajack (ait nix-b77Zn) owns the bucket
+      # `flake-bot`, whose manifest.json names each host's latest prebuilt dev
+      # system. The worker creates the bucket and gives it a policy letting
+      # anyone read manifest.json, so hosts fetch it without credentials; the
+      # repo is public and the systems come from celler, signature-checked.
+      flake-bot = { spiffeID = "spiffe://home.garvey.sh/host/wabbajack/flake-bot"; bucketPrefix = "flake-bot"; };
     };
 
     assertions = [{

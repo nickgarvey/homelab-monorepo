@@ -16,6 +16,8 @@ spec:
   dnsNames:
     - temporal-frontend.temporal.svc
     - temporal-frontend.temporal.svc.cluster.local
+    # service-lb.yaml's k8s_gateway name, for workers outside the cluster.
+    - frontend.temporal.k8s.home.garvey.sh
   usages:
     - server auth
     - digital signature
