@@ -8,6 +8,7 @@
     ../../modules/core/nix-builder.nix
     ../../modules/services/pki-dns-cert.nix
     ../../modules/services/spire-agent.nix
+    ../../modules/services/flake-bot.nix
     ../../modules/containers/garage.nix
   ];
 
