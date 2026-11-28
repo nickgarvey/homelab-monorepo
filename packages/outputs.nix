@@ -14,6 +14,7 @@ let
   temporal-server = import ./temporal-server/outputs.nix { inherit nixpkgs system; };
   ceph-backup-worker = import ./ceph-backup-worker/outputs.nix { inherit nixpkgs system; };
   release-watch = import ./release-watch/outputs.nix { inherit nixpkgs system; };
+  flake-bot = import ./flake-bot/outputs.nix { inherit nixpkgs system; };
   anki-sync-server-image = import ./anki-sync-server/outputs.nix { inherit nixpkgs system; };
   longhorn-backup-pruner = import ./longhorn-backup-pruner/outputs.nix { inherit nixpkgs system; };
   failed-pod-pruner = import ./failed-pod-pruner/outputs.nix { inherit nixpkgs system; };
@@ -124,6 +125,7 @@ in
     ceph-backup-worker-image = ceph-backup-worker.image;
     release-watch = release-watch.package;
     release-watch-image = release-watch.image;
+    flake-bot = flake-bot.package;
     longhorn-backup-pruner = longhorn-backup-pruner.package;
     longhorn-backup-pruner-image = longhorn-backup-pruner.image;
     failed-pod-pruner = failed-pod-pruner.package;
@@ -160,6 +162,7 @@ in
     temporal-server-tests = temporal-server.package;
     ceph-backup-worker-tests = ceph-backup-worker.package;
     release-watch-tests = release-watch.package;
+    flake-bot-tests = flake-bot.package;
     anki-mcp-tests = anki-mcp.package;
     pages-mcp-tests = pages-mcp.package;
     diabetes-mcp-tests = diabetes-mcp.package;
