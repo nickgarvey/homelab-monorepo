@@ -9,6 +9,7 @@ An OpenAI-compatible proxy in front of the models the cluster uses
 | `pi` | DeepSeek V4 Flash (`deepseek/deepseek-v4-flash`), with the key in `DEEPSEEK_API_KEY`; the pi agent's default |
 | `habit-helper` | GPT-6.1 Sol through the Responses API (`openai/responses/gpt-6.1-sol`), with the key in `OPENAI_API_KEY` |
 | `habit-admin` | DeepSeek V4 Flash (`deepseek/deepseek-v4-flash`), with the key in `DEEPSEEK_API_KEY` |
+| `flake-fixer` | Claude Sonnet 5.5 (`anthropic/claude-sonnet-5-5`), with the key in `ANTHROPIC_API_KEY`; prices set in `configmap.yaml` for its budget |
 
 Secrets come from OpenBao, mounted by `secret-provider-class.yaml`
 (docs/openbao.md, "Pod secrets"), one file per ServiceAccount:
@@ -49,6 +50,12 @@ answers 401. There are three kinds:
   `secrets/openbao/agents/agent-token.yaml` (agent-token).
   `register-keys-job.yaml` registers them with litellm, with their alias and
   models, and is safe to re-run.
+- **The flake-bot's key**, alias `flake-fixer`, model `flake-fixer`, for the
+  fixer the flake-bot worker on wabbajack runs (ait nix-b77Zn). It reaches
+  litellm through the LoadBalancer. The value is in two places that must
+  match: `flake-fixer` in `secrets/openbao/litellm/litellm-register-keys.yaml`
+  (register-keys-job.yaml, which also sets its budget) and
+  `litellm_flake_fixer_key` in `secrets/flake-bot.yaml` (wabbajack).
 - **Named static keys** for callers outside the cluster (a workstation, a
   script): one per holder, so each can be revoked alone. None exist yet.
 
@@ -61,7 +68,9 @@ Not a client certificate, as other roles use: litellm's Prisma engine reads
 a client certificate (PKCS#12 only) once and keeps it, so a short-lived one
 would stop working when it expired.
 
-No key has a budget or limits; what a key may call is its whole restriction.
+Only `flake-fixer` has a budget ($20 per 30 days, set by `register-keys-job.yaml`);
+litellm refuses its calls once the budget is spent. The other keys have no budget
+or limits: what they may call is their whole restriction.
 
 ### Minting a named static key
 
@@ -115,6 +124,20 @@ it, write the new key to a file and, from the repo root:
 printf '"%s"' "$(tr -d '\n' < key-file)" | sops set --value-stdin \
   k8s/secrets/openbao/litellm/litellm.yaml \
   '["secrets"]["openai"]["OPENAI_API_KEY"]'
+(cd k8s && bash scripts/push-secrets.sh secrets/openbao/litellm/litellm.yaml)
+kubectl -n litellm rollout restart deploy/litellm
+```
+
+## Anthropic
+
+`ANTHROPIC_API_KEY` (`secrets.anthropic` in `secrets/openbao/litellm/litellm.yaml`) is the
+key for the `flake-fixer` model. The SecretProviderClass mounts it, so litellm does not
+start without it. To set or replace it, write the key to a file and, from the repo root:
+
+```sh
+printf '"%s"' "$(tr -d '\n' < key-file)" | sops set --value-stdin \
+  k8s/secrets/openbao/litellm/litellm.yaml \
+  '["secrets"]["anthropic"]["ANTHROPIC_API_KEY"]'
 (cd k8s && bash scripts/push-secrets.sh secrets/openbao/litellm/litellm.yaml)
 kubectl -n litellm rollout restart deploy/litellm
 ```

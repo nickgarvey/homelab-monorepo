@@ -36,6 +36,19 @@ data:
         litellm_params:
           model: deepseek/deepseek-v4-flash
           api_key: os.environ/DEEPSEEK_API_KEY
+      # Claude Sonnet 5.5, for the flake-bot's fixer on wabbajack (ait
+      # nix-b77Zn), with the key in ANTHROPIC_API_KEY. Its virtual key has a
+      # spending budget (register-keys-job.yaml), so the prices are given here
+      # rather than left to litellm's price map: a model missing from that map
+      # costs 0 and would never reach the budget.
+      - model_name: flake-fixer
+        litellm_params:
+          model: anthropic/claude-sonnet-5-5
+          api_key: os.environ/ANTHROPIC_API_KEY
+        model_info:
+          input_cost_per_token: 0.000002
+          output_cost_per_token: 0.00001
+          cache_read_input_token_cost: 0.0000001
     litellm_settings:
       drop_params: true
     general_settings:

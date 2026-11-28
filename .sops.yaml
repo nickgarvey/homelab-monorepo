@@ -338,6 +338,13 @@ creation_rules:
     - age:
       - *ngarvey
       - *dragonsreach
+  # The flake-bot worker on wabbajack (ait nix-b77Zn): its litellm key, and
+  # later its GitHub App key and celler push token.
+  - path_regex: secrets/flake-bot\.yaml$
+    key_groups:
+    - age:
+      - *ngarvey
+      - *wabbajack
   # Pod secrets served from OpenBao (docs/openbao.md, "Pod secrets"): decrypted
   # only on the workstation by k8s/scripts/push-secrets.sh, so no machine is a
   # recipient. Files are k8s/secrets/openbao/<namespace>/<serviceAccount>.yaml;
