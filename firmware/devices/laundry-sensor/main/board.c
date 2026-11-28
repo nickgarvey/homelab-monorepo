@@ -152,9 +152,10 @@ static bool spi_write(void *ctx, uint8_t reg, uint8_t value)
     return spi_device_polling_transmit(s_spi, &t) == ESP_OK;
 }
 
+/* At least ms: a delay of n ticks can end just after the next tick, so add one. */
 static void delay_ms(uint32_t ms)
 {
-    vTaskDelay(pdMS_TO_TICKS(ms ? ms : 1));
+    vTaskDelay(pdMS_TO_TICKS(ms) + 1);
 }
 
 static bool accel_init(void)
