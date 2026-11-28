@@ -11,6 +11,7 @@ extern "C" {
 #include <string.h>
 
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "esp_pm.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -159,6 +160,12 @@ static void env_task(void *arg)
 
 /* ---- accelerometer ---------------------------------------------------------- */
 
+#if CONFIG_LAUNDRY_DIAG_RAW
+static constexpr bool kDiagRaw = true;
+#else
+static constexpr bool kDiagRaw = false;
+#endif
+
 static void accel_task(void *arg)
 {
     const vibration_monitor_config_t cfg = {
@@ -171,6 +178,11 @@ static void accel_task(void *arg)
     board_accel_arm(CONFIG_VIBRATION_THRESHOLD_MG);
 
     bool streaming = false;
+#if CONFIG_LAUNDRY_DIAG_RAW
+    /* Diagnostics: stream from boot and never re-arm, so quiet phases are recorded too. */
+    board_accel_stream();
+    streaming = true;
+#endif
     bool running = false;
     int batches = 0;
     vm_sample_t batch[32];
@@ -199,6 +211,17 @@ static void accel_task(void *arg)
         uint16_t peak = vibration_monitor_batch_peak_mg(batch, n);
         vibration_monitor_feed(peak);
         vibration_monitor_tick((uint32_t)n * 1000 / BOARD_ACCEL_HZ);
+#if CONFIG_LAUNDRY_DIAG_RAW
+        /* A,<ms>,<x>,<y>,<z> per sample (mg); B,<ms>,<n>,<peak>,<active>,<running> per batch. */
+        int64_t now_ms = esp_timer_get_time() / 1000;
+        for (int i = 0; i < n; i++) {
+            printf("A,%lld,%d,%d,%d\n", (long long)(now_ms - (int64_t)(n - 1 - i) * 1000 / BOARD_ACCEL_HZ),
+                   batch[i].x_mg, batch[i].y_mg, batch[i].z_mg);
+        }
+        printf("B,%lld,%d,%u,%u,%d\n", (long long)now_ms, n, peak, vibration_monitor_active_buckets(),
+               (int)vibration_monitor_is_running());
+        fflush(stdout);
+#endif
 
         if (++batches % 20 == 0) {   /* every 10 s */
             ESP_LOGI(TAG, "peak=%u mg active=%u/%d running=%d", peak,
@@ -213,7 +236,7 @@ static void accel_task(void *arg)
             running = now;
         }
 
-        if (vibration_monitor_is_idle()) {
+        if (!kDiagRaw && vibration_monitor_is_idle()) {
             ESP_LOGI(TAG, "vibration: quiet, waiting for wake-up");
             board_accel_arm(CONFIG_VIBRATION_THRESHOLD_MG);
             streaming = false;

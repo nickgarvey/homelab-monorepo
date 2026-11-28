@@ -144,7 +144,8 @@
   freezerFirmwareFake = makeFreezerFirmware { useFakeSensor = true; };
 
   # --------------------------------------------------------------------------
-  # laundry-sensor (hardware/laundry-sensor PCB; feather = bare Feather, simulated sensors)
+  # laundry-sensor (hardware/laundry-sensor PCB; feather = bare Feather, simulated sensors;
+  # diag = streams every accelerometer sample to the console, for recording a wash)
   # --------------------------------------------------------------------------
 
   laundryComponents = pkgs.stdenv.mkDerivation {
@@ -168,8 +169,9 @@
     '';
   };
 
-  makeLaundryFirmware = { feather ? false }: pkgs.stdenv.mkDerivation {
-    name = if feather then "laundry-sensor-feather-firmware" else "laundry-sensor-firmware";
+  makeLaundryFirmware = { feather ? false, diag ? false }: pkgs.stdenv.mkDerivation {
+    name = "laundry-sensor" + pkgs.lib.optionalString feather "-feather"
+      + pkgs.lib.optionalString diag "-diag" + "-firmware";
     src = cleanSrc ./.;
     nativeBuildInputs = [ esp-idf-full pkgs.cmake pkgs.ninja ];
 
@@ -193,6 +195,9 @@
       ${pkgs.lib.optionalString feather ''
         cat devices/laundry-sensor/sdkconfig.feather >> devices/laundry-sensor/sdkconfig.defaults
       ''}
+      ${pkgs.lib.optionalString diag ''
+        cat devices/laundry-sensor/sdkconfig.diag >> devices/laundry-sensor/sdkconfig.defaults
+      ''}
       idf.py -C devices/laundry-sensor reconfigure
       idf.py -C devices/laundry-sensor build
     '';
@@ -209,6 +214,7 @@
 
   laundryFirmware        = makeLaundryFirmware {};
   laundryFirmwareFeather = makeLaundryFirmware { feather = true; };
+  laundryFirmwareDiag    = makeLaundryFirmware { diag = true; };
 
   # --------------------------------------------------------------------------
   # garage-opener
@@ -448,6 +454,7 @@ in {
     freezer-temp-sensor-components = freezerComponents;
     laundry-sensor = laundryFirmware;
     laundry-sensor-feather = laundryFirmwareFeather;
+    laundry-sensor-diag = laundryFirmwareDiag;
     laundry-sensor-components = laundryComponents;
     garage-opener = garageFirmware;
     garage-opener-components = garageComponents;

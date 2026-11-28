@@ -49,4 +49,12 @@ menu "Laundry Sensor"
         int "Minutes between temperature, humidity and battery reports"
         default 15
 
+    config LAUNDRY_DIAG_RAW
+        bool "Stream every accelerometer sample to the console (diagnostics)"
+        default n
+        help
+            Streams from boot and never goes back to wake-up mode, printing
+            A,<ms>,<x>,<y>,<z> per sample (mg) and B,<ms>,<n>,<peak>,<active>,<running>
+            per FIFO batch. About 1 KB/s. For recording a wash to tune the thresholds.
+
 endmenu

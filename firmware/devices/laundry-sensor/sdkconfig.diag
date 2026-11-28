@@ -1,0 +1,2 @@
+# Diagnostics build: stream raw accelerometer samples (packages.laundry-sensor-diag).
+CONFIG_LAUNDRY_DIAG_RAW=y
